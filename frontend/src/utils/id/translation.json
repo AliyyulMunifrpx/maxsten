@@ -1,0 +1,27 @@
+{
+  "register": {
+    "button": "Registrasi",
+    "placeholder": {
+      "username": "Masukkan Nama Pengguna",
+      "name": "Masukkan Nama Lengkap"
+    },
+    "success": "Pendaftaran Berhasil",
+    "label": {
+      "username": "Nama Pengguna",
+      "name": "Nama Lengkap",
+      "password": "Kata Sandi"
+    }
+  },
+  "api_errors": {
+    "ERR_USER_IS_ALREADY_EXIST": "Nama pengguna ini sudah terdaftar. Pakai nama lain, ya!",
+    "ERR_USERNAME_OR_PASSWORD_WRONG": "Nama pengguna atau password salah nih. Coba cek lagi.",
+    "ERR_USER_NOT_FOUND": "User tidak ditemukan di sistem kami.",
+    "ERR_INVALID_OTP": "Kode OTP salah. Pastikan angka yang kamu masukin bener.",
+    "ERR_EXPIRED_OTP": "Kode OTP sudah kadaluarsa. Silakan minta kode baru.",
+    "ERR_VALIDATION_FAILED": "Data yang kamu masukin belum lengkap atau salah format.",
+    "ERR_SERVER_ERROR": "Terjadi kesalahan di server. Coba beberapa saat lagi ya.",
+    "ERR_STORE_NOT_FOUND": "Toko tidak ditemukan.",
+    "ERR_ACTIVE_QUEUE_EXISTS": "Kamu masih punya antrean aktif di toko ini. Selesaikan dulu antrean sebelumnya sebelum buat antrean baru.",
+     "ERR_TOO_MANY_REQUESTS": "Kamu terlalu sering membuat antrean. Tunggu 10 menit lagi ya."
+  }
+}

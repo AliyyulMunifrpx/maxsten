@@ -1,0 +1,206 @@
+enum QueueStatus {
+  BELUM_BAYAR
+  DIPROSES
+  SELESAI
+  DIBATALKAN
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  username       String    @unique @db.VarChar(100)
+  password       String    @db.VarChar(100)
+  name           String    @db.VarChar(100)
+  otp            String?   @db.VarChar(10)
+  otp_expired_at DateTime?
+
+  contacts Contact[]
+  store    Store?
+
+  @@map("users")
+}
+
+model Contact {
+  id         Int     @id @default(autoincrement())
+  first_name String  @db.VarChar(100)
+  last_name  String? @db.VarChar(100)
+  email      String? @db.VarChar(100)
+  phone      String? @db.VarChar(100)
+
+  user_id Int
+  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  addresses Address[]
+
+  @@map("contacts")
+}
+
+model Address {
+  id          Int     @id @default(autoincrement())
+  street      String? @db.VarChar(255)
+  city        String? @db.VarChar(100)
+  province    String? @db.VarChar(100)
+  country     String  @db.VarChar(100)
+  postal_code String  @db.VarChar(10)
+
+  contact_id Int
+  contact    Contact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model Store {
+  id        Int    @id @default(autoincrement())
+  public_id String @unique @default(uuid()) @db.Char(36)
+
+  name              String                 @db.VarChar(100)
+  description       String?                @db.Text
+  address           String                 @db.VarChar(100)
+  manual_status     String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
+  manual_updated_at DateTime? // Waktu terakhir tombol manual ditekan
+  logo_url          String?                @db.VarChar(255)
+  user_id           Int                    @unique
+  is_delete         Boolean                @default(false)
+  user              User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  timezone          String                 @default("Asia/Jakarta")
+  products          Product[]
+  queues            Queue[]
+  addonGroups       AddonGroup[]
+  operational_hours StoreOperationalHour[]
+
+  @@map("stores")
+}
+
+model StoreOperationalHour {
+  id         String  @id @default(uuid())
+  store_id   Int
+  day        Int // 0 = Minggu, 1 = Senin, ..., 6 = Sabtu
+  open_time  String? // Format jam, misal: "08:00"
+  close_time String? // Format jam, misal: "21:00"
+  is_active  Boolean @default(false) // Defaultnya tutup semua sesuai permintaan lu
+
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  // Kombinasi store_id dan day harus unik (1 toko cuma punya 1 jadwal per hari)
+  @@unique([store_id, day])
+}
+
+model Product {
+  id           String  @id @default(uuid())
+  name         String  @db.VarChar(100)
+  price        Int
+  is_available Boolean @default(true)
+  // FIX 1: Ubah tipe data dari String ke Int biar match dengan Store.id
+  store_id     Int
+  store        Store   @relation(fields: [store_id], references: [id])
+  image_url    String? @db.VarChar(255)
+  is_delete    Boolean @default(false)
+
+  variants           Variant[]
+  productAddonGroups ProductAddonGroup[]
+  queueDetail        QueueDetail[]
+
+  @@map("products")
+}
+
+model AddonGroup {
+  id                 String              @id @default(uuid())
+  name               String              @db.VarChar(100)
+  store_id           Int
+  store              Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  addons             Addon[]
+  productAddonGroups ProductAddonGroup[]
+  is_delete          Boolean             @default(false)
+
+  @@map("AddonGroup")
+}
+
+model Addon {
+  id             String     @id @default(uuid())
+  name           String     @db.VarChar(100)
+  price          Int
+  addon_group_id String
+  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+  is_delete      Boolean    @default(false)
+
+  @@map("Addon")
+}
+
+model ProductAddonGroup {
+  product_id     String
+  addon_group_id String
+
+  product     Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  addon_group AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+
+  @@id([product_id, addon_group_id])
+  @@map("ProductAddonGroup")
+}
+
+model Variant {
+  id               String @id @default(uuid())
+  name             String @db.VarChar(100)
+  additional_price Int    @default(0)
+
+  product_id String
+  product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  is_delete  Boolean @default(false)
+
+  queueDetail QueueDetail[]
+
+  @@map("variants")
+}
+
+model Guest {
+  id String @id @db.Char(36)
+
+  created_at DateTime @default(now())
+
+  queues Queue[]
+}
+
+model Queue {
+  id           Int         @id @default(autoincrement())
+  queue_number Int
+  total_price  Int         @default(0)
+  status       QueueStatus @default(BELUM_BAYAR)
+  created_at   DateTime    @default(now())
+  completed_at DateTime?
+  note         String?     @db.Text
+  store_id     Int
+  store        Store       @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  guest_id     String      @db.Char(36)
+  guest        Guest       @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+
+  queueDetails QueueDetail[]
+
+  @@index([status, created_at])
+  @@map("queues")
+}
+
+model QueueDetail {
+  id String @id @default(uuid())
+
+  // FIX 2: Ubah tipe data dari String ke Int biar match dengan Queue.id
+  queue_id Int
+
+  product_id      String
+  quantity        Int
+  selected_addons Json?
+
+  variant_id String?
+  variant    Variant? @relation(fields: [variant_id], references: [id])
+
+  queue   Queue   @relation(fields: [queue_id], references: [id])
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@map("queue_details")
+}

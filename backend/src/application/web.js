@@ -1,0 +1,21 @@
+import express from "express";
+import { publicRouter } from "../route/public_api.js";
+import { errorMiddleware } from "../middleware/error_middleware.js";
+import { userRouter } from "../route/api.js";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+
+export const web = express();
+web.use(
+  cors({
+    origin: ["http://localhost:5173", "http://192.168.1.5:5173"], // Alamat frontend Vite lu
+    credentials: true, // INI WAJIB TRUE biar cookie token lu bisa lewat
+  }),
+);
+web.use(express.json());
+web.use(cookieParser()); // 2. Pasang di sini, SEBELUM router lu
+web.use(publicRouter);
+web.use(userRouter);
+web.use(errorMiddleware);
+// Buka akses folder statis biar foto bisa diload dari URL (contoh: http://localhost:3000/uploads/foto123.jpg)
+web.use("/uploads", express.static("public/uploads"));

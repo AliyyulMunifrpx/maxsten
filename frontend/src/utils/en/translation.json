@@ -1,0 +1,27 @@
+{
+  "register": {
+    "button": "Registration",
+    "placeholder": {
+      "username": "Input Username",
+      "name": "Input Full Name"
+    },
+    "success": "Registration Successfully",
+    "label": {
+      "username": "Username",
+      "name": "Full Name",
+      "password": "Password"
+    }
+  },
+  "api_errors": {
+    "ERR_USER_IS_ALREADY_EXIST": "This username is already taken. Please choose another one!",
+    "ERR_USERNAME_OR_PASSWORD_WRONG": "Incorrect username or password. Please try again.",
+    "ERR_USER_NOT_FOUND": "User not found in our system.",
+    "ERR_INVALID_OTP": "Invalid OTP code. Please double-check the numbers.",
+    "ERR_EXPIRED_OTP": "Your OTP code has expired. Please request a new one.",
+    "ERR_VALIDATION_FAILED": "The data provided is incomplete or in the wrong format.",
+    "ERR_SERVER_ERROR": "An internal server error occurred. Please try again later.",
+    "ERR_STORE_NOT_FOUND": "Store not found.",
+    "ERR_ACTIVE_QUEUE_EXISTS": "You still have an active queue in this store. Please complete the previous queue before creating a new one.",
+     "ERR_TOO_MANY_REQUESTS": "You are making too many requests. Please wait 10 minutes before trying again."
+  }
+}
