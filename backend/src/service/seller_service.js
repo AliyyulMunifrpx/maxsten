@@ -8,14 +8,13 @@ import {
   updateAvailabilityValidation,
 } from "../validation/seller_validation.js";
 import { validate } from "../validation/validation.js";
+
 const getAllQueue = async (request) => {
   const req = validate(getAllQueueValidation, request);
 
-  // 1. Buat objek tanggal untuk awal hari ini (00:00:00)
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  // Gunakan findUnique atau findFirst
   const store = await prisma.store.findFirst({
     where: {
       public_id: req.store_id,
@@ -40,19 +39,15 @@ const getAllQueue = async (request) => {
       status: {
         in: ["BELUM_BAYAR", "DIPROSES"],
       },
-      // 2. Tambahkan filter berdasarkan tanggal pembuatan
       created_at: {
         gte: startOfDay,
       },
     },
-
     include: {
       queueDetails: {
         include: {
           product: true,
-          variant: {
-            where: { is_delete: false },
-          }, // <-- Tambahan biar di struk kelihatan nama variannya
+          variant: true,
         },
       },
     },
@@ -60,6 +55,7 @@ const getAllQueue = async (request) => {
 
   return queues;
 };
+
 const editQueueStatus = async (request) => {
   const req = validate(editQueueStatusValidation, request);
   const queue = await prisma.queue.findFirst({
@@ -89,14 +85,13 @@ const editQueueStatus = async (request) => {
       `Tidak bisa mengubah status dari ${queue.status} ke ${req.status}`,
     );
   }
-  // UPDATE PAKE ID PRIMARY KEY
+
   return prisma.queue.update({
     where: {
       id: req.id,
     },
     data: {
       status: req.status,
-      completed_at: req.status === "SELESAI" ? new Date() : undefined,
     },
     include: {
       queueDetails: {
@@ -107,8 +102,8 @@ const editQueueStatus = async (request) => {
     },
   });
 };
+
 const getStore = async (request) => {
-  // Biar penamaannya lebih jelas, request kita simpan di variabel userId
   const userId = validate(getStoreValidation, request);
 
   const store = await prisma.store.findUnique({
@@ -123,15 +118,17 @@ const getStore = async (request) => {
       address: true,
       logo_url: true,
       timezone: true,
-      // ❌ is_open: true DIHAPUS
-
-      // ✅ TAMBAHAN BARU: Tarik data yang dibutuhkan untuk kalkulasi
       manual_status: true,
       manual_updated_at: true,
       operational_hours: true,
+      // FIX: tambahin ini, biar EditStore.jsx bisa prefill nilai payment_timeout
+      // yang lagi aktif. Sebelumnya field ini gak pernah keikut ke frontend.
+      payment_timeout: true,
 
-      // Ambil produk sekaligus foto dan variannya
       products: {
+        where: {
+          is_delete: false,
+        },
         select: {
           id: true,
           name: true,
@@ -139,6 +136,11 @@ const getStore = async (request) => {
           image_url: true,
           is_available: true,
           productAddonGroups: {
+            where: {
+              addon_group: {
+                is_delete: false,
+              },
+            },
             select: {
               addon_group: {
                 select: {
@@ -158,9 +160,10 @@ const getStore = async (request) => {
               },
             },
           },
-
-          // Nested select lagi buat ngambil varian dari produk tersebut
           variants: {
+            where: {
+              is_delete: false,
+            },
             select: {
               id: true,
               name: true,
@@ -172,30 +175,29 @@ const getStore = async (request) => {
     },
   });
 
-  // Validasi tambahan: Jaga-jaga kalau user belum bikin toko sama sekali
   if (!store) {
     throw new ResponseError(404, "Toko tidak ditemukan");
   }
 
-  // 🔥 KALKULASI ON-THE-FLY 🔥
-  // Hitung status toko detik ini juga pakai helper
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
 
-  // Return datanya, kita sisipin property 'is_open' buatan sendiri
-  // Biar frontend React lu ga ada yang error / ga perlu diubah kodenya
   return {
     ...store,
     is_open: isStoreOpen,
   };
 };
+
 const updateProductAvailability = async (userId, request) => {
   const req = validate(updateAvailabilityValidation, request);
 
-  // 1. Pastikan produk yang mau diubah itu beneran milik toko si user yang login
   const product = await prisma.product.findFirst({
     where: {
       id: req.productId,
-      store: { user_id: userId, is_delete: false },
+      is_delete: false,
+      store: {
+        user_id: userId,
+        is_delete: false,
+      },
     },
   });
 
@@ -206,12 +208,12 @@ const updateProductAvailability = async (userId, request) => {
     );
   }
 
-  // 2. Update status ketersediaannya
   return await prisma.product.update({
     where: { id: req.productId },
     data: { is_available: req.is_available },
   });
 };
+
 export default {
   getAllQueue,
   editQueueStatus,

@@ -38,9 +38,9 @@ const editAddonGroups = async (userId, request) => {
       where: {
         id: req.id,
         store_id: store.id,
+        is_delete: false,
       },
     });
-
     if (!addonGroup) {
       throw new ResponseError(
         404,

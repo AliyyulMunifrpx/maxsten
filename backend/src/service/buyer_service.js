@@ -9,22 +9,40 @@ import {
 } from "../validation/buyer_validation.js";
 import { validate } from "../validation/validation.js";
 
+const DEFAULT_PAYMENT_TIMEOUT_MINUTES = 30;
+
+const resolvePaymentTimeout = (paymentTimeout) => {
+  if (typeof paymentTimeout !== "number" || !Number.isFinite(paymentTimeout)) {
+    return DEFAULT_PAYMENT_TIMEOUT_MINUTES;
+  }
+
+  if (paymentTimeout <= 0) {
+    return DEFAULT_PAYMENT_TIMEOUT_MINUTES;
+  }
+
+  return Math.floor(paymentTimeout);
+};
+
 const createQueue = async (request) => {
   const req = validate(createQueueValidation, request);
-  
-  // 1. Tarik data toko sekalian sama jadwal operasionalnya
+
+  // 1. Tarik data toko sekalian sama jadwal operasionalnya dan timeout pembayaran
   const store = await prisma.store.findFirst({
     where: { public_id: req.public_id, is_delete: false },
-    include: {
-      operational_hours: true, // Wajib ditarik biar bisa ngitung jam
-    }
+    select: {
+      id: true,
+      manual_status: true,
+      manual_updated_at: true,
+      operational_hours: true,
+      payment_timeout: true,
+    },
   });
 
   if (!store) throw new ResponseError(404, "ERR_STORE_NOT_FOUND");
 
   // 2. Kalkulasi apakah detik ini toko beneran buka?
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
-  
+
   // 3. Kalau ternyata tutup, tolak pesanannya
   if (!isStoreOpen) {
     throw new ResponseError(400, "Maaf toko sedang tutup");
@@ -53,14 +71,31 @@ const createQueue = async (request) => {
     ...new Set(req.items.map((item) => item.product_id)),
   ];
   const existingProducts = await prisma.product.findMany({
-    where: { id: { in: requestedProductIds }, store_id: store.id },
+    where: {
+      id: { in: requestedProductIds },
+      store_id: store.id,
+      is_delete: false,
+    },
     include: {
-      variants: true,
+      variants: {
+        where: {
+          is_delete: false,
+        },
+      },
       productAddonGroups: {
+        where: {
+          addon_group: {
+            is_delete: false,
+          },
+        },
         include: {
           addon_group: {
             include: {
-              addons: true,
+              addons: {
+                where: {
+                  is_delete: false,
+                },
+              },
             },
           },
         },
@@ -98,8 +133,8 @@ const createQueue = async (request) => {
     }
 
     // Ambil daftar addon yang tersedia untuk produk ini
-    const availableAddons = product.productAddonGroups.flatMap((pag) =>
-      pag.addon_group.addons,
+    const availableAddons = product.productAddonGroups.flatMap(
+      (pag) => pag.addon_group.addons,
     );
     const addonMap = new Map(availableAddons.map((addon) => [addon.id, addon]));
 
@@ -147,27 +182,36 @@ const createQueue = async (request) => {
   });
 
   const queueNumber = lastQueue ? lastQueue.queue_number + 1 : 1;
-// Ambil ID semua produk yang mau dibeli dari request
-const productIds = req.items.map((item) => item.product_id);
 
-// Cari produknya di database
-const products = await prisma.product.findMany({
-  where: { id: { in: productIds } },
-});
+  const paymentTimeoutMinutes = resolvePaymentTimeout(store.payment_timeout);
+  const expiredAt = new Date(Date.now() + paymentTimeoutMinutes * 60 * 1000);
+  // Ambil ID semua produk yang mau dibeli dari request
+  const productIds = req.items.map((item) => item.product_id);
 
-// 👉 [SATPAM BARU] Cek apakah ada produk yang stoknya habis atau dihapus
-for (const item of req.items) {
-  const productData = products.find((p) => p.id === item.product_id);
-  
-  if (!productData) {
-    throw new ResponseError(404, "Ada produk yang tidak ditemukan.");
+  // Cari produknya di database
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: productIds },
+      is_delete: false,
+    },
+  });
+
+  // 👉 [SATPAM BARU] Cek apakah ada produk yang stoknya habis atau dihapus
+  for (const item of req.items) {
+    const productData = products.find((p) => p.id === item.product_id);
+
+    if (!productData) {
+      throw new ResponseError(404, "Ada produk yang tidak ditemukan.");
+    }
+
+    if (!productData.is_available) {
+      // Kalau habis, tolak pesanannya dari backend!
+      throw new ResponseError(
+        400,
+        `Maaf, produk ${productData.name} baru saja habis.`,
+      );
+    }
   }
-  
-  if (!productData.is_available) {
-    // Kalau habis, tolak pesanannya dari backend!
-    throw new ResponseError(400, `Maaf, produk ${productData.name} baru saja habis.`);
-  }
-}
   // 5. SIMPAN KE DATABASE
   return await prisma.queue.create({
     data: {
@@ -176,6 +220,7 @@ for (const item of req.items) {
       guest_id: req.guest_id,
       note: req.note,
       total_price: totalPrice,
+      expired_at: expiredAt,
       queueDetails: {
         create: queueDetailsData,
       },
@@ -193,17 +238,17 @@ for (const item of req.items) {
 };
 const getAllProductDisplay = async (request) => {
   const req = validate(getAllProductDisplayValidation, request);
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: {
       public_id: req,
-      is_delete: false
+      is_delete: false,
     },
     select: {
       name: true,
-      description: true, 
-      address: true, 
-      logo_url: true, 
-      
+      description: true,
+      address: true,
+      logo_url: true,
+
       // ❌ HAPUS is_open: true
 
       // ✅ WAJIB DITAMBAH: Tarik data buat dihitung sama helper
@@ -212,13 +257,19 @@ const getAllProductDisplay = async (request) => {
       operational_hours: true,
 
       products: {
+        where: {
+          is_delete: false,
+        },
         select: {
           id: true,
           name: true,
           price: true,
-          image_url: true, 
+          image_url: true,
           is_available: true,
           variants: {
+            where: {
+              is_delete: false,
+            },
             select: {
               id: true,
               name: true,
@@ -226,12 +277,20 @@ const getAllProductDisplay = async (request) => {
             },
           },
           productAddonGroups: {
+            where: {
+              addon_group: {
+                is_delete: false,
+              },
+            },
             select: {
               addon_group: {
                 select: {
                   id: true,
                   name: true,
                   addons: {
+                    where: {
+                      is_delete: false,
+                    },
                     select: {
                       id: true,
                       name: true,
@@ -266,7 +325,7 @@ const getQueue = async (request) => {
       id: req.queueId,
       store: {
         public_id: req.public_id,
-        is_delete:false
+        is_delete: false,
       },
     },
     include: {
@@ -303,7 +362,10 @@ const cancelQueue = async (request) => {
 
   // 2. Guard Clause: Cuma boleh batal kalau belum diproses!
   if (queue.status !== "BELUM_BAYAR") {
-    throw new ResponseError(400, "Pesanan sudah diproses, tidak bisa dibatalkan.");
+    throw new ResponseError(
+      400,
+      "Pesanan sudah diproses, tidak bisa dibatalkan.",
+    );
   }
 
   // 3. Update statusnya jadi DIBATALKAN
@@ -320,4 +382,4 @@ const cancelQueue = async (request) => {
     },
   });
 };
-export default { createQueue, getAllProductDisplay, getQueue , cancelQueue};
+export default { createQueue, getAllProductDisplay, getQueue, cancelQueue };

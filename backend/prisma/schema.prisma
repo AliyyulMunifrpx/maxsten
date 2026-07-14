@@ -5,6 +5,12 @@ enum QueueStatus {
   DIBATALKAN
 }
 
+enum CancelledBy {
+  SYSTEM
+  SELLER
+  BUYER
+}
+
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -71,10 +77,12 @@ model Store {
   is_delete         Boolean                @default(false)
   user              User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
   timezone          String                 @default("Asia/Jakarta")
+  payment_timeout   Int                    @default(30)
   products          Product[]
   queues            Queue[]
   addonGroups       AddonGroup[]
   operational_hours StoreOperationalHour[]
+  created_at        DateTime               @default(now())
 
   @@map("stores")
 }
@@ -168,19 +176,21 @@ model Guest {
 }
 
 model Queue {
-  id           Int         @id @default(autoincrement())
-  queue_number Int
-  total_price  Int         @default(0)
-  status       QueueStatus @default(BELUM_BAYAR)
-  created_at   DateTime    @default(now())
-  completed_at DateTime?
-  note         String?     @db.Text
-  store_id     Int
-  store        Store       @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  guest_id     String      @db.Char(36)
-  guest        Guest       @relation(fields: [guest_id], references: [id], onDelete: Cascade)
-
-  queueDetails QueueDetail[]
+  id                  Int           @id @default(autoincrement())
+  queue_number        Int
+  total_price         Int           @default(0)
+  status              QueueStatus   @default(BELUM_BAYAR)
+  created_at          DateTime      @default(now())
+  completed_at        DateTime?
+  note                String?       @db.Text
+  expired_at          DateTime
+  store_id            Int
+  store               Store         @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  guest_id            String        @db.Char(36)
+  guest               Guest         @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+  cancelled_by        CancelledBy?
+  cancellation_reason String?       @db.Text
+  queueDetails        QueueDetail[]
 
   @@index([status, created_at])
   @@map("queues")

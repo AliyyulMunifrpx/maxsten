@@ -13,23 +13,21 @@ import {
 } from "../validation/store_validation.js";
 import { validate } from "../validation/validation.js";
 
-const create = async (requestBody, file) => {
-  // 1. Validasi teks (nama toko) dari requestBody menggunakan Joi lu
+import { getDaysInMonth, subMonths } from "date-fns";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
+const create = async (requestBody, file) => {
   const req = validate(createStoreValidation, requestBody);
 
-  // 2. Cek apakah user ini udah punya toko belum (One-to-One)
   const existingStore = await prisma.store.count({
-    where: { user_id: req.userId },
+    where: { user_id: req.userId, is_delete: false },
   });
   if (existingStore > 0) {
     throw new ResponseError(400, "Kamu sudah memiliki toko.");
   }
 
-  // 3. Cek apakah ada file logo yang diupload. Kalau gak ada, set null.
   const logoPath = file ? `/uploads/${file.filename}` : null;
 
-  // 4. Simpan ke database sekaligus
   return await prisma.store.create({
     data: {
       name: req.name,
@@ -37,7 +35,7 @@ const create = async (requestBody, file) => {
       address: req.address,
       user_id: req.userId,
       logo_url: logoPath,
-      timezone: req.timezone, // Langsung masuk nilainya di sini
+      timezone: req.timezone,
     },
     select: {
       id: true,
@@ -46,14 +44,13 @@ const create = async (requestBody, file) => {
       logo_url: true,
     },
   });
-}; // Tambahkan parameter 'file' di fungsinya
+};
+
 const createProduct = async (request, file) => {
-  // 1. TANGKAP DAN CAIRKAN STRING JADI ARRAY DULU (SEBELUM VALIDASI)
   if (typeof request.variants === "string") {
     try {
       request.variants = JSON.parse(request.variants);
     } catch (e) {
-      // Kalau ternyata string-nya rusak/bukan JSON, kosongin aja biar gak crash
       request.variants = [];
     }
   }
@@ -66,15 +63,12 @@ const createProduct = async (request, file) => {
     }
   }
 
-  // Joi juga butuh angka murni buat price, bukan string "15000" dari FormData
   if (typeof request.price === "string") {
     request.price = Number(request.price);
   }
 
-  // 2. SETELAH JADI ARRAY & ANGKA ASLI, BARU KASIH KE SATPAM JOI
   const req = validate(createProductValidation, request);
 
-  // ... (Sisa kode ke bawahnya sama persis kayak sebelumnya)
   const store = await prisma.store.findUnique({
     where: { user_id: req.userId, is_delete: false },
     select: { id: true },
@@ -86,11 +80,11 @@ const createProduct = async (request, file) => {
     );
   }
 
-  // 2. Validasi: Cek apakah nama produk INI sudah ada di toko INI
   const existingProduct = await prisma.product.count({
     where: {
       store_id: store.id,
       name: req.name,
+      is_delete: false,
     },
   });
 
@@ -101,10 +95,8 @@ const createProduct = async (request, file) => {
     );
   }
 
-  // Ambil path foto produk jika diupload
   const productImagePath = file ? `/uploads/${file.filename}` : null;
 
-  // Jika data variants dikirim sebagai string JSON dari FormData, kita parse dulu di sini
   let parsedVariants = req.variants;
   if (typeof req.variants === "string") {
     try {
@@ -114,7 +106,6 @@ const createProduct = async (request, file) => {
     }
   }
 
-  // Jika data addon_group_ids dikirim sebagai string JSON dari FormData, kita parse dulu di sini
   let parsedAddonGroupIds = req.addon_group_ids;
   if (typeof req.addon_group_ids === "string") {
     try {
@@ -129,6 +120,7 @@ const createProduct = async (request, file) => {
       where: {
         id: { in: parsedAddonGroupIds },
         store_id: store.id,
+        is_delete: false,
       },
     });
     if (validAddonGroups !== parsedAddonGroupIds.length) {
@@ -139,12 +131,11 @@ const createProduct = async (request, file) => {
     }
   }
 
-  // 3. Buat Produk Sekaligus Variannya (Nested Write) dan relasi AddonGroup bila ada
   return await prisma.product.create({
     data: {
       name: req.name,
-      price: Number(req.price), // Pastikan jadi angka murni
-      image_url: productImagePath, // Simpan path foto produk
+      price: Number(req.price),
+      image_url: productImagePath,
       store_id: store.id,
 
       ...(parsedVariants &&
@@ -180,11 +171,10 @@ const createProduct = async (request, file) => {
     },
   });
 };
+
 const openCloseStore = async (request) => {
-  // Anggap userId didapat dari middleware auth
   const req = validate(openCloseStoreValidation, request);
 
-  // 1. Cari toko berdasarkan public_id DAN pastikan ini milik user yang login
   const store = await prisma.store.findFirst({
     where: {
       public_id: req.store_id,
@@ -192,11 +182,10 @@ const openCloseStore = async (request) => {
       is_delete: false,
     },
     include: {
-      operational_hours: true, // Wajib tarik jadwal untuk dihitung
+      operational_hours: true,
     },
   });
 
-  // 2. Handling jika tidak ketemu
   if (!store) {
     throw new ResponseError(
       404,
@@ -204,20 +193,16 @@ const openCloseStore = async (request) => {
     );
   }
 
-  // 3. Kalkulasi status toko SAAT INI (True = Buka, False = Tutup)
   const isCurrentlyOpen = calculateStoreStatus(store, store.operational_hours);
-
-  // 4. Tentukan status baru (kebalikannya)
   const newManualStatus = isCurrentlyOpen ? "CLOSED" : "OPEN";
 
-  // 5. Update menggunakan kolom baru (manual_status & manual_updated_at)
   await prisma.store.update({
     where: {
       id: store.id,
     },
     data: {
       manual_status: newManualStatus,
-      manual_updated_at: new Date(), // Catat waktu ditekan
+      manual_updated_at: new Date(),
     },
   });
 
@@ -226,16 +211,18 @@ const openCloseStore = async (request) => {
       newManualStatus === "OPEN"
         ? "berhasil membuka toko"
         : "berhasil menutup toko",
-    is_open: newManualStatus === "OPEN", // Balikin buat di-consume frontend
+    is_open: newManualStatus === "OPEN",
   };
 };
+
 const updateLogo = async (userId, file) => {
   if (!file) throw new ResponseError(400, "Tidak ada file yang diupload");
 
-  const store = await prisma.store.findUnique({ where: { user_id: userId } });
+  const store = await prisma.store.findUnique({
+    where: { user_id: userId, is_delete: false },
+  });
   if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
 
-  // Simpan path gambarnya aja ke database
   const imagePath = `/uploads/${file.filename}`;
 
   return await prisma.store.update({
@@ -244,6 +231,7 @@ const updateLogo = async (userId, file) => {
     select: { id: true, name: true, logo_url: true },
   });
 };
+
 const updateStoreProfile = async (userId, request) => {
   const req = validate(updateStoreValidation, request);
 
@@ -259,16 +247,28 @@ const updateStoreProfile = async (userId, request) => {
       description: req.description,
       address: req.address,
       timezone: req.timezone,
+      // FIX: sebelumnya field ini gak pernah disimpen, jadi walau seller
+      // ngisi form-nya, nilainya gak pernah nyampe ke database.
+      payment_timeout: req.payment_timeout,
     },
-    select: { id: true, name: true, description: true, address: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      address: true,
+      timezone: true,
+      // FIX: di-return juga biar frontend bisa langsung sinkron abis save,
+      // gak perlu nunggu refetch ["storeMe"] buat liat nilai barunya.
+      payment_timeout: true,
+    },
   });
 };
-// 1. UPDATE TEKS & VARIAN (JSON)
+
 const getAddonGroups = async (request) => {
   const req = validate(getAddonGroupsValidation, request);
 
   const store = await prisma.store.findUnique({
-    where: { user_id: req, is_delete: false },
+    where: { user_id: req.userId, is_delete: false },
     select: { id: true },
   });
 
@@ -277,7 +277,7 @@ const getAddonGroups = async (request) => {
   }
 
   return prisma.addonGroup.findMany({
-    where: { store_id: store.id },
+    where: { store_id: store.id, is_delete: false },
     include: {
       addons: {
         where: {
@@ -324,23 +324,26 @@ const createAddonGroup = async (request) => {
     },
   });
 };
+
 const updateProductInfo = async (userId, productId, request) => {
   const req = validate(updateProductValidation, request);
-  console.log(req);
-  // Cek apakah produk ini beneran punya toko si user
-  // (Pastikan toko juga is_deleted: false sesuai kesepakatan kita sebelumnya)
+
   const product = await prisma.product.findFirst({
     where: {
       id: productId,
+      is_delete: false,
       store: { user_id: userId, is_delete: false },
     },
-    include: { variants: true },
+    include: {
+      variants: {
+        where: { is_delete: false },
+      },
+    },
   });
 
   if (!product)
     throw new ResponseError(404, "Produk tidak ditemukan atau bukan milikmu");
 
-  // --- LOGIKA VARIAN SAKTI ---
   const reqVariants = req.variants || [];
   const existingVariantsToUpdate = reqVariants.filter((v) => v.id);
   const newVariantsToCreate = reqVariants.filter((v) => !v.id);
@@ -349,11 +352,11 @@ const updateProductInfo = async (userId, productId, request) => {
     ? req.addon_group_ids
     : [];
 
-  // Ambil semua grup add-on yang valid untuk toko si user
   if (selectedAddonGroupIds.length > 0) {
     const validAddonGroups = await prisma.addonGroup.count({
       where: {
         id: { in: selectedAddonGroupIds },
+        is_delete: false,
         store: { user_id: userId },
       },
     });
@@ -381,9 +384,8 @@ const updateProductInfo = async (userId, productId, request) => {
     (id) => !selectedAddonGroupIds.includes(id),
   );
 
-  // Ambil kumpulan ID varian yang dipertahankan user
   const retainedVariantIds = existingVariantsToUpdate.map((v) => v.id);
-  console.log(retainedVariantIds);
+
   try {
     return await prisma.product.update({
       where: { id: productId },
@@ -392,25 +394,20 @@ const updateProductInfo = async (userId, productId, request) => {
         price: req.price,
 
         variants: {
-          // A. SOFT DELETE: Ubah is_deleted jadi true buat varian yang ID-nya gak dikirim dari frontend
           updateMany: {
             where: { id: { notIn: retainedVariantIds } },
             data: { is_delete: true },
           },
-          // B. UPDATE varian lama yang ID-nya masih dipertahankan
           update: existingVariantsToUpdate.map((v) => ({
             where: { id: v.id },
             data: { name: v.name, additional_price: v.additional_price },
           })),
-          // C. CREATE varian baru yang belum punya ID
           create: newVariantsToCreate.map((v) => ({
             name: v.name,
             additional_price: v.additional_price,
-            // is_deleted otomatis false dari default schema Prisma
           })),
         },
 
-        // Relasi Addon: Aman pakai deleteMany (Hard Delete) karena ini cuma tabel penghubung (Pivot)
         productAddonGroups: {
           ...(addonGroupsToDelete.length > 0 && {
             deleteMany: {
@@ -427,8 +424,6 @@ const updateProductInfo = async (userId, productId, request) => {
       include: { variants: true },
     });
   } catch (error) {
-    // Karena kita pakai Soft Delete, error P2003 (Foreign Key Constraint)
-    // pada Varian hampir mustahil terjadi, tapi biarin aja blok catch ini buat jaga-jaga
     if (error.code === "P2003") {
       throw new ResponseError(
         400,
@@ -438,13 +433,17 @@ const updateProductInfo = async (userId, productId, request) => {
     throw error;
   }
 };
-// 2. UPDATE FOTO PRODUK (FormData)
+
 const updateProductImage = async (userId, productId, file) => {
   if (!file)
     throw new ResponseError(400, "Tidak ada file gambar yang diupload");
 
   const product = await prisma.product.findFirst({
-    where: { id: productId, store: { user_id: userId, is_delete: false } },
+    where: {
+      id: productId,
+      is_delete: false,
+      store: { user_id: userId, is_delete: false },
+    },
   });
   if (!product) throw new ResponseError(404, "Produk tidak ditemukan");
 
@@ -454,98 +453,129 @@ const updateProductImage = async (userId, productId, file) => {
     select: { id: true, name: true, image_url: true },
   });
 };
-
 const getStoreHistory = async (
   userId,
-  filter = "all",
+  month,
+  year,
   page = 1,
   limit = 10,
   topPage = 1,
   topLimit = 10,
-  status = "ALL", // Default parameter status
+  status = "ALL",
 ) => {
-  // 1. Validasi Toko
   const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
-    select: { id: true }, // Best practice: Hanya ambil ID untuk efisiensi
+    select: { id: true, timezone: true, created_at: true },
   });
 
   if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
 
-  // ==========================================
-  // LOGIKA FILTER TANGGAL
-  // ==========================================
-  let dateCondition = {};
-  const now = new Date();
+  const tz = store.timezone || "Asia/Jakarta";
 
-  if (filter !== "all") {
-    const startDate = new Date();
-    if (filter === "day") startDate.setHours(0, 0, 0, 0);
-    else if (filter === "week") startDate.setDate(now.getDate() - 7);
-    else if (filter === "month") startDate.setMonth(now.getMonth() - 1);
-    else if (filter === "year") startDate.setFullYear(now.getFullYear() - 1);
+  const nowUtc = new Date();
+  const nowZoned = toZonedTime(nowUtc, tz);
 
-    dateCondition = { created_at: { gte: startDate } };
+  const currentYear = nowZoned.getFullYear();
+  const currentMonth = nowZoned.getMonth() + 1;
+
+  const selectedYear = year ? Number(year) : currentYear;
+  const selectedMonth = month ? Number(month) : currentMonth;
+
+  if (
+    !Number.isInteger(selectedMonth) ||
+    selectedMonth < 1 ||
+    selectedMonth > 12 ||
+    !Number.isInteger(selectedYear)
+  ) {
+    throw new ResponseError(400, "Parameter bulan/tahun tidak valid.");
   }
 
-  // ==========================================
-  // HELPER FORMAT CHART LABEL
-  // ==========================================
-  const buildLabelOrder = (earliestDate) => {
-    const labels = [];
-    if (filter === "day") {
-      for (let hour = 0; hour < 24; hour++) {
-        labels.push(`${hour.toString().padStart(2, "0")}:00`);
-      }
-    } else if (filter === "week") {
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        labels.push(
-          d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
-        );
-      }
-    } else if (filter === "month") {
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        labels.push(
-          d.toLocaleDateString("id-ID", { day: "numeric", month: "short" }),
-        );
-      }
-    } else if (filter === "year") {
-      for (let i = 11; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        labels.push(
-          `${d.toLocaleString("id-ID", { month: "short" })} ${d.getFullYear().toString().slice(-2)}`,
-        );
-      }
-    } else {
-      const start = earliestDate
-        ? new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1)
-        : new Date(now.getFullYear(), now.getMonth(), 1);
-      const cursor = new Date(start);
-      while (cursor <= now) {
-        labels.push(
-          `${cursor.toLocaleString("id-ID", { month: "short" })} ${cursor.getFullYear().toString().slice(-2)}`,
-        );
-        cursor.setMonth(cursor.getMonth() + 1);
-      }
-    }
-    return labels;
+  const isCurrentMonth =
+    selectedYear === currentYear && selectedMonth === currentMonth;
+
+  const zonedMonthStart = new Date(
+    selectedYear,
+    selectedMonth - 1,
+    1,
+    0,
+    0,
+    0,
+    0,
+  );
+  const utcMonthStart = fromZonedTime(zonedMonthStart, tz);
+
+  const zonedNextMonthStart = new Date(
+    selectedYear,
+    selectedMonth,
+    1,
+    0,
+    0,
+    0,
+    0,
+  );
+  const utcNextMonthStart = fromZonedTime(zonedNextMonthStart, tz);
+
+  const rangeEndUtc = isCurrentMonth ? nowUtc : utcNextMonthStart;
+
+  const dateCondition = {
+    created_at: { gte: utcMonthStart, lt: rangeEndUtc },
   };
 
-  const getRowLabel = (date) => {
-    if (filter === "day")
-      return `${date.getHours().toString().padStart(2, "0")}:00`;
-    if (filter === "year" || filter === "all")
-      return `${date.toLocaleString("id-ID", { month: "short" })} ${date.getFullYear().toString().slice(-2)}`;
-    return date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  let prevRangeStartUtc, prevRangeEndUtc;
+
+  if (isCurrentMonth) {
+    const prevAnchor = subMonths(zonedMonthStart, 1);
+    const prevYear = prevAnchor.getFullYear();
+    const prevMonthIdx = prevAnchor.getMonth();
+
+    const daysInPrevMonth = getDaysInMonth(new Date(prevYear, prevMonthIdx, 1));
+    const todayLocalDay = nowZoned.getDate();
+    const cutoffDay = Math.min(todayLocalDay, daysInPrevMonth);
+
+    const zonedPrevStart = new Date(prevYear, prevMonthIdx, 1, 0, 0, 0, 0);
+    const zonedPrevEndExclusive = new Date(
+      prevYear,
+      prevMonthIdx,
+      cutoffDay + 1,
+      0,
+      0,
+      0,
+      0,
+    );
+
+    prevRangeStartUtc = fromZonedTime(zonedPrevStart, tz);
+    prevRangeEndUtc = fromZonedTime(zonedPrevEndExclusive, tz);
+  } else {
+    const prevAnchor = subMonths(zonedMonthStart, 1);
+    const prevYear = prevAnchor.getFullYear();
+    const prevMonthIdx = prevAnchor.getMonth();
+
+    const zonedPrevStart = new Date(prevYear, prevMonthIdx, 1, 0, 0, 0, 0);
+    const zonedPrevEndExclusive = new Date(
+      prevYear,
+      prevMonthIdx + 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+
+    prevRangeStartUtc = fromZonedTime(zonedPrevStart, tz);
+    prevRangeEndUtc = fromZonedTime(zonedPrevEndExclusive, tz);
+  }
+
+  const prevDateCondition = {
+    created_at: { gte: prevRangeStartUtc, lt: prevRangeEndUtc },
   };
 
-  // ==========================================
-  // 1. RINGKASAN METRIK TRANSAKSI (AGREGASI)
-  // ==========================================
+  const daysInSelectedMonth = getDaysInMonth(
+    new Date(selectedYear, selectedMonth - 1, 1),
+  );
+  const labelOrder = Array.from({ length: daysInSelectedMonth }, (_, i) =>
+    String(i + 1).padStart(2, "0"),
+  );
+
   const aggSelesai = await prisma.queue.aggregate({
     where: { store_id: store.id, status: "SELESAI", ...dateCondition },
     _sum: { total_price: true },
@@ -557,9 +587,41 @@ const getStoreHistory = async (
     _count: true,
   });
 
-  // ==========================================
-  // 2. TABEL RIWAYAT (PAGINATION & FILTER STATUS)
-  // ==========================================
+  const aggSelesaiPrev = await prisma.queue.aggregate({
+    where: { store_id: store.id, status: "SELESAI", ...prevDateCondition },
+    _sum: { total_price: true },
+    _count: true,
+  });
+
+  const aggBatalPrev = await prisma.queue.aggregate({
+    where: { store_id: store.id, status: "DIBATALKAN", ...prevDateCondition },
+    _count: true,
+  });
+
+  const totalOmzet = aggSelesai._sum.total_price || 0;
+  const totalPesananSelesai = aggSelesai._count || 0;
+  const totalBatal = aggBatal._count || 0;
+
+  const totalTransactions = totalPesananSelesai + totalBatal;
+  const cancellationRate =
+    totalTransactions > 0
+      ? Number(((totalBatal / totalTransactions) * 100).toFixed(2))
+      : 0;
+
+  const averageOrderValue =
+    totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
+
+  const calcTrend = (current, previous) => {
+    if (!previous) return 100;
+    return Number((((current - previous) / previous) * 100).toFixed(1));
+  };
+
+  const trend = {
+    omzet: calcTrend(totalOmzet, aggSelesaiPrev._sum.total_price || 0),
+    pesanan: calcTrend(totalPesananSelesai, aggSelesaiPrev._count),
+    batal: calcTrend(totalBatal, aggBatalPrev._count),
+  };
+
   let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
   if (status === "SELESAI") statusCondition = "SELESAI";
   else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
@@ -581,33 +643,76 @@ const getStoreHistory = async (
     },
   });
 
-  // Hitung total data untuk pagination tabel riwayat
-  let totalRows = aggSelesai._count + aggBatal._count;
-  if (status === "SELESAI") totalRows = aggSelesai._count;
-  if (status === "DIBATALKAN") totalRows = aggBatal._count;
+  let totalRows = totalPesananSelesai + totalBatal;
+  if (status === "SELESAI") totalRows = totalPesananSelesai;
+  if (status === "DIBATALKAN") totalRows = totalBatal;
   const totalPages = Math.ceil(totalRows / limit);
 
-  // ==========================================
-  // 3. GRAFIK TREN OMZET KESELURUHAN
-  // ==========================================
-  let earliestQueueDate = null;
-  if (filter === "all") {
-    const earliestQueue = await prisma.queue.findFirst({
-      where: { store_id: store.id, status: "SELESAI" },
-      orderBy: { created_at: "asc" },
-      select: { created_at: true },
-    });
-    earliestQueueDate = earliestQueue?.created_at || null;
-  }
-
-  const labelOrder = buildLabelOrder(earliestQueueDate);
-
+  // --- DATA UNTUK CHART ---
   const revenueRows = await prisma.queue.findMany({
     where: { store_id: store.id, status: "SELESAI", ...dateCondition },
     select: { created_at: true, total_price: true },
     orderBy: { created_at: "asc" },
   });
 
+  const overallHourlyCounts = Array(24).fill(0);
+  const dailyCounts = Array(7).fill(0);
+  const dayNames = [
+    "Minggu",
+    "Senin",
+    "Selasa",
+    "Rabu",
+    "Kamis",
+    "Jumat",
+    "Sabtu",
+  ];
+
+  const revenueChartMap = {};
+  const hourlyTrafficByDate = {};
+
+  labelOrder.forEach((label) => {
+    revenueChartMap[label] = { label, omzet: 0, pesanan: 0 };
+    hourlyTrafficByDate[label] = Array(24).fill(0);
+  });
+
+  revenueRows.forEach((row) => {
+    const localDate = toZonedTime(new Date(row.created_at), tz);
+    const labelTanggal = String(localDate.getDate()).padStart(2, "0");
+    const jam = localDate.getHours();
+    const hari = localDate.getDay();
+
+    if (revenueChartMap[labelTanggal]) {
+      revenueChartMap[labelTanggal].omzet += row.total_price;
+      revenueChartMap[labelTanggal].pesanan += 1;
+    }
+
+    overallHourlyCounts[jam] += 1;
+    dailyCounts[hari] += 1;
+
+    if (hourlyTrafficByDate[labelTanggal]) {
+      hourlyTrafficByDate[labelTanggal][jam] += 1;
+    }
+  });
+
+  const revenueChartData = labelOrder.map((label) => revenueChartMap[label]);
+
+  const dailyChartData = dailyCounts.map((count, index) => ({
+    label: dayNames[index],
+    pesanan: count,
+  }));
+
+  const maxHourlyCount = Math.max(...overallHourlyCounts);
+  const peakHourIndex = overallHourlyCounts.indexOf(maxHourlyCount);
+  const peakHourString =
+    maxHourlyCount > 0
+      ? `${String(peakHourIndex).padStart(2, "0")}:00 - ${String(peakHourIndex + 1).padStart(2, "0")}:00`
+      : "-";
+
+  const maxDailyCount = Math.max(...dailyCounts);
+  const peakDayIndex = dailyCounts.indexOf(maxDailyCount);
+  const peakDayName = maxDailyCount > 0 ? dayNames[peakDayIndex] : "-";
+
+  // --- DATA TAMBAHAN ---
   const waitTimeRows = await prisma.queue.findMany({
     where: {
       store_id: store.id,
@@ -628,20 +733,7 @@ const getStoreHistory = async (
       )
     : 0;
 
-  const revenueChartMap = {};
-  labelOrder.forEach((label) => {
-    revenueChartMap[label] = { label, omzet: 0 };
-  });
-
-  revenueRows.forEach((row) => {
-    const label = getRowLabel(new Date(row.created_at));
-    if (revenueChartMap[label]) revenueChartMap[label].omzet += row.total_price;
-  });
-  const chartData = labelOrder.map((label) => revenueChartMap[label]);
-
-  // ==========================================
-  // 4. TOP SELLING PRODUCTS
-  // ==========================================
+  // Top Selling Products (Cuma tabel ranking)
   const allTopSellingGroups = await prisma.queueDetail.groupBy({
     by: ["product_id"],
     where: {
@@ -658,14 +750,10 @@ const getStoreHistory = async (
     skipTop + topLimit,
   );
 
-  // Ambil Top 5 untuk grafik
-  const top5Groups = allTopSellingGroups.slice(0, 5);
-  const top5ProductIds = top5Groups.map((row) => row.product_id);
-
-  // Ambil nama produk dari database
   const productIdsForNames = Array.from(
-    new Set([...topSellingGroups.map((r) => r.product_id), ...top5ProductIds]),
+    new Set([...topSellingGroups.map((r) => r.product_id)]),
   );
+
   const products = await prisma.product.findMany({
     where: { id: { in: productIdsForNames } },
     select: { id: true, name: true },
@@ -679,49 +767,7 @@ const getStoreHistory = async (
     totalQuantity: row._sum.quantity,
   }));
 
-  const top5ProductsMeta = top5ProductIds.map((productId, index) => ({
-    product_id: productId,
-    name: productNameMap.get(productId) || "Produk Tidak Diketahui",
-    color:
-      ["#169446", "#C98A1F", "#4F46E5", "#DB2777", "#2563EB"][index] ||
-      "#1C2321",
-    key: `product_${productId}`,
-  }));
-
-  const top5SeriesKeys = top5ProductsMeta.map((p) => p.key);
-  const top5DetailRows = await prisma.queueDetail.findMany({
-    where: {
-      queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
-      product_id: { in: top5ProductIds },
-    },
-    select: {
-      product_id: true,
-      quantity: true,
-      queue: { select: { created_at: true } },
-    },
-  });
-
-  const chartDataMap = {};
-  labelOrder.forEach((label) => {
-    chartDataMap[label] = { label };
-    top5SeriesKeys.forEach((key) => {
-      chartDataMap[label][key] = 0;
-    });
-  });
-
-  top5DetailRows.forEach((row) => {
-    const label = getRowLabel(new Date(row.queue.created_at));
-    if (chartDataMap[label]) {
-      const key = `product_${row.product_id}`;
-      chartDataMap[label][key] += row.quantity;
-    }
-  });
-  const topSellingChartData = labelOrder.map((label) => chartDataMap[label]);
-
-  // ==========================================
-  // 5. TOP SELLING ADDONS (Perhitungan dari JSON)
-  // ==========================================
-  // Mengambil hanya kolom yang dibutuhkan untuk menghemat RAM Server
+  // Top Addons
   const allCompletedDetails = await prisma.queueDetail.findMany({
     where: {
       queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
@@ -733,8 +779,6 @@ const getStoreHistory = async (
   const addonSalesMap = {};
 
   allCompletedDetails.forEach((detail) => {
-    // Defensive parsing: Prisma biasanya return JSON sebagai object/array,
-    // tapi kalau tersimpan sebagai string literal, kita parse.
     let addons = detail.selected_addons;
     if (typeof addons === "string") {
       try {
@@ -751,26 +795,43 @@ const getStoreHistory = async (
           if (!addonSalesMap[addonName]) {
             addonSalesMap[addonName] = { name: addonName, totalQuantity: 0 };
           }
-          // Jika pesan 2 cup minuman, dan masing-masing pakai boba, berarti total boba terjual = 2
           addonSalesMap[addonName].totalQuantity += detail.quantity;
         }
       });
     }
   });
 
-  // Konversi objek ke array, urutkan dari terbanyak, lalu ambil Top 10
   const topSellingAddons = Object.values(addonSalesMap)
     .sort((a, b) => b.totalQuantity - a.totalQuantity)
     .slice(0, 10);
 
-  // ==========================================
-  // RETURN DATA REPORT
-  // ==========================================
   return {
+    meta: {
+      selectedMonth,
+      selectedYear,
+      currentMonth,
+      currentYear,
+      isCurrentMonth,
+      storeCreatedAt: store.created_at,
+      timezone: tz,
+    },
     summary: {
-      totalOmzet: aggSelesai._sum.total_price || 0,
-      totalPesanan: aggSelesai._count,
-      totalBatal: aggBatal._count,
+      totalOmzet,
+      totalPesanan: totalPesananSelesai,
+      totalBatal,
+      cancellationRate,
+      averageOrderValue,
+      averageWaitTimeMinutes,
+      trend,
+      peakTraffic: {
+        peakHour: peakHourString,
+        peakDay: peakDayName,
+      },
+    },
+    charts: {
+      revenueDaily: revenueChartData,
+      trafficHourlyByDate: hourlyTrafficByDate,
+      trafficDaily: dailyChartData,
     },
     pagination: {
       totalRows,
@@ -779,13 +840,7 @@ const getStoreHistory = async (
       limit: Number(limit),
     },
     history,
-    chartData,
-    summary: {
-      averageWaitTimeMinutes,
-    },
     topSelling: {
-      chartData: topSellingChartData,
-      products: top5ProductsMeta,
       rankings: topSellingList,
       pagination: {
         totalRows: totalTopSellingRows,
@@ -794,10 +849,9 @@ const getStoreHistory = async (
         limit: Number(topLimit),
       },
     },
-    topAddons: topSellingAddons, // <- Hasil Top Addons yang baru dibuat
+    topAddons: topSellingAddons,
   };
 };
-
 const getOperationalHours = async (userId) => {
   const store = await prisma.store.findUnique({
     where: { user_id: userId, is_delete: false },
@@ -811,7 +865,6 @@ const getOperationalHours = async (userId) => {
     orderBy: { day: "asc" },
   });
 
-  // Jika belum ada jadwal sama sekali, balikin default tutup semua (0-6)
   if (hours.length === 0) {
     return Array.from({ length: 7 }).map((_, i) => ({
       day: i,
@@ -834,8 +887,6 @@ const updateOperationalHours = async (userId, request) => {
 
   if (!store) throw new ResponseError(404, "Toko tidak ditemukan.");
 
-  // Pakai fitur transaksi Prisma biar kalau ada yang gagal satu, gagal semua (aman)
-  // Upsert = Kalau data hari itu udah ada, di-update. Kalau belum, di-create.
   const updates = req.operational_hours.map((hour) => {
     return prisma.storeOperationalHour.upsert({
       where: {
@@ -858,9 +909,9 @@ const updateOperationalHours = async (userId, request) => {
 
   await prisma.$transaction(updates);
 
-  // Kembalikan data jadwal terbaru setelah di-update
   return await getOperationalHours(userId);
 };
+
 export default {
   create,
   createProduct,

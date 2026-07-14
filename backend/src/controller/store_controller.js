@@ -8,7 +8,7 @@ const create = async (req, res, next) => {
         name: req.body.name,
         description: req.body.description,
         address: req.body.address,
-        timezone: req.body.timezone
+        timezone: req.body.timezone,
       },
       req.file,
     );
@@ -113,27 +113,31 @@ const createAddonGroup = async (req, res, next) => {
   } catch (e) {
     next(e);
   }
-};const getHistory = async (req, res, next) => {
+};
+const getHistory = async (req, res, next) => {
   try {
-    const filter = req.query.filter || "all";
+    const month = req.query.month ? parseInt(req.query.month) : undefined;
+    const year = req.query.year ? parseInt(req.query.year) : undefined;
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const topPage = parseInt(req.query.topPage) || 1;
     const topLimit = parseInt(req.query.topLimit) || 10;
-    
-    // 1. Tangkap parameter status dari query URL
-    const status = req.query.status; 
+
+    // Status dari query URL (opsional, default ditangani di service)
+    const status = req.query.status;
 
     const result = await storeService.getStoreHistory(
       req.user.id,
-      filter,
+      month,
+      year,
       page,
       limit,
       topPage,
       topLimit,
-      status // 2. Teruskan status sebagai argumen ke-7 ke dalam service
+      status,
     );
-    
+
     res.status(200).json({ data: result });
   } catch (e) {
     next(e);
@@ -151,7 +155,10 @@ const getOperationalHours = async (req, res, next) => {
 const updateOperationalHours = async (req, res, next) => {
   try {
     // req.body isinya berupa json: { "operational_hours": [ { day: 0, open_time: "08:00", ... }, ... ] }
-    const result = await storeService.updateOperationalHours(req.user.id, req.body);
+    const result = await storeService.updateOperationalHours(
+      req.user.id,
+      req.body,
+    );
     res.status(200).json({ data: result });
   } catch (e) {
     next(e);
@@ -169,5 +176,5 @@ export default {
   updateProductInfo,
   getHistory,
   getOperationalHours,
-  updateOperationalHours
+  updateOperationalHours,
 };

@@ -4,13 +4,13 @@ import { prisma } from "../application/database.js";
 export const startCronJobs = (io) => {
   cron.schedule("* * * * *", async () => {
     try {
-      const waktuBatas = new Date(Date.now() - 30 * 60 * 1000);
+      const now = new Date();
 
-      // 1. Cari dulu antrean mana saja yang mau dibatalkan
+      // 1. Cari dulu antrean mana saja yang mau dibatalkan berdasarkan expired_at
       const expiredQueues = await prisma.queue.findMany({
         where: {
           status: "BELUM_BAYAR",
-          created_at: { lt: waktuBatas },
+          expired_at: { lt: now },
         },
         select: { id: true },
       });

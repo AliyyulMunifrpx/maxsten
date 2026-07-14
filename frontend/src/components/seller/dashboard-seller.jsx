@@ -52,6 +52,36 @@ function StatMetric({ label, value }) {
   );
 }
 
+// KOMPONEN BARU: Untuk menampilkan trend persentase
+function TrendIndicator({ value, isInverse = false }) {
+  if (value === undefined || value === null) return null;
+  
+  if (value === 0) {
+    return (
+      <span className="ml-2 inline-flex items-center rounded-full bg-[#F1EFE9] px-2 py-0.5 text-[10px] font-bold text-[#8A8375]">
+        0%
+      </span>
+    );
+  }
+
+  const isPositive = value > 0;
+  // Jika isInverse true (misal untuk pesanan batal), nilai positif = buruk (merah), nilai negatif = baik (hijau)
+  const isGood = isInverse ? !isPositive : isPositive;
+
+  const colorClass = isGood
+    ? "bg-[#E7F3EC] text-[#147356]"
+    : "bg-[#FBEAE7] text-[#B23A2E]";
+  const arrow = isPositive ? "↑" : "↓";
+
+  return (
+    <span
+      className={`ml-2 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${colorClass}`}
+    >
+      {arrow} {Math.abs(value)}%
+    </span>
+  );
+}
+
 const TABS = [
   { key: "queues", label: "Antrean" },
   { key: "products", label: "Produk" },
@@ -314,7 +344,7 @@ export default function DashboardSeller() {
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 mt-4 sm:mt-0">
+            <div className="mt-4 flex shrink-0 items-center gap-2 sm:mt-0">
               <Link
                 to="edit-store"
                 className="rounded-lg border border-[#E4E1D8] bg-white px-4 py-2.5 text-sm font-semibold text-[#1C2321] transition hover:border-[#C98A1F]"
@@ -357,16 +387,21 @@ export default function DashboardSeller() {
 
         {/* ================= PANEL RINGKASAN PENJUALAN HARI INI ================= */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Metrik Omzet */}
           <div className="relative overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white p-5 shadow-sm">
             <div className="absolute right-0 top-0 h-full w-1.5 bg-[#147356]" />
             <p className="text-xs font-bold uppercase tracking-widest text-[#8A8375]">
               Omzet Hari Ini
             </p>
-            <p className="mt-2 font-mono text-2xl font-bold text-[#147356] sm:text-3xl">
-              Rp{" "}
-              {(dashboardData.sales_today?.omzet || 0).toLocaleString("id-ID")}
-            </p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <p className="font-mono text-2xl font-bold text-[#147356] sm:text-3xl">
+                Rp {(dashboardData.sales_today?.omzet || 0).toLocaleString("id-ID")}
+              </p>
+              <TrendIndicator value={dashboardData.sales_today?.trend?.omzet} />
+            </div>
           </div>
+
+          {/* Metrik Pesanan Selesai */}
           <div className="relative overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white p-5 shadow-sm">
             <div className="absolute right-0 top-0 h-full w-1.5 bg-[#C98A1F]" />
             <p className="text-xs font-bold uppercase tracking-widest text-[#8A8375]">
@@ -379,8 +414,11 @@ export default function DashboardSeller() {
               <span className="text-sm font-semibold text-[#8A8375]">
                 transaksi
               </span>
+              <TrendIndicator value={dashboardData.sales_today?.trend?.pesanan_selesai} />
             </div>
           </div>
+
+          {/* Metrik Pesanan Batal */}
           <div className="relative overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white p-5 shadow-sm">
             <div className="absolute right-0 top-0 h-full w-1.5 bg-[#B23A2E]" />
             <p className="text-xs font-bold uppercase tracking-widest text-[#8A8375]">
@@ -393,6 +431,10 @@ export default function DashboardSeller() {
               <span className="text-sm font-semibold text-[#8A8375]">
                 transaksi
               </span>
+              <TrendIndicator 
+                value={dashboardData.sales_today?.trend?.pesanan_batal} 
+                isInverse={true} 
+              />
             </div>
           </div>
         </div>
@@ -549,7 +591,7 @@ export default function DashboardSeller() {
                 <p className="text-[#8A8375]">Belum ada produk.</p>
               </div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {products.map((product) => (
                   <ProductCard
                     key={product.id}

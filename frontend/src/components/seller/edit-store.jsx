@@ -18,7 +18,9 @@ export default function EditStore() {
   const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
   const [timezone, setTimezone] = useState("");
-  // Ambil data toko lama untuk dimasukkan ke form awal
+  // STATE BARU: batas waktu pembayaran (menit)
+  const [paymentTimeout, setPaymentTimeout] = useState("");
+
   const { data: store, isLoading } = useQuery({
     queryKey: ["storeMe"],
     queryFn: getStore,
@@ -31,10 +33,13 @@ export default function EditStore() {
       setDescription(store.description || "");
       setAddress(store.address || "");
       setTimezone(store.timezone || "Asia/Jakarta");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaymentTimeout(
+        store.payment_timeout != null ? String(store.payment_timeout) : "",
+      );
     }
   }, [store]);
 
-  // MUTATION 1: Khusus Teks Profil
   const profileMutation = useMutation({
     mutationFn: updateStoreProfile,
     onSuccess: () => {
@@ -47,7 +52,6 @@ export default function EditStore() {
     },
   });
 
-  // MUTATION 2: Khusus Logo (Otomatis upload pas dipilih)
   const logoMutation = useMutation({
     mutationFn: updateStoreLogo,
     onSuccess: () => {
@@ -64,13 +68,20 @@ export default function EditStore() {
     if (!file) return;
 
     const formData = new FormData();
-    formData.append("logo", file); // Wajib "logo" biar dibaca Multer backend
+    formData.append("logo", file);
     logoMutation.mutate(formData);
   };
 
   const handleProfileSubmit = (e) => {
     e.preventDefault();
-    profileMutation.mutate({ name, description, address, timezone });
+    profileMutation.mutate({
+      name,
+      description,
+      address,
+      timezone,
+      // Kirim null kalau dikosongin, biar backend pakai default 30 menit
+      payment_timeout: paymentTimeout === "" ? null : Number(paymentTimeout),
+    });
   };
 
   if (isLoading)
@@ -88,7 +99,7 @@ export default function EditStore() {
           Perbarui informasi tokomu agar pelanggan makin percaya.
         </p>
 
-        {/* FOTO LOGO (Sistem Auto-Upload) */}
+        {/* FOTO LOGO */}
         <div className="flex flex-col items-center mb-8 border-b border-[#E4E1D8] pb-8">
           <div className="relative h-24 w-24 overflow-hidden rounded-full border border-[#E4E1D8] bg-gray-50 mb-3">
             {store.logo_url ? (
@@ -156,17 +167,48 @@ export default function EditStore() {
               className="w-full min-h-[80px] rounded-lg border border-[#E4E1D8] px-4 py-2.5 outline-none focus:border-[#C98A1F]"
             />
           </div>
-          <select
-            name="timezone "
-            onChange={(e) => setTimezone(e.target.value)}
-            value={timezone}
-          >
-            <option value="Asia/Jakarta">Waktu Indonesia Barat (WIB)</option>
 
-            <option value="Asia/Makassar">Waktu Indonesia Tengah (WITA)</option>
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-[#1C2321]">
+              Zona Waktu
+            </label>
+            <select
+              name="timezone"
+              onChange={(e) => setTimezone(e.target.value)}
+              value={timezone}
+              className="w-full rounded-lg border border-[#E4E1D8] px-4 py-2.5 outline-none focus:border-[#C98A1F]"
+            >
+              <option value="Asia/Jakarta">Waktu Indonesia Barat (WIB)</option>
+              <option value="Asia/Makassar">
+                Waktu Indonesia Tengah (WITA)
+              </option>
+              <option value="Asia/Jayapura">Waktu Indonesia Timur (WIT)</option>
+            </select>
+          </div>
 
-            <option value="Asia/Jayapura">Waktu Indonesia Timur (WIT)</option>
-          </select>
+          {/* FIELD BARU: Batas Waktu Pembayaran */}
+          <div>
+            <label
+              htmlFor="payment_timeout"
+              className="mb-1 block text-sm font-semibold text-[#1C2321]"
+            >
+              Batas Waktu Pembayaran (menit)
+            </label>
+            <input
+              id="payment_timeout"
+              type="number"
+              min={1}
+              placeholder="30"
+              value={paymentTimeout}
+              onChange={(e) => setPaymentTimeout(e.target.value)}
+              className="w-full rounded-lg border border-[#E4E1D8] px-4 py-2.5 outline-none focus:border-[#C98A1F]"
+            />
+            <p className="mt-1.5 text-xs text-[#8A8375]">
+              Berapa lama pembeli punya waktu buat bayar sebelum antreannya
+              otomatis kadaluarsa. Kosongkan buat pakai default 30 menit.
+            </p>
+          </div>
+
           <div className="mt-8 flex gap-3">
             <button
               type="button"

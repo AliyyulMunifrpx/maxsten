@@ -24,12 +24,20 @@ const getProduct = async (userId, request) => {
       image_url: true,
       is_available: true,
       productAddonGroups: {
+        where: {
+          addon_group: {
+            is_delete: false,
+          },
+        },
         select: {
           addon_group: {
             select: {
               id: true,
               name: true,
               addons: {
+                where: {
+                  is_delete: false,
+                },
                 select: {
                   id: true,
                   name: true,
@@ -76,8 +84,12 @@ const getAllProducts = async (userId, request) => {
       price: true,
       image_url: true,
       is_available: true,
-
       productAddonGroups: {
+        where: {
+          addon_group: {
+            is_delete: false,
+          },
+        },
         select: {
           addon_group: {
             select: {
@@ -113,5 +125,5 @@ const getAllProducts = async (userId, request) => {
 };
 export default {
   getProduct,
-  getAllProducts
+  getAllProducts,
 };

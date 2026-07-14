@@ -60,6 +60,7 @@ export default function DisplayProduct() {
       localStorage.setItem(`activeQueue_${storeId}`, result.id);
       setIsQueueModalOpen(true);
       setNote("");
+      console.log(JSON.stringify(result));
     },
     onError: (error) => {
       const message = error.response?.data?.errors || "Terjadi kesalahan.";
@@ -847,7 +848,7 @@ export default function DisplayProduct() {
                       <p className="text-[10px] uppercase font-bold text-[#B23A2E]">
                         Batas Waktu Bayar
                       </p>
-                      <CountdownTimer createdAt={activeQueue.created_at} />
+                      <CountdownTimer expiresAt={activeQueue.expired_at} />
                     </div>
                     <button
                       onClick={() => {
