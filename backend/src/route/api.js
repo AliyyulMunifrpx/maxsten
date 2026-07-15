@@ -7,6 +7,7 @@ import { authMiddleware } from "../middleware/auth_middleware.js";
 import { uploadLogo } from "../middleware/upload_middleware.js";
 import addonController from "../controller/addon_controller.js";
 import dashboardController from "../controller/dashboard_controller.js";
+import reasonController from "../controller/reason_controller.js";
 
 const userRouter = express.Router();
 
@@ -30,12 +31,9 @@ userRouter.post(
   uploadLogo.single("logo"),
   storeController.create,
 );
-userRouter.post(
-  "/api/seller/create-cancel-reasons",
-  sellerController.createCancelReason,
-);
+
 userRouter.patch("/api/stores/me", storeController.updateStoreProfile);
-userRouter.get("/api/seller/cancel-reasons", sellerController.getCancelReasons);
+
 userRouter.patch(
   "/api/stores/logo",
   uploadLogo.single("logo"),
@@ -89,7 +87,7 @@ userRouter.patch(
 );
 
 // ==========================================
-// 📋 QUEUE / SELLER API
+// 📋 QUEUE
 // ==========================================
 userRouter.get("/api/stores/all-queues/:storeId", sellerController.getAllQueue);
 userRouter.patch(
@@ -98,7 +96,15 @@ userRouter.patch(
 );
 
 // ==========================================
-// 📋 DASHBOARD / SELLER API
+// 📋 DASHBOARD
 // ==========================================
 userRouter.get("/api/dashboard", dashboardController.getDashboard);
+// ==========================================
+// 📋 REASON
+// ==========================================
+userRouter.post(
+  "/api/seller/create-cancel-reasons",
+  reasonController.createCancelReason,
+);
+userRouter.get("/api/seller/cancel-reasons", reasonController.getCancelReasons);
 export { userRouter };

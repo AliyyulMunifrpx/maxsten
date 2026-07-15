@@ -5,7 +5,7 @@ const getAddonGroup = async (req, res, next) => {
     const userId = req.user.id;
     // Sesuaikan nama params dengan yang ada di route kamu, misalnya /api/stores/addon-groups/:addonGroupId
 
-    const result = await addonService.getAddonGroups(userId);
+    const result = await addonService.getAddonGroup(userId);
 
     res.status(200).json({
       data: result,

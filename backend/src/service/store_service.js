@@ -2,10 +2,8 @@ import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
 import { calculateStoreStatus } from "../utils/store_status_helper.js";
 import {
-  createProductValidation,
   createStoreValidation,
   openCloseStoreValidation,
-  updateProductValidation,
   updateStoreValidation,
   updateOperationalHoursValidation,
 } from "../validation/store_validation.js";
@@ -135,7 +133,6 @@ const updateStoreProfile = async (userId, request) => {
     },
   });
 };
-
 
 const getStoreHistory = async (
   userId,
