@@ -61,16 +61,16 @@ userRouter.get("/api/product/:productId", productController.getProduct);
 userRouter.post(
   "/api/stores/products",
   uploadLogo.single("image"),
-  storeController.createProduct,
+  productController.createProduct,
 );
 userRouter.patch(
   "/api/stores/products/:productId",
-  storeController.updateProductInfo,
+  productController.updateProductInfo,
 );
 userRouter.patch(
   "/api/stores/products/:productId/image",
   uploadLogo.single("image"),
-  storeController.updateProductImage,
+  productController.updateProductImage,
 );
 userRouter.patch(
   "/api/products/:productId/availability",
@@ -80,8 +80,8 @@ userRouter.get("/api/all-products/:publicId", productController.getAllProducts);
 // ==========================================
 // 🧩 ADDONS API
 // ==========================================
-userRouter.get("/api/stores/get-addon-groups", storeController.getAddonGroups);
-userRouter.post("/api/stores/addon-groups", storeController.createAddonGroup);
+userRouter.get("/api/stores/get-addon-groups", addonController.getAddonGroups);
+userRouter.post("/api/stores/addon-groups", addonController.createAddonGroup);
 userRouter.get("/api/addon-group/:addonGroupId", addonController.getAddonGroup);
 userRouter.patch(
   "/api/addon-group/edit/:addonGroupId",

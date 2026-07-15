@@ -20,23 +20,6 @@ const create = async (req, res, next) => {
     next(e);
   }
 };
-const createProduct = async (req, res, next) => {
-  try {
-    const result = await storeService.createProduct(
-      {
-        userId: req.user.id,
-        ...req.body,
-      },
-      req.file,
-    ); // Teruskan req.file ke service
-
-    res.status(200).json({
-      data: result,
-    });
-  } catch (e) {
-    next(e);
-  }
-};
 const openCloseStore = async (req, res, next) => {
   try {
     const result = await storeService.openCloseStore({
@@ -63,52 +46,6 @@ const updateLogo = async (req, res, next) => {
 const updateStoreProfile = async (req, res, next) => {
   try {
     const result = await storeService.updateStoreProfile(req.user.id, req.body);
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
-const updateProductInfo = async (req, res, next) => {
-  try {
-    const result = await storeService.updateProductInfo(
-      req.user.id,
-      req.params.productId,
-      req.body,
-    );
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
-
-const updateProductImage = async (req, res, next) => {
-  try {
-    const result = await storeService.updateProductImage(
-      req.user.id,
-      req.params.productId,
-      req.file,
-    );
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
-
-const getAddonGroups = async (req, res, next) => {
-  try {
-    const result = await storeService.getAddonGroups(req.user.id);
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
-
-const createAddonGroup = async (req, res, next) => {
-  try {
-    const result = await storeService.createAddonGroup({
-      userId: req.user.id,
-      ...req.body,
-    });
     res.status(200).json({ data: result });
   } catch (e) {
     next(e);
@@ -166,14 +103,9 @@ const updateOperationalHours = async (req, res, next) => {
 };
 export default {
   create,
-  createProduct,
   openCloseStore,
   updateLogo,
   updateStoreProfile,
-  updateProductImage,
-  getAddonGroups,
-  createAddonGroup,
-  updateProductInfo,
   getHistory,
   getOperationalHours,
   updateOperationalHours,

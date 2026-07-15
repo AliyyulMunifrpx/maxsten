@@ -22,7 +22,55 @@ const getAllProducts = async (req, res, next) => {
     next(e);
   }
 };
+
+const createProduct = async (req, res, next) => {
+  try {
+    const result = await productService.createProduct(
+      {
+        userId: req.user.id,
+        ...req.body,
+      },
+      req.file,
+    ); // Teruskan req.file ke service
+
+    res.status(200).json({
+      data: result,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const updateProductInfo = async (req, res, next) => {
+  try {
+    const result = await productService.updateProductInfo(
+      req.user.id,
+      req.params.productId,
+      req.body,
+    );
+    res.status(200).json({ data: result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+const updateProductImage = async (req, res, next) => {
+  try {
+    const result = await productService.updateProductImage(
+      req.user.id,
+      req.params.productId,
+      req.file,
+    );
+    res.status(200).json({ data: result });
+  } catch (e) {
+    next(e);
+  }
+};
+
 export default {
+  updateProductImage,
+  updateProductInfo,
   getProduct,
   getAllProducts,
+  createProduct,
 };

@@ -15,6 +15,17 @@ const getAddonGroup = async (req, res, next) => {
   }
 };
 
+const createAddonGroup = async (req, res, next) => {
+  try {
+    const result = await addonService.createAddonGroup({
+      userId: req.user.id,
+      ...req.body,
+    });
+    res.status(200).json({ data: result });
+  } catch (e) {
+    next(e);
+  }
+};
 const editAddonGroup = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -36,4 +47,18 @@ const editAddonGroup = async (req, res, next) => {
   }
 };
 
-export default { getAddonGroup, editAddonGroup,  };
+const getAddonGroups = async (req, res, next) => {
+  try {
+    const result = await addonService.getAddonGroups(req.user.id);
+    res.status(200).json({ data: result });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export default {
+  getAddonGroup,
+  editAddonGroup,
+  createAddonGroup,
+  getAddonGroups,
+};

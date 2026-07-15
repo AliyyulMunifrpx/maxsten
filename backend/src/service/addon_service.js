@@ -1,5 +1,7 @@
 import {
+  createAddonGroupValidation,
   editAddonGroupsValidation,
+  getAddonGroupsValidation,
   getAddonGroupValidation,
 } from "../validation/addon_validation.js";
 import { ResponseError } from "../error/response_error.js";
@@ -175,4 +177,70 @@ const getAddonGroups = async (userId) => {
   });
   return result;
 };
-export default { editAddonGroups, getAddonGroups,  };
+
+const createAddonGroup = async (request) => {
+  if (typeof request.addons === "string") {
+    try {
+      request.addons = JSON.parse(request.addons);
+    } catch (e) {
+      request.addons = [];
+    }
+  }
+
+  const req = validate(createAddonGroupValidation, request);
+
+  const store = await prisma.store.findUnique({
+    where: { user_id: req.userId, is_delete: false },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan.");
+  }
+
+  return prisma.addonGroup.create({
+    data: {
+      name: req.name,
+      store_id: store.id,
+      addons: {
+        create: req.addons.map((addon) => ({
+          name: addon.name,
+          price: Number(addon.price),
+        })),
+      },
+    },
+    include: {
+      addons: true,
+    },
+  });
+};
+
+const getAddonGroups = async (request) => {
+  const req = validate(getAddonGroupsValidation, request);
+
+  const store = await prisma.store.findUnique({
+    where: { user_id: req, is_delete: false },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan.");
+  }
+
+  return prisma.addonGroup.findMany({
+    where: { store_id: store.id, is_delete: false },
+    include: {
+      addons: {
+        where: {
+          is_delete: false,
+        },
+      },
+    },
+  });
+};
+export default {
+  editAddonGroups,
+  getAddonGroups,
+  createAddonGroup,
+  getAddonGroups,
+};

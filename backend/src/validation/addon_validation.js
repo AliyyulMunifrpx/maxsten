@@ -11,4 +11,26 @@ const editAddonGroupsValidation = Joi.object({
     }),
   ),
 });
-export { getAddonGroupValidation, editAddonGroupsValidation };
+
+const createAddonGroupValidation = Joi.object({
+  userId: Joi.number().required().integer().positive(),
+  name: Joi.string().max(100).required(),
+  addons: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().max(100).required(),
+        price: Joi.number().min(0).required(),
+      }),
+    )
+    .min(1)
+    .required(),
+});
+
+const getAddonGroupsValidation = Joi.number().required().integer().positive();
+
+export {
+  getAddonGroupValidation,
+  editAddonGroupsValidation,
+  createAddonGroupValidation,
+  getAddonGroupsValidation,
+};
