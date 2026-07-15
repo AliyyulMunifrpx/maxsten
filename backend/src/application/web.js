@@ -8,7 +8,7 @@ import cors from "cors";
 export const web = express();
 web.use(
   cors({
-    origin: ["http://localhost:5173", "http://192.168.1.5:5173"], // Alamat frontend Vite lu
+    origin: ["http://localhost:5173", "http://192.168.1.6:5173"], // Alamat frontend Vite lu
     credentials: true, // INI WAJIB TRUE biar cookie token lu bisa lewat
   }),
 );

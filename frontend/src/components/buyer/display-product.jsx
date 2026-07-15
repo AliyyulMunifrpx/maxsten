@@ -39,14 +39,30 @@ export default function DisplayProduct() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [modalQuantity, setModalQuantity] = useState(1);
 
+  // ================= CANCEL REASON MODAL =================
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+
   const { data: store, isLoading: isStoreLoading } = useQuery({
     queryKey: ["store", storeId],
     queryFn: () => getAllProducts(storeId),
   });
 
+  // 👉 PERBAIKAN: Logika pembersihan state ditaruh di dalam async queryFn
   const { data: activeQueue } = useQuery({
-    queryKey: ["queue", storeId, activeQueueId],
-    queryFn: () => getQueue(storeId, activeQueueId),
+    queryKey: ["queue", storeId, String(activeQueueId)],
+    queryFn: async () => {
+      const data = await getQueue(storeId, activeQueueId);
+
+      // Jika saat pertama kali difetch ternyata statusnya sudah selesai/batal,
+      // kita bersihkan local state secara asynchronous (bebas error cascading render!)
+      if (data && (data.status === "SELESAI" || data.status === "DIBATALKAN")) {
+        localStorage.removeItem(`activeQueue_${storeId}`);
+        setActiveQueueId(null);
+        setIsQueueModalOpen(false);
+      }
+      return data;
+    },
     enabled: !!activeQueueId,
   });
 
@@ -56,11 +72,14 @@ export default function DisplayProduct() {
       toast.success(`Pesanan berhasil dibuat!`);
       setCart({});
       setIsCartModalOpen(false);
-      setActiveQueueId(result.id);
+      setNote("");
+
+      // Suntik data hasil CREATE langsung ke cache query GET.
+      queryClient.setQueryData(["queue", storeId, String(result.id)], result);
+
+      setActiveQueueId(String(result.id));
       localStorage.setItem(`activeQueue_${storeId}`, result.id);
       setIsQueueModalOpen(true);
-      setNote("");
-      console.log(JSON.stringify(result));
     },
     onError: (error) => {
       const message = error.response?.data?.errors || "Terjadi kesalahan.";
@@ -72,22 +91,15 @@ export default function DisplayProduct() {
     mutationFn: (data) => cancelQueueBuyer(data),
     onSuccess: () => {
       toast.success("Pesanan berhasil dibatalkan.");
+      setIsCancelModalOpen(false);
+      setCancelReason("");
     },
     onError: (error) => {
       toast.error(error.response?.data?.errors || "Gagal membatalkan pesanan.");
     },
   });
 
-  useEffect(() => {
-    if (
-      activeQueue &&
-      (activeQueue.status === "SELESAI" || activeQueue.status === "DIBATALKAN")
-    ) {
-      localStorage.removeItem(`activeQueue_${storeId}`);
-      setActiveQueueId(null);
-      setIsQueueModalOpen(false);
-    }
-  }, [activeQueue, storeId]);
+  // ❌ useEffect yang bikin error udah dihapus total dari sini!
 
   // ================= SOCKET.IO =================
   useEffect(() => {
@@ -122,7 +134,7 @@ export default function DisplayProduct() {
 
     const handleQueueEdited = (updatedQueueData) => {
       queryClient.setQueryData(
-        ["queue", storeId, activeQueueId],
+        ["queue", storeId, String(activeQueueId)],
         updatedQueueData,
       );
 
@@ -144,13 +156,19 @@ export default function DisplayProduct() {
   }, [queryClient, storeId, activeQueueId]);
 
   // ================= UTILS & KERANJANG =================
+  // (Sisa kode di bawah ini aman dan tidak diubah)
   useEffect(() => {
-    if (isCartModalOpen || isQueueModalOpen || selectedProduct) {
+    if (
+      isCartModalOpen ||
+      isQueueModalOpen ||
+      selectedProduct ||
+      isCancelModalOpen
+    ) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
     }
-  }, [isCartModalOpen, isQueueModalOpen, selectedProduct]);
+  }, [isCartModalOpen, isQueueModalOpen, selectedProduct, isCancelModalOpen]);
 
   const getActiveVariantId = (product) => {
     if (Object.prototype.hasOwnProperty.call(activeVariants, product.id)) {
@@ -211,7 +229,6 @@ export default function DisplayProduct() {
   };
 
   const addToCart = (product, qty = 1) => {
-    // PROTEKSI: Kalau toko tiba-tiba tutup pas user mau nambah ke keranjang
     if (!store?.is_open) {
       return toast.error("Maaf, toko sedang tutup.");
     }
@@ -286,6 +303,20 @@ export default function DisplayProduct() {
     setModalQuantity(1);
   };
 
+  const openCancelModal = () => {
+    setCancelReason("");
+    setIsCancelModalOpen(true);
+  };
+
+  const handleConfirmCancel = () => {
+    if (!activeQueue) return;
+    cancelQueueMutation.mutate({
+      storeId,
+      queueId: activeQueue.id,
+      reason: cancelReason.trim() || undefined,
+    });
+  };
+
   const modalUnitPrice = useMemo(() => {
     if (!selectedProduct) return 0;
     const variantId = getActiveVariantId(selectedProduct);
@@ -329,7 +360,7 @@ export default function DisplayProduct() {
   const currentVariantId = selectedProduct
     ? getActiveVariantId(selectedProduct)
     : "";
-  const isStoreClosed = store.is_open === false; // <-- Variabel sakti baru
+  const isStoreClosed = store.is_open === false;
 
   return (
     <div className="min-h-screen w-full bg-[#FAF9F6]">
@@ -402,7 +433,6 @@ export default function DisplayProduct() {
               );
               const isSelected = totalQtyInCart > 0;
 
-              // Cek ketersediaan: Kalo toko tutup, anggep aja ga bisa diklik (kayak sold out)
               const isSoldOut = product.is_available === false;
               const isUnclickable = isSoldOut || isStoreClosed;
 
@@ -417,7 +447,7 @@ export default function DisplayProduct() {
                   role="button"
                   tabIndex={isUnclickable ? -1 : 0}
                   onClick={() => {
-                    if (isUnclickable) return; // Proteksi blokir klik
+                    if (isUnclickable) return;
                     if (activeQueueId) {
                       toast.error(
                         "Selesaikan antrean aktifmu dulu sebelum memesan lagi.",
@@ -503,8 +533,7 @@ export default function DisplayProduct() {
         )}
       </div>
 
-      {/* MODAL DETAIL PRODUK (Varian + Addon) */}
-      {/* (Tidak ada perubahan di sini karena tombol produknya udah diblokir duluan dari luar) */}
+      {/* MODAL DETAIL PRODUK */}
       {selectedProduct && (
         <div
           className="fixed inset-0 z-[65] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
@@ -848,19 +877,13 @@ export default function DisplayProduct() {
                       <p className="text-[10px] uppercase font-bold text-[#B23A2E]">
                         Batas Waktu Bayar
                       </p>
-                      <CountdownTimer expiresAt={activeQueue.expired_at} />
+                      <CountdownTimer
+                        expiresAt={activeQueue.expired_at}
+                        serverNow={activeQueue.server_now}
+                      />
                     </div>
                     <button
-                      onClick={() => {
-                        if (
-                          window.confirm("Yakin mau membatalkan pesanan ini?")
-                        ) {
-                          cancelQueueMutation.mutate({
-                            storeId,
-                            queueId: activeQueue.id,
-                          });
-                        }
-                      }}
+                      onClick={openCancelModal}
                       className="w-full mt-2 rounded-lg border border-[#B23A2E] py-2 text-xs font-bold text-[#B23A2E] transition hover:bg-[#FBEAE7]"
                     >
                       Batalkan Pesanan
@@ -921,6 +944,68 @@ export default function DisplayProduct() {
                 <p className="font-mono text-xl font-bold">
                   Rp {activeQueue.total_price.toLocaleString("id-ID")}
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALASAN PEMBATALAN */}
+      {isCancelModalOpen && activeQueue && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+          onClick={() => {
+            if (!cancelQueueMutation.isPending) setIsCancelModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#E4E1D8] bg-[#FCFBF9] px-5 py-4">
+              <h2 className="text-lg font-bold text-[#1C2321]">
+                Batalkan Pesanan
+              </h2>
+              <button
+                onClick={() => setIsCancelModalOpen(false)}
+                disabled={cancelQueueMutation.isPending}
+                className="text-[#8A8375] hover:text-[#B23A2E] text-2xl font-bold leading-none disabled:opacity-40"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="mb-3 text-sm text-[#6B6558]">
+                Yakin mau membatalkan Antrean #{activeQueue.queue_number}?
+              </p>
+              <label className="text-xs font-bold text-[#1C2321] uppercase tracking-wide">
+                Alasan Pembatalan (Opsional)
+              </label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Contoh: Salah pesan, keburu ada urusan, dll..."
+                rows="3"
+                className="mt-1.5 w-full resize-none rounded-xl border border-[#E4E1D8] bg-[#FAF9F6] p-3 text-sm outline-none transition focus:border-[#B23A2E] focus:bg-white focus:ring-1 focus:ring-[#B23A2E]"
+              />
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={() => setIsCancelModalOpen(false)}
+                  disabled={cancelQueueMutation.isPending}
+                  className="flex-1 rounded-xl border border-[#E4E1D8] py-3 text-sm font-bold text-[#1C2321] transition hover:bg-[#F7F7F7] disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleConfirmCancel}
+                  disabled={cancelQueueMutation.isPending}
+                  className="flex-1 rounded-xl bg-[#B23A2E] py-3 text-sm font-bold text-white transition hover:bg-[#9A2F25] disabled:opacity-50"
+                >
+                  {cancelQueueMutation.isPending
+                    ? "Memproses…"
+                    : "Ya, Batalkan"}
+                </button>
               </div>
             </div>
           </div>

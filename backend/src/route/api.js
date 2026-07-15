@@ -30,7 +30,12 @@ userRouter.post(
   uploadLogo.single("logo"),
   storeController.create,
 );
+userRouter.post(
+  "/api/seller/create-cancel-reasons",
+  sellerController.createCancelReason,
+);
 userRouter.patch("/api/stores/me", storeController.updateStoreProfile);
+userRouter.get("/api/seller/cancel-reasons", sellerController.getCancelReasons);
 userRouter.patch(
   "/api/stores/logo",
   uploadLogo.single("logo"),
@@ -75,7 +80,7 @@ userRouter.get("/api/all-products/:publicId", productController.getAllProducts);
 // ==========================================
 // 🧩 ADDONS API
 // ==========================================
-userRouter.get("/api/stores/addon-groups", storeController.getAddonGroups);
+userRouter.get("/api/stores/get-addon-groups", storeController.getAddonGroups);
 userRouter.post("/api/stores/addon-groups", storeController.createAddonGroup);
 userRouter.get("/api/addon-group/:addonGroupId", addonController.getAddonGroup);
 userRouter.patch(

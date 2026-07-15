@@ -8,6 +8,7 @@ import {
   getQueueValidation,
 } from "../validation/buyer_validation.js";
 import { validate } from "../validation/validation.js";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 const DEFAULT_PAYMENT_TIMEOUT_MINUTES = 30;
 
@@ -35,6 +36,7 @@ const createQueue = async (request) => {
       manual_updated_at: true,
       operational_hours: true,
       payment_timeout: true,
+      timezone: true,
     },
   });
 
@@ -173,11 +175,28 @@ const createQueue = async (request) => {
     };
   });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const tz = store.timezone || "Asia/Jakarta";
+  const nowUtc = new Date();
+
+  // 1. Ubah ke waktu lokal toko
+  const nowZoned = toZonedTime(nowUtc, tz);
+
+  // 2. Cari jam 00:00:00 HARI INI versi jam dinding toko
+  const startOfDayZoned = new Date(
+    nowZoned.getFullYear(),
+    nowZoned.getMonth(),
+    nowZoned.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+
+  // 3. Kembalikan ke UTC agar akurat saat ditarik dari Prisma
+  const startOfDayUtc = fromZonedTime(startOfDayZoned, tz);
 
   const lastQueue = await prisma.queue.findFirst({
-    where: { store_id: store.id, created_at: { gte: today } },
+    where: { store_id: store.id, created_at: { gte: startOfDayUtc } },
     orderBy: { queue_number: "desc" },
   });
 
@@ -211,9 +230,8 @@ const createQueue = async (request) => {
         `Maaf, produk ${productData.name} baru saja habis.`,
       );
     }
-  }
-  // 5. SIMPAN KE DATABASE
-  return await prisma.queue.create({
+  } // 5. SIMPAN KE DATABASE
+  const newQueue = await prisma.queue.create({
     data: {
       store_id: store.id,
       queue_number: queueNumber,
@@ -235,6 +253,12 @@ const createQueue = async (request) => {
       },
     },
   });
+
+  // Tambahkan waktu server sesaat sebelum response dikirim
+  return {
+    ...newQueue,
+    server_now: new Date().toISOString(), // Format ISO: "2026-07-14T10:00:00.000Z"
+  };
 };
 const getAllProductDisplay = async (request) => {
   const req = validate(getAllProductDisplayValidation, request);
@@ -342,7 +366,7 @@ const getQueue = async (request) => {
     throw new ResponseError(404, "ERR_QUEUE_NOT_FOUND");
   }
 
-  return queue;
+  return { ...queue, server_now: new Date().toISOString() };
 };
 const cancelQueue = async (request) => {
   const req = validate(cancelQueueValidation, request);
@@ -371,7 +395,11 @@ const cancelQueue = async (request) => {
   // 3. Update statusnya jadi DIBATALKAN
   return await prisma.queue.update({
     where: { id: queue.id },
-    data: { status: "DIBATALKAN" },
+    data: {
+      status: "DIBATALKAN",
+      cancelled_by: "BUYER",
+      cancellation_reason: req.reason,
+    },
     include: {
       queueDetails: {
         include: {

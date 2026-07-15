@@ -30,10 +30,11 @@ export const getAllQueue = async (storeId) => {
   const response = await apiPrivate.get(`/stores/all-queues/${storeId}`);
   return response.data.data;
 };
-export const editStatusQueue = async ({ storeId, status, queueId }) => {
+export const editStatusQueue = async ({ storeId, status, queueId, reason }) => {
   const response = await apiPrivate.patch(`/stores/queues/${queueId}`, {
     storeId,
     status,
+    reason,
   });
   return response.data;
 };
@@ -59,7 +60,7 @@ export const updateProductInfo = async ({ productId, data }) => {
 };
 
 export const getAddonGroups = async () => {
-  const response = await apiPrivate.get(`/stores/addon-groups`);
+  const response = await apiPrivate.get(`/stores/get-addon-groups`);
   return response.data.data;
 };
 
@@ -80,7 +81,8 @@ export const updateProductImage = async ({ productId, formData }) => {
     },
   );
   return response.data;
-};export const getStoreHistory = async ({
+};
+export const getStoreHistory = async ({
   filter = "all",
   page = 1,
   limit = 10,
@@ -100,10 +102,16 @@ export const updateProductImage = async ({ productId, formData }) => {
   });
   return response.data.data;
 };
-export const updateProductAvailability = async ({ productId, is_available }) => {
-  const response = await apiPrivate.patch(`/products/${productId}/availability`, {
-    is_available
-  });
+export const updateProductAvailability = async ({
+  productId,
+  is_available,
+}) => {
+  const response = await apiPrivate.patch(
+    `/products/${productId}/availability`,
+    {
+      is_available,
+    },
+  );
   return response.data.data;
 };
 export const getOperationalHours = async () => {
@@ -116,4 +124,14 @@ export const updateOperationalHours = async (data) => {
   // data formatnya: { operational_hours: [ { day: 0, open_time: "08:00", ... }, ... ] }
   const response = await apiPrivate.put("/stores/operational-hours", data);
   return response.data;
+};
+export const createCancelReasonApi = async ({ reason }) => {
+  const response = await apiPrivate.post("/seller/create-cancel-reasons", {
+    reason,
+  });
+  return response.data;
+};
+export const getCancelReasons = async () => {
+  const response = await apiPrivate.get("/seller/cancel-reasons");
+  return response.data.data;
 };

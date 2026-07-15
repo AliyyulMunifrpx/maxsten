@@ -268,7 +268,7 @@ const getAddonGroups = async (request) => {
   const req = validate(getAddonGroupsValidation, request);
 
   const store = await prisma.store.findUnique({
-    where: { user_id: req.userId, is_delete: false },
+    where: { user_id: req, is_delete: false },
     select: { id: true },
   });
 

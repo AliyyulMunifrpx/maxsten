@@ -15,7 +15,7 @@ import { registerDebugEvents } from "./socket/debug_events.js";
 const httpServer = createServer(web);
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://192.168.1.5:5173"], // Biar frontend bisa connect tanpa error CORS, ketika production, ini harus diganti alamat frontend biar cuma frontend kita yang bisa make ini
+    origin: ["http://localhost:5173", "http://192.168.1.6:5173"], // Biar frontend bisa connect tanpa error CORS, ketika production, ini harus diganti alamat frontend biar cuma frontend kita yang bisa make ini
     credentials: true, // Biar Cookie bisa dikirim ke backend
   },
 });

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react"; // Nggak perlu useEffect lagi!
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { getOperationalHours, updateOperationalHours } from "../../lib/sellerApi.js";
-
+import {
+  getOperationalHours,
+  updateOperationalHours,
+} from "../../lib/sellerApi.js";
 
 const displayFont = { fontFamily: "'Fraunces', Georgia, serif" };
 
@@ -18,25 +20,54 @@ const DAYS_ORDER = [
   { index: 0, name: "Minggu" },
 ];
 
+// =========================================================
+// KOMPONEN 1: KHUSUS UNTUK FETCHING DATA (TIDAK ADA STATE LOKAL)
+// =========================================================
 export default function EditJadwal() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  // State lokal untuk menampung editan jadwal sebelum di-save
-  const [schedule, setSchedule] = useState([]);
-
   // Ambil data jadwal dari server
-  const { data: opHours, isLoading, isError } = useQuery({
+  const {
+    data: opHours,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["operationalHours"],
     queryFn: getOperationalHours,
   });
 
-  // Saat data berhasil ditarik, masukkan ke local state biar bisa diedit
-  useEffect(() => {
-    if (opHours && opHours.length > 0) {
-      setSchedule(opHours);
-    }
-  }, [opHours]);
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF9F6]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E4E1D8] border-t-[#C98A1F]" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#FAF9F6]">
+        <p className="mb-4 text-[#B23A2E]">Gagal memuat jadwal operasional.</p>
+        <Link to="/seller" className="text-[#147356] underline">
+          Kembali ke Dashboard
+        </Link>
+      </div>
+    );
+  }
+
+  // Kalau data udah lengkap (nggak loading & nggak error), baru panggil komponen Form
+  // Lempar datanya sebagai "initialData"
+  return <JadwalForm initialData={opHours} />;
+}
+
+// =========================================================
+// KOMPONEN 2: KHUSUS UNTUK FORM (STATE LOKAL AMAN DI SINI)
+// =========================================================
+function JadwalForm({ initialData }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Langsung set nilai awal state dari initialData
+  // Karena komponen ini baru di-render SETELAH fetch selesai, initialData pasti ada isinya.
+  const [schedule, setSchedule] = useState(initialData || []);
 
   // Mutation untuk simpan data
   const { mutate, isPending } = useMutation({
@@ -62,25 +93,28 @@ export default function EditJadwal() {
             ...item,
             is_active: newIsActive,
             // Kalau diaktifkan tapi jamnya masih kosong, kasih default
-            open_time: newIsActive && !item.open_time ? "08:00" : item.open_time,
-            close_time: newIsActive && !item.close_time ? "21:00" : item.close_time,
+            open_time:
+              newIsActive && !item.open_time ? "08:00" : item.open_time,
+            close_time:
+              newIsActive && !item.close_time ? "21:00" : item.close_time,
           };
         }
         return item;
-      })
+      }),
     );
   };
 
   const handleTimeChange = (dayIndex, field, value) => {
     setSchedule((prev) =>
       prev.map((item) =>
-        item.day === dayIndex ? { ...item, [field]: value } : item
-      )
+        item.day === dayIndex ? { ...item, [field]: value } : item,
+      ),
     );
   };
-const handleSave = (e) => {
+
+  const handleSave = (e) => {
     e.preventDefault();
-    
+
     // Bersihkan field bawaan database (id, store_id) biar Joi nggak ngamuk
     const cleanSchedule = schedule.map((item) => ({
       day: item.day,
@@ -93,27 +127,9 @@ const handleSave = (e) => {
     mutate({ operational_hours: cleanSchedule });
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAF9F6]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E4E1D8] border-t-[#C98A1F]" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#FAF9F6]">
-        <p className="mb-4 text-[#B23A2E]">Gagal memuat jadwal operasional.</p>
-        <Link to="/seller" className="text-[#147356] underline">Kembali ke Dashboard</Link>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#FAF9F6] pb-10">
       <div className="mx-auto max-w-3xl p-4 sm:p-6">
-        
         <Link
           to="/seller"
           className="mb-6 inline-flex items-center text-sm font-semibold text-[#8A8375] transition hover:text-[#1C2321]"
@@ -123,24 +139,31 @@ const handleSave = (e) => {
 
         <div className="overflow-hidden rounded-2xl border border-[#E4E1D8] bg-white shadow-sm">
           <div className="border-b border-[#E4E1D8] p-5 sm:p-6">
-            <h1 style={displayFont} className="text-2xl font-semibold text-[#1C2321]">
+            <h1
+              style={displayFont}
+              className="text-2xl font-semibold text-[#1C2321]"
+            >
               Atur Jadwal Operasional
             </h1>
             <p className="mt-1 text-sm text-[#8A8375]">
-              Toko akan otomatis buka dan tutup sesuai jadwal yang lu tentukan di bawah ini.
+              Toko akan otomatis buka dan tutup sesuai jadwal yang lu tentukan
+              di bawah ini.
             </p>
           </div>
 
           <form onSubmit={handleSave}>
             <div className="divide-y divide-[#E4E1D8] p-5 sm:p-6">
               {DAYS_ORDER.map((dayConfig) => {
-                const dayData = schedule.find((h) => h.day === dayConfig.index) || {};
+                const dayData =
+                  schedule.find((h) => h.day === dayConfig.index) || {};
                 const isActive = dayData.is_active || false;
                 const isToday = new Date().getDay() === dayConfig.index;
 
                 return (
-                  <div key={dayConfig.index} className="flex flex-col py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-                    
+                  <div
+                    key={dayConfig.index}
+                    className="flex flex-col py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                  >
                     {/* Bagian Kiri: Nama Hari & Toggle */}
                     <div className="mb-3 flex items-center sm:mb-0 sm:w-1/3">
                       <button
@@ -159,8 +182,13 @@ const handleSave = (e) => {
                           }`}
                         />
                       </button>
-                      <span className={`ml-3 text-sm font-semibold uppercase tracking-wider ${isActive ? "text-[#1C2321]" : "text-[#8A8375]"}`}>
-                        {dayConfig.name} {isToday && <span className="text-[#C98A1F]">*</span>}
+                      <span
+                        className={`ml-3 text-sm font-semibold uppercase tracking-wider ${
+                          isActive ? "text-[#1C2321]" : "text-[#8A8375]"
+                        }`}
+                      >
+                        {dayConfig.name}{" "}
+                        {isToday && <span className="text-[#C98A1F]">*</span>}
                       </span>
                     </div>
 
@@ -172,15 +200,29 @@ const handleSave = (e) => {
                             type="time"
                             required
                             value={dayData.open_time || ""}
-                            onChange={(e) => handleTimeChange(dayConfig.index, "open_time", e.target.value)}
+                            onChange={(e) =>
+                              handleTimeChange(
+                                dayConfig.index,
+                                "open_time",
+                                e.target.value,
+                              )
+                            }
                             className="rounded-lg border border-[#E4E1D8] bg-[#FCFBF9] px-3 py-2 font-mono text-sm font-semibold text-[#1C2321] focus:border-[#C98A1F] focus:outline-none focus:ring-1 focus:ring-[#C98A1F]"
                           />
-                          <span className="text-sm font-medium text-[#8A8375]">s/d</span>
+                          <span className="text-sm font-medium text-[#8A8375]">
+                            s/d
+                          </span>
                           <input
                             type="time"
                             required
                             value={dayData.close_time || ""}
-                            onChange={(e) => handleTimeChange(dayConfig.index, "close_time", e.target.value)}
+                            onChange={(e) =>
+                              handleTimeChange(
+                                dayConfig.index,
+                                "close_time",
+                                e.target.value,
+                              )
+                            }
                             className="rounded-lg border border-[#E4E1D8] bg-[#FCFBF9] px-3 py-2 font-mono text-sm font-semibold text-[#1C2321] focus:border-[#C98A1F] focus:outline-none focus:ring-1 focus:ring-[#C98A1F]"
                           />
                         </>
@@ -192,7 +234,6 @@ const handleSave = (e) => {
                         </div>
                       )}
                     </div>
-
                   </div>
                 );
               })}
@@ -209,7 +250,6 @@ const handleSave = (e) => {
             </div>
           </form>
         </div>
-
       </div>
     </div>
   );

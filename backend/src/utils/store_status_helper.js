@@ -1,4 +1,3 @@
-// util/storeStatusHelper.js
 export const calculateStoreStatus = (store, operationalHours) => {
   const now = new Date();
   

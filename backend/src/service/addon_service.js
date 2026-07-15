@@ -140,8 +140,8 @@ const editAddonGroups = async (userId, request) => {
     });
   });
 };
-const getAddonGroups = async (userId, addonGroupId) => {
-  const groupId = validate(getAddonGroupValidation, addonGroupId);
+const getAddonGroups = async (userId) => {
+  const groupId = validate(getAddonGroupValidation);
   const store = await prisma.store.findFirst({
     where: {
       user_id: userId,
@@ -175,4 +175,4 @@ const getAddonGroups = async (userId, addonGroupId) => {
   });
   return result;
 };
-export default { editAddonGroups, getAddonGroups };
+export default { editAddonGroups, getAddonGroups,  };

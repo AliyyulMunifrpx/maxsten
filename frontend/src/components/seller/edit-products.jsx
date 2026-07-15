@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -8,7 +8,7 @@ import {
   updateProductImage,
   updateProductInfo,
 } from "../../lib/sellerApi.js";
-import { getProduct } from "../../lib/productApi.js"; // Pastikan API ini nerima parameter ID
+import { getProduct } from "../../lib/productApi.js";
 
 export default function EditProduct() {
   const { productId } = useParams();
@@ -16,65 +16,58 @@ export default function EditProduct() {
   const queryClient = useQueryClient();
   const backendUrl = import.meta.env.VITE_API_PATH.replace("/api", "");
 
-  const [previewImage, setPreviewImage] = useState("");
-
-  // Inisialisasi React Hook Form
-  const { register, control, handleSubmit, reset } = useForm({
-    defaultValues: {
-      name: "",
-      price: "",
-      variants: [],
-      addon_group_ids: [],
-    },
-  });
-
-  // Manajemen array dinamis untuk varian produk menggunakan RHF
-  const { fields, prepend, remove } = useFieldArray({
-    control,
-    name: "variants",
-  });
+  // State khusus untuk preview jika user upload gambar baru
+  const [newImagePreview, setNewImagePreview] = useState("");
 
   // 1. Tarik HANYA 1 data produk berdasarkan productId
   const {
     data: product,
     isLoading,
     isError,
-    error,
   } = useQuery({
-    queryKey: ["product", productId], // Masukin ID ke key biar cache-nya unik per produk
-    queryFn: () => getProduct(productId), // 👉 Lempar productId ke fungsi fetcher-nya
-    enabled: !!productId, // Cuma jalan kalau productId-nya ada di URL
+    queryKey: ["product", productId],
+    queryFn: () => getProduct(productId),
+    enabled: !!productId,
   });
 
   // 2. Tarik data addon group
   const { data: addonGroups } = useQuery({
     queryKey: ["addonGroups"],
     queryFn: getAddonGroups,
-    // Addon group bisa ditarik paralel, nggak perlu nunggu product kelar sebenernya,
-    // tapi kalau mau aman biarin aja true
   });
 
-  // 3. Mengisi form ketika data produk berhasil ditarik
-  useEffect(() => {
-    if (product) {
-      // 👉 Gak perlu pakai .find() lagi karena product udah spesifik 1 barang
-      reset({
-        name: product.name,
-        price: product.price,
-        variants: product.variants || [],
-        addon_group_ids:
-          product.productAddonGroups?.map(
-            // Tergantung response backend lu, biasanya bisa langsung ambil foreign key-nya
-            (pag) => pag.addon_group_id || pag.addon_group?.id,
-          ) || [],
-      });
+  // Inisialisasi React Hook Form dengan prop 'values'
+  const { register, control, handleSubmit } = useForm({
+    defaultValues: {
+      name: "",
+      price: "",
+      variants: [],
+      addon_group_ids: [],
+    },
+    // RHF akan otomatis mengisi dan menimpa form saat data 'product' selesai di-fetch
+    values: product
+      ? {
+          name: product.name,
+          price: product.price,
+          variants: product.variants || [],
+          addon_group_ids:
+            product.productAddonGroups?.map(
+              (pag) => pag.addon_group_id || pag.addon_group?.id,
+            ) || [],
+        }
+      : undefined,
+  });
 
-      // Set gambar preview (State lokal karena tidak dikirim via infoMutation)
-      if (product.image_url) {
-        setPreviewImage(`${backendUrl}${product.image_url}`);
-      }
-    }
-  }, [product, reset, backendUrl]); // Dependency disesuaikan jadi 'product'
+  // Manajemen array dinamis untuk varian produk
+  const { fields, prepend, remove } = useFieldArray({
+    control,
+    name: "variants",
+  });
+
+  // Menentukan gambar mana yang tampil (gambar baru vs gambar dari database)
+  const displayImage =
+    newImagePreview ||
+    (product?.image_url ? `${backendUrl}${product.image_url}` : "");
 
   // MUTASI 1: Khusus Teks & Varian
   const infoMutation = useMutation({
@@ -82,7 +75,7 @@ export default function EditProduct() {
     onSuccess: () => {
       toast.success("Info produk berhasil diperbarui!");
       queryClient.invalidateQueries({ queryKey: ["storeMe"] });
-      queryClient.invalidateQueries({ queryKey: ["product", productId] }); // Update cache produk ini juga
+      queryClient.invalidateQueries({ queryKey: ["product", productId] });
       navigate("/seller");
     },
     onError: (error) => {
@@ -112,7 +105,8 @@ export default function EditProduct() {
     const file = e.target.files[0];
     if (!file) return;
 
-    setPreviewImage(URL.createObjectURL(file));
+    // Set preview untuk gambar yang baru dipilih
+    setNewImagePreview(URL.createObjectURL(file));
 
     const formData = new FormData();
     formData.append("image", file);
@@ -122,7 +116,6 @@ export default function EditProduct() {
 
   // --- FUNGSI SUBMIT FORM ---
   const onSubmit = (data) => {
-    // Data otomatis terkumpul oleh React Hook Form, tinggal kita rapihkan tipe datanya
     const payload = {
       name: data.name,
       price: Number(data.price),
@@ -139,9 +132,11 @@ export default function EditProduct() {
 
   if (isLoading)
     return <div className="p-10 text-center">Memuat produk...</div>;
+
   if (isError) {
-    return <p className="text-center">product tidak ditemukan</p>;
+    return <p className="text-center">Produk tidak ditemukan</p>;
   }
+
   return (
     <div className="flex min-h-screen justify-center bg-[#FAF9F6] py-10 px-4">
       <div className="w-full max-w-xl rounded-2xl bg-white p-8 shadow-sm border border-[#E4E1D8]">
@@ -156,9 +151,10 @@ export default function EditProduct() {
             Foto Produk
           </label>
           <div className="relative mb-3 h-48 w-full overflow-hidden rounded-xl border border-[#E4E1D8] bg-gray-50">
-            {previewImage ? (
+            {/* PERBAIKAN DI SINI: Gunakan displayImage, bukan previewImage */}
+            {displayImage ? (
               <img
-                src={previewImage}
+                src={displayImage}
                 alt="Preview"
                 className="h-full w-full object-cover"
               />
@@ -227,7 +223,6 @@ export default function EditProduct() {
               </label>
               <button
                 type="button"
-                // Sebelumnya: onClick={() => append({ name: "", additional_price: "" })}
                 onClick={() => prepend({ name: "", additional_price: "" })}
                 className="text-xs font-bold text-[#147356] hover:text-[#0F5C44] bg-[#E7F3EC] px-3 py-1.5 rounded-lg transition"
               >

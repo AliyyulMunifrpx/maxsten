@@ -6,7 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 export default function CetakQR({ storeId, storeName }) {
   // Ini adalah URL web pembeli lu nanti.
   // Kalau udah di-hosting, ganti localhost jadi domain lu (misal: https://antrean-umkm.com/toko/...)
-  const urlToko = `http://192.168.1.5:5173/${storeId}/products`;
+  const urlToko = `http://192.168.1.6:5173/${storeId}/products`;
 
   // Fungsi bawaan browser buat nge-print
   const handlePrint = () => {

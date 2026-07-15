@@ -52,7 +52,8 @@ const cancelQueue = async (req, res, next) => {
     const result = await buyerService.cancelQueue({
       public_id: req.params.publicId,
       queueId: req.params.queueId,
-      guest_id: req.body.guest_id, 
+      guest_id: req.body.guest_id,
+      reason: req.body.reason,
     });
 
     const io = req.app.get("socketio");
@@ -60,9 +61,9 @@ const cancelQueue = async (req, res, next) => {
     if (io) {
       // 1. Tembak ke kamar pembeli biar modalnya otomatis ketutup
       io.to(`ANTREAN_${result.id}`).emit("STATUS_EDITED", result);
-      
+
       // 2. Tembak ke kamar toko biar kasir tau ada yang batal
-      io.to(`TOKO_${result.store_id}`).emit("STATUS_EDITED", result); 
+      io.to(`TOKO_${result.store_id}`).emit("STATUS_EDITED", result);
     }
 
     res.status(200).json({

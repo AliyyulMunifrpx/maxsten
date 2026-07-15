@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Fragment } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getStoreHistory } from "../../lib/sellerApi.js"; // Sesuaikan path
 
@@ -152,7 +152,10 @@ function buildMonthOptions(storeCreatedAt, currentYear, currentMonth) {
 
 export default function StoreHistory() {
   const [selectedMonthOpt, setSelectedMonthOpt] = useState(null);
-  const [selectedDay, setSelectedDay] = useState("01"); // Default filter harian
+
+  const [selectedDay, setSelectedDay] = useState(() => {
+    return String(new Date().getDate()).padStart(2, "0");
+  });
 
   const [page, setPage] = useState(1);
   const [topPage, setTopPage] = useState(1);
@@ -180,7 +183,7 @@ export default function StoreHistory() {
       }),
     keepPreviousData: true,
   });
-  console.log(data)
+  console.log(data);
   const meta = data?.meta;
   const summary = data?.summary;
   const charts = data?.charts;
@@ -199,13 +202,6 @@ export default function StoreHistory() {
     ? `${meta.selectedYear}-${String(meta.selectedMonth).padStart(2, "0")}`
     : "";
 
-  // Reset tanggal filter chart jam sibuk setiap kali pindah bulan
-  useEffect(() => {
-    if (charts?.revenueDaily?.length > 0) {
-      setSelectedDay(charts.revenueDaily[0].label); // Set ke tanggal 1 (atau yg pertama ada)
-    }
-  }, [selectedValue, charts?.revenueDaily]);
-
   // Transformasi data untuk Chart Jam Sibuk sesuai tanggal yang dipilih
   const activeHourlyTraffic = useMemo(() => {
     if (!charts?.trafficHourlyByDate || !selectedDay) return [];
@@ -222,8 +218,20 @@ export default function StoreHistory() {
     setSelectedMonthOpt({ year: y, month: m });
     setPage(1);
     setTopPage(1);
-  };
 
+    // Ambil waktu saat ini
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() dimulai dari 0
+
+    // Jika user pindah ke bulan yang sama dengan bulan saat ini, set ke tanggal hari ini
+    // Jika pindah ke bulan lalu/lainnya, kembalikan ke tanggal 01
+    if (y === currentYear && m === currentMonth) {
+      setSelectedDay(String(now.getDate()).padStart(2, "0"));
+    } else {
+      setSelectedDay("01");
+    }
+  };
   return (
     <div className="min-h-screen bg-[#FAF9F6] p-4 font-sans text-[#1C2321] sm:p-8 md:p-10">
       <div className="mx-auto max-w-7xl">
@@ -675,7 +683,7 @@ export default function StoreHistory() {
                       </p>
                     ) : (
                       <div className="flex flex-col gap-2">
-                        {data.topSelling.rankings.map((item, idx) => (
+                        {data.topSelling.rankings.map((item) => (
                           <div
                             key={item.product_id}
                             className="flex items-center justify-between rounded-xl p-3 transition hover:bg-[#FAF9F6]"

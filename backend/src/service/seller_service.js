@@ -2,6 +2,7 @@ import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
 import { calculateStoreStatus } from "../utils/store_status_helper.js";
 import {
+  createCancelReasonValidation,
   editQueueStatusValidation,
   getAllQueueValidation,
   getStoreValidation,
@@ -89,9 +90,11 @@ const editQueueStatus = async (request) => {
   return prisma.queue.update({
     where: {
       id: req.id,
+      
     },
     data: {
       status: req.status,
+      cancellation_reason: req.reason,
     },
     include: {
       queueDetails: {
@@ -213,10 +216,59 @@ const updateProductAvailability = async (userId, request) => {
     data: { is_available: req.is_available },
   });
 };
+const createCancelReason = async (userId, request) => {
+  // 1. Validasi input
+  const req = validate(createCancelReasonValidation, request);
 
+  // 2. Cari toko milik user yang lagi login
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan.");
+  }
+
+  // 3. Simpan ke database
+  return await prisma.cancelReasonTemplate.create({
+    data: {
+      store_id: store.id,
+      reason: req.reason,
+      is_delete: false, // Memaksa false agar tidak langsung terhapus
+    },
+  });
+};
+const getCancelReasons = async (userId) => {
+  const store = await prisma.store.findFirst({
+    where: { user_id: userId, is_delete: false },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan.");
+  }
+
+  return await prisma.cancelReasonTemplate.findMany({
+    where: {
+      store_id: store.id,
+      is_delete: false,
+    },
+    orderBy: { created_at: "asc" }, // Biar urutannya konsisten
+    select: {
+      id: true,
+      reason: true,
+    },
+  });
+};
 export default {
   getAllQueue,
+  getCancelReasons,
   editQueueStatus,
   getStore,
   updateProductAvailability,
+  createCancelReason,
 };

@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import {
@@ -9,29 +8,50 @@ import {
   updateUserProfile,
 } from "../../lib/userApi.js";
 
+// =========================================================
+// KOMPONEN 1: KHUSUS TUKANG FETCHING
+// =========================================================
 export default function EditProfile() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  // State Form
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  // 1. Ambil data profil saat ini
-  const { data: user, isLoading } = useQuery({
+  const {
+    data: user,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["userProfile"],
     queryFn: getUserProfile,
   });
 
-  // Isi otomatis form nama saat data user berhasil dimuat
-  useEffect(() => {
-    if (user) {
-      setName(user.name || "");
-    }
-  }, [user]);
+  if (isLoading) {
+    return (
+      <div className="p-10 text-center text-[#8A8375]">Memuat profil...</div>
+    );
+  }
 
-  // 2. Mutasi Update Profil
+  if (isError) {
+    return (
+      <div className="p-10 text-center text-[#B23A2E]">
+        Gagal memuat profil.
+      </div>
+    );
+  }
+
+  // Lempar data ke komponen anak pas udah kelar loading
+  return <EditProfileForm user={user} />;
+}
+
+// =========================================================
+// KOMPONEN 2: KHUSUS FORM (State aman ditaruh di sini)
+// =========================================================
+function EditProfileForm({ user }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // State Form langsung diisi dari props
+  const [name, setName] = useState(user?.name || "");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Mutasi Update Profil
   const updateMutation = useMutation({
     mutationFn: updateUserProfile,
     onSuccess: () => {
@@ -45,7 +65,7 @@ export default function EditProfile() {
     },
   });
 
-  // 3. Mutasi Logout
+  // Mutasi Logout
   const logoutMutation = useMutation({
     mutationFn: logoutUser,
     onSuccess: () => {
@@ -70,16 +90,11 @@ export default function EditProfile() {
     updateMutation.mutate(payload);
   };
 
-  if (isLoading)
-    return (
-      <div className="p-10 text-center text-[#8A8375]">Memuat profil...</div>
-    );
-
   return (
     <div className="flex min-h-screen justify-center bg-[#FAF9F6] py-10 px-4">
       <div className="w-full max-w-lg space-y-6">
         {/* CARD EDIT PROFIL */}
-        <div className="rounded-2xl bg-white p-8 shadow-sm border border-[#E4E1D8]">
+        <div className="rounded-2xl border border-[#E4E1D8] bg-white p-8 shadow-sm">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-[#1C2321]">
               Pengaturan Akun
@@ -99,9 +114,9 @@ export default function EditProfile() {
                 type="text"
                 value={user?.username || ""}
                 disabled
-                className="w-full rounded-lg border border-[#E4E1D8] bg-[#F1EFE9] px-4 py-2.5 text-[#8A8375] cursor-not-allowed"
+                className="w-full cursor-not-allowed rounded-lg border border-[#E4E1D8] bg-[#F1EFE9] px-4 py-2.5 text-[#8A8375]"
               />
-              <p className="mt-1 text-[10px] text-[#B0AA9B] italic">
+              <p className="mt-1 text-[10px] italic text-[#B0AA9B]">
                 * Username tidak dapat diubah.
               </p>
             </div>
@@ -169,8 +184,8 @@ export default function EditProfile() {
           </form>
         </div>
 
-        {/* CARD LOGOUT (Terpisah biar aman dari klik gak sengaja) */}
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-[#F1CFC7]">
+        {/* CARD LOGOUT */}
+        <div className="rounded-2xl border border-[#F1CFC7] bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-bold text-[#1C2321]">Keluar dari Aplikasi</p>

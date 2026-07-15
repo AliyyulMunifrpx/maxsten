@@ -25,6 +25,7 @@ import StoreHistory from "./components/seller/history.jsx";
 import EditJadwal from "./components/seller/edit-operational-hours.jsx";
 import EditAddon from "./components/seller/addon/edit-addon.jsx";
 import AllProduct from "./components/seller/product/allProduct.jsx";
+import CreateCancelReason from "./components/seller/store/cancelReasonTemplate.jsx";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,10 @@ createRoot(document.getElementById("root")).render(
                 <Route path="edit-store" element={<EditStore />} />
                 <Route path="edit-profile" element={<EditProfile />} />
                 <Route path="edit-jadwal" element={<EditJadwal />} />
+                <Route
+                  path="create-reason-cancel-templates"
+                  element={<CreateCancelReason />}
+                />
                 <Route
                   path="all-products/:publicId"
                   element={<AllProduct></AllProduct>}

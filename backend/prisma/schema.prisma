@@ -67,22 +67,23 @@ model Store {
   id        Int    @id @default(autoincrement())
   public_id String @unique @default(uuid()) @db.Char(36)
 
-  name              String                 @db.VarChar(100)
-  description       String?                @db.Text
-  address           String                 @db.VarChar(100)
-  manual_status     String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
-  manual_updated_at DateTime? // Waktu terakhir tombol manual ditekan
-  logo_url          String?                @db.VarChar(255)
-  user_id           Int                    @unique
-  is_delete         Boolean                @default(false)
-  user              User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  timezone          String                 @default("Asia/Jakarta")
-  payment_timeout   Int                    @default(30)
-  products          Product[]
-  queues            Queue[]
-  addonGroups       AddonGroup[]
-  operational_hours StoreOperationalHour[]
-  created_at        DateTime               @default(now())
+  name                  String                 @db.VarChar(100)
+  description           String?                @db.Text
+  address               String                 @db.VarChar(100)
+  manual_status         String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
+  manual_updated_at     DateTime? // Waktu terakhir tombol manual ditekan
+  logo_url              String?                @db.VarChar(255)
+  user_id               Int                    @unique
+  is_delete             Boolean                @default(false)
+  user                  User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  timezone              String                 @default("Asia/Jakarta")
+  payment_timeout       Int                    @default(30)
+  products              Product[]
+  queues                Queue[]
+  addonGroups           AddonGroup[]
+  operational_hours     StoreOperationalHour[]
+  created_at            DateTime               @default(now())
+  cancelReasonTemplates CancelReasonTemplate[]
 
   @@map("stores")
 }
@@ -192,7 +193,7 @@ model Queue {
   cancellation_reason String?       @db.Text
   queueDetails        QueueDetail[]
 
-  @@index([status, created_at])
+  @@index([status, expired_at])
   @@map("queues")
 }
 
@@ -213,4 +214,15 @@ model QueueDetail {
   product Product @relation(fields: [product_id], references: [id])
 
   @@map("queue_details")
+}
+
+model CancelReasonTemplate {
+  id         String   @id @default(uuid())
+  store_id   Int
+  reason     String   @db.VarChar(255)
+  is_delete  Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  // Relasi hanya ke tabel Store, bukan ke Queue
+  store Store @relation(fields: [store_id], references: [id])
 }

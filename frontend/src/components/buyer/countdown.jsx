@@ -1,19 +1,27 @@
 import { useState, useEffect } from "react";
 
-// Komponen ini murni nampilin countdown menuju `expiresAt` (timestamp absolut
-// dari backend, hasil hitungan store.payment_timeout). Gak ngitung ulang durasi
-// sendiri, jadi otomatis ngikutin berapapun timeout yang di-setting toko.
-export default function CountdownTimer({ expiresAt }) {
+// Tambahkan props serverNow (timestamp dari backend saat data di-fetch)
+export default function CountdownTimer({ expiresAt, serverNow }) {
   const [timeLeft, setTimeLeft] = useState(0);
 
   useEffect(() => {
-    if (!expiresAt) return;
+    if (!expiresAt || !serverNow) return;
 
     const expiryTime = new Date(expiresAt).getTime();
+    const serverTime = new Date(serverNow).getTime();
+    const localTimeAtFetch = new Date().getTime();
+    
+    // Hitung selisih jam server dan jam lokal perangkat (bisa minus kalau jam lokal lebih cepat)
+    const timeOffset = serverTime - localTimeAtFetch;
 
     const calculateTimeLeft = () => {
-      const now = new Date().getTime();
-      const difference = expiryTime - now;
+      // Waktu saat ini di perangkat user
+      const localNow = new Date().getTime();
+      
+      // Waktu saat ini versi Server (jam lokal dikoreksi dengan selisih)
+      const realServerNow = localNow + timeOffset; 
+      
+      const difference = expiryTime - realServerNow;
       return difference > 0 ? difference : 0;
     };
 
@@ -28,17 +36,12 @@ export default function CountdownTimer({ expiresAt }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [expiresAt]);
+  }, [expiresAt, serverNow]);
 
-  // Guard: kalau data lama/kosong belum punya expired_at, jangan render apa-apa
-  // daripada nampilin countdown yang salah
   if (!expiresAt) return null;
 
   const isExpired = timeLeft <= 0;
 
-  // FIX: sebelumnya minutes di-modulo 1 jam, jadi timeout > 60 menit
-  // (sekarang bisa di-setting seller) bakal salah tampil (mis. 90 menit jadi "30:00").
-  // Dihitung dari total detik biar gak ada batas atas.
   const totalSeconds = Math.floor(timeLeft / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

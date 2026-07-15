@@ -22,10 +22,11 @@ const getQueueValidation = Joi.object({
   queueId: Joi.number().positive().required(),
   public_id: Joi.string().uuid().required(),
 });
- const cancelQueueValidation = Joi.object({
+const cancelQueueValidation = Joi.object({
   public_id: Joi.string().required(),
   queueId: Joi.number().required(), // Pakai .string() kalau UUID, atau .number() kalau Int
   guest_id: Joi.string().required(),
+  reason: Joi.string().optional().max(100),
 });
 export {
   createQueueValidation,

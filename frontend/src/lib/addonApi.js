@@ -1,7 +1,7 @@
 import { apiPrivate } from "./api.js";
 
 export const getAddonGroup = async (addonId) => {
-  const response = await apiPrivate.get(`/addon-group/${addonId}`);
+  const response = await apiPrivate.get(`/addon-groups/${addonId}`);
   return response.data.data;
 };
 export const editAddonGroup = async (payload) => {
