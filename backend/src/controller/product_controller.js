@@ -53,7 +53,18 @@ const updateProductInfo = async (req, res, next) => {
     next(e);
   }
 };
+const updateProductAvailability = async (req, res, next) => {
+  try {
+    const result = await productService.updateProductAvailability(req.user.id, {
+      productId: req.params.productId,
+      is_available: req.body.is_available,
+    });
 
+    res.status(200).json({ data: result });
+  } catch (e) {
+    next(e);
+  }
+};
 const updateProductImage = async (req, res, next) => {
   try {
     const result = await productService.updateProductImage(
@@ -72,5 +83,6 @@ export default {
   updateProductInfo,
   getProduct,
   getAllProducts,
+  updateProductAvailability,
   createProduct,
 };

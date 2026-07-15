@@ -74,7 +74,7 @@ userRouter.patch(
 );
 userRouter.patch(
   "/api/products/:productId/availability",
-  sellerController.updateAvailability,
+  productController.updateProductAvailability,
 );
 userRouter.get("/api/all-products/:publicId", productController.getAllProducts);
 // ==========================================

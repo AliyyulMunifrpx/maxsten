@@ -4,6 +4,8 @@ import {
   createProductValidation,
   getAllProductValidation,
   getProductValidation,
+  updateAvailabilityValidation,
+  updateProductValidation,
 } from "../validation/product_validation.js";
 import { validate } from "../validation/validation.js";
 
@@ -379,10 +381,38 @@ const updateProductImage = async (userId, productId, file) => {
     select: { id: true, name: true, image_url: true },
   });
 };
+
+const updateProductAvailability = async (userId, request) => {
+  const req = validate(updateAvailabilityValidation, request);
+
+  const product = await prisma.product.findFirst({
+    where: {
+      id: req.productId,
+      is_delete: false,
+      store: {
+        user_id: userId,
+        is_delete: false,
+      },
+    },
+  });
+
+  if (!product) {
+    throw new ResponseError(
+      404,
+      "Produk tidak ditemukan atau bukan milik tokomu.",
+    );
+  }
+
+  return await prisma.product.update({
+    where: { id: req.productId },
+    data: { is_available: req.is_available },
+  });
+};
 export default {
   updateProductImage,
   createProduct,
   getProduct,
   getAllProducts,
   updateProductInfo,
+  updateProductAvailability,
 };

@@ -49,18 +49,7 @@ const getStore = async (req, res, next) => {
     next(e);
   }
 };
-const updateAvailability = async (req, res, next) => {
-  try {
-    const result = await sellerService.updateProductAvailability(req.user.id, {
-      productId: req.params.productId,
-      is_available: req.body.is_available,
-    });
 
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
 const createCancelReason = async (req, res, next) => {
   try {
     // Asumsi req.user.id didapat dari middleware auth JWT/Session lu
@@ -91,6 +80,5 @@ export default {
   getAllQueue,
   editQueueStatus,
   getStore,
-  updateAvailability,
   createCancelReason,
 };

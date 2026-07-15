@@ -32,9 +32,14 @@ const updateProductValidation = Joi.object({
     .optional(),
   addon_group_ids: Joi.array().items(Joi.string().uuid()).optional(),
 });
+const updateAvailabilityValidation = Joi.object({
+  productId: Joi.string().required(),
+  is_available: Joi.boolean().required(),
+});
 export {
   getProductValidation,
+  updateAvailabilityValidation,
   getAllProductValidation,
   createProductValidation,
-  updateProductValidation
+  updateProductValidation,
 };
