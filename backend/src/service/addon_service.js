@@ -1,5 +1,6 @@
 import {
   createAddonGroupValidation,
+  deleteAddonGroupValidation,
   editAddonGroupsValidation,
   getAddonGroupsValidation,
   getAddonGroupValidation,
@@ -189,7 +190,7 @@ const createAddonGroup = async (request) => {
 
   const req = validate(createAddonGroupValidation, request);
 
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: { user_id: req.userId, is_delete: false },
     select: { id: true },
   });
@@ -218,7 +219,7 @@ const createAddonGroup = async (request) => {
 const getAddonGroups = async (request) => {
   const req = validate(getAddonGroupsValidation, request);
 
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: { user_id: req, is_delete: false },
     select: { id: true },
   });
@@ -238,9 +239,49 @@ const getAddonGroups = async (request) => {
     },
   });
 };
+const deleteAddonGroup = async (userId, request) => {
+  const req = validate(deleteAddonGroupValidation, request);
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
+  const addonGroup = await prisma.addonGroup.findFirst({
+    where: {
+      store_id: store.id,
+      id: req,
+      is_delete: false,
+      store: {
+        user_id: userId,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!addonGroup) {
+    throw new ResponseError(404, "grup addon tidak ditemukan");
+  }
+  await prisma.addonGroup.updateMany({
+    where: {
+      id: addonGroup.id,
+    },
+    data: {
+      is_delete: true,
+    },
+  });
+};
 export default {
   editAddonGroups,
   getAddonGroup,
   createAddonGroup,
   getAddonGroups,
+  deleteAddonGroup,
 };

@@ -6,6 +6,7 @@ import {
   openCloseStoreValidation,
   updateStoreValidation,
   updateOperationalHoursValidation,
+  getStoreValidation,
 } from "../validation/store_validation.js";
 import { validate } from "../validation/validation.js";
 
@@ -88,7 +89,7 @@ const openCloseStore = async (request) => {
 const updateLogo = async (userId, file) => {
   if (!file) throw new ResponseError(400, "Tidak ada file yang diupload");
 
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
   });
   if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
@@ -105,7 +106,7 @@ const updateLogo = async (userId, file) => {
 const updateStoreProfile = async (userId, request) => {
   const req = validate(updateStoreValidation, request);
 
-  const existingStore = await prisma.store.findUnique({
+  const existingStore = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
   });
   if (!existingStore) throw new ResponseError(404, "Toko tidak ditemukan");
@@ -593,6 +594,109 @@ const updateOperationalHours = async (userId, request) => {
   return await getOperationalHours(userId);
 };
 
+const getStore = async (request) => {
+  const userId = validate(getStoreValidation, request);
+
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: {
+      public_id: true,
+      name: true,
+      description: true,
+      address: true,
+      logo_url: true,
+      timezone: true,
+      manual_status: true,
+      manual_updated_at: true,
+      operational_hours: true,
+      // FIX: tambahin ini, biar EditStore.jsx bisa prefill nilai payment_timeout
+      // yang lagi aktif. Sebelumnya field ini gak pernah keikut ke frontend.
+      payment_timeout: true,
+
+      products: {
+        where: {
+          is_delete: false,
+        },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          image_url: true,
+          is_available: true,
+          productAddonGroups: {
+            where: {
+              addon_group: {
+                is_delete: false,
+              },
+            },
+            select: {
+              addon_group: {
+                select: {
+                  id: true,
+                  name: true,
+                  addons: {
+                    where: {
+                      is_delete: false,
+                    },
+                    select: {
+                      id: true,
+                      name: true,
+                      price: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          variants: {
+            where: {
+              is_delete: false,
+            },
+            select: {
+              id: true,
+              name: true,
+              additional_price: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan");
+  }
+
+  const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
+
+  return {
+    ...store,
+    is_open: isStoreOpen,
+  };
+};
+const deleteStore = async (userId) => {
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: { id: true },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
+  await prisma.store.update({
+    where: {
+      id: store.id,
+    },
+    data: {
+      is_delete: true,
+    },
+  });
+};
 export default {
   create,
   openCloseStore,
@@ -601,4 +705,6 @@ export default {
   getStoreHistory,
   getOperationalHours,
   updateOperationalHours,
+  getStore,
+  deleteStore,
 };

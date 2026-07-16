@@ -77,7 +77,19 @@ const updateProductImage = async (req, res, next) => {
     next(e);
   }
 };
-
+const deleteProduct = async (req, res, next) => {
+  try {
+    const result = await productService.deleteProduct(
+      req.user.id,
+      req.params.productId,
+    );
+    res.status(200).json({
+      data: "OK",
+    });
+  } catch (e) {
+    next(e);
+  }
+};
 export default {
   updateProductImage,
   updateProductInfo,
@@ -85,4 +97,5 @@ export default {
   getAllProducts,
   updateProductAvailability,
   createProduct,
+  deleteProduct,
 };

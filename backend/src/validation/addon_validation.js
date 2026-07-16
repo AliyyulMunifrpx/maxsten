@@ -27,8 +27,9 @@ const createAddonGroupValidation = Joi.object({
 });
 
 const getAddonGroupsValidation = Joi.number().required().integer().positive();
-
+const deleteAddonGroupValidation = Joi.string().uuid().required();
 export {
+  deleteAddonGroupValidation,
   getAddonGroupValidation,
   editAddonGroupsValidation,
   createAddonGroupValidation,

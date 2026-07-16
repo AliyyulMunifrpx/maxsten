@@ -101,8 +101,31 @@ const updateOperationalHours = async (req, res, next) => {
     next(e);
   }
 };
+
+const getStore = async (req, res, next) => {
+  try {
+    const store = await storeService.getStore(req.user.id);
+    res.status(200).json({
+      data: store,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+const deleteStore = async (req, res, next) => {
+  try {
+    const result = await storeService.deleteStore(req.user.id);
+    res.status(200).json({
+      data: "OK",
+    });
+  } catch (e) {
+    next(e);
+  }
+};
 export default {
+  getStore,
   create,
+  deleteStore,
   openCloseStore,
   updateLogo,
   updateStoreProfile,

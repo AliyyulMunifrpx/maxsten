@@ -11,6 +11,15 @@ import { validate } from "../validation/validation.js";
 
 const getProduct = async (userId, request) => {
   const req = validate(getProductValidation, request);
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
   const product = await prisma.product.findFirst({
     where: {
       id: req,
@@ -72,6 +81,15 @@ const getProduct = async (userId, request) => {
 };
 const getAllProducts = async (userId, request) => {
   const publicId = validate(getAllProductValidation, request);
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
   return await prisma.product.findMany({
     where: {
       store: {
@@ -150,7 +168,7 @@ const createProduct = async (request, file) => {
 
   const req = validate(createProductValidation, request);
 
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: { user_id: req.userId, is_delete: false },
     select: { id: true },
   });
@@ -255,7 +273,15 @@ const createProduct = async (request, file) => {
 
 const updateProductInfo = async (userId, productId, request) => {
   const req = validate(updateProductValidation, request);
-
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
   const product = await prisma.product.findFirst({
     where: {
       id: productId,
@@ -365,7 +391,15 @@ const updateProductInfo = async (userId, productId, request) => {
 const updateProductImage = async (userId, productId, file) => {
   if (!file)
     throw new ResponseError(400, "Tidak ada file gambar yang diupload");
-
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
   const product = await prisma.product.findFirst({
     where: {
       id: productId,
@@ -384,7 +418,15 @@ const updateProductImage = async (userId, productId, file) => {
 
 const updateProductAvailability = async (userId, request) => {
   const req = validate(updateAvailabilityValidation, request);
-
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+  });
+  if (!store) {
+    throw new ResponseError(404, "toko tidak ditemukan");
+  }
   const product = await prisma.product.findFirst({
     where: {
       id: req.productId,
@@ -408,6 +450,53 @@ const updateProductAvailability = async (userId, request) => {
     data: { is_available: req.is_available },
   });
 };
+const deleteProduct = async (userId, productId) => {
+  // 1. Cari toko milik user yang sedang login
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: { id: true },
+  });
+
+  if (!store) {
+    throw new ResponseError(404, "Toko tidak ditemukan");
+  }
+
+  // 2. Pastikan produk yang mau dihapus ada dan memang milik toko tersebut
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      store_id: store.id,
+      is_delete: false,
+      store: {
+        user_id: userId,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!product) {
+    throw new ResponseError(404, "Produk tidak ditemukan atau sudah dihapus");
+  }
+
+  // 3. Lakukan Soft Delete
+  return await prisma.product.update({
+    where: { id: product.id },
+    data: {
+      is_delete: true,
+      variants: {
+        updateMany: {
+          where: { is_delete: false },
+          data: { is_delete: true },
+        },
+      },
+    },
+  });
+};
 export default {
   updateProductImage,
   createProduct,
@@ -415,4 +504,5 @@ export default {
   getAllProducts,
   updateProductInfo,
   updateProductAvailability,
+  deleteProduct,
 };

@@ -39,20 +39,9 @@ const editQueueStatus = async (req, res, next) => {
   }
 };
 
-const getStore = async (req, res, next) => {
-  try {
-    const store = await sellerService.getStore(req.user.id);
-    res.status(200).json({
-      data: store,
-    });
-  } catch (e) {
-    next(e);
-  }
-};
 
 
 export default {
   getAllQueue,
   editQueueStatus,
-  getStore,
 };

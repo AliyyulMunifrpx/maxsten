@@ -55,10 +55,23 @@ const getAddonGroups = async (req, res, next) => {
     next(e);
   }
 };
-
+const deleteAddonGroup = async (req, res, next) => {
+  try {
+    const result = await addonService.deleteAddonGroup(
+      req.user.id,
+      req.params.addonGroupId,
+    );
+    res.status(200).json({
+      data: "OK",
+    });
+  } catch (e) {
+    next(e);
+  }
+};
 export default {
   getAddonGroup,
   editAddonGroup,
   createAddonGroup,
   getAddonGroups,
+  deleteAddonGroup
 };

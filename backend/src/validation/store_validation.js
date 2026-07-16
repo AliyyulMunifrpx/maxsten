@@ -38,9 +38,12 @@ const updateOperationalHoursValidation = Joi.object({
     .min(1)
     .required(), // Minimal kirim 1 hari, maksimal 7
 });
+const getStoreValidation = Joi.number().integer().positive().required();
+
 export {
   createStoreValidation,
   openCloseStoreValidation,
   updateStoreValidation,
   updateOperationalHoursValidation,
+  getStoreValidation,
 };

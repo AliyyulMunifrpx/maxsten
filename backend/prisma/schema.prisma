@@ -29,7 +29,7 @@ model User {
   otp_expired_at DateTime?
 
   contacts Contact[]
-  store    Store?
+  store    Store[]
 
   @@map("users")
 }
@@ -73,7 +73,7 @@ model Store {
   manual_status         String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
   manual_updated_at     DateTime? // Waktu terakhir tombol manual ditekan
   logo_url              String?                @db.VarChar(255)
-  user_id               Int                    @unique
+  user_id               Int
   is_delete             Boolean                @default(false)
   user                  User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
   timezone              String                 @default("Asia/Jakarta")

@@ -25,13 +25,13 @@ userRouter.delete("/api/users/logout", userController.logout);
 // 🏪 STORE API
 // ==========================================
 // Profile & Status
-userRouter.get("/api/stores/me", sellerController.getStore);
+userRouter.get("/api/stores/me", storeController.getStore);
 userRouter.post(
   "/api/stores",
   uploadLogo.single("logo"),
   storeController.create,
 );
-
+userRouter.patch("/api/delete-store", storeController.deleteStore);
 userRouter.patch("/api/stores/me", storeController.updateStoreProfile);
 
 userRouter.patch(
@@ -75,6 +75,10 @@ userRouter.patch(
   productController.updateProductAvailability,
 );
 userRouter.get("/api/all-products/:publicId", productController.getAllProducts);
+userRouter.patch(
+  "/api/delete-product/:productId",
+  productController.deleteProduct,
+);
 // ==========================================
 // 🧩 ADDONS API
 // ==========================================
@@ -85,7 +89,10 @@ userRouter.patch(
   "/api/addon-group/edit/:addonGroupId",
   addonController.editAddonGroup,
 );
-
+userRouter.patch(
+  "/api/delete-addon-group/:addonGroupId",
+  addonController.deleteAddonGroup,
+);
 // ==========================================
 // 📋 QUEUE
 // ==========================================
@@ -107,4 +114,12 @@ userRouter.post(
   reasonController.createCancelReason,
 );
 userRouter.get("/api/seller/cancel-reasons", reasonController.getCancelReasons);
+userRouter.patch(
+  "/api/seller/update-reason",
+  reasonController.updateCancelReason,
+);
+userRouter.patch(
+  "/api/delete-template/:templateId",
+  reasonController.deleteReasonTemplate,
+);
 export { userRouter };

@@ -184,21 +184,6 @@ const getDashboard = async (request) => {
     }),
   ]);
 
-  const trend = {
-    omzet: calcTrend(
-      aggSelesaiThisMonth._sum.total_price || 0,
-      aggSelesaiPrevMonth._sum.total_price || 0,
-    ),
-    pesanan_selesai: calcTrend(
-      aggSelesaiThisMonth._count,
-      aggSelesaiPrevMonth._count,
-    ),
-    pesanan_batal: calcTrend(
-      aggBatalThisMonth._count,
-      aggBatalPrevMonth._count,
-    ),
-  };
-
   // Kalkulasi status buka/tutup secara realtime
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
 
@@ -220,7 +205,7 @@ const getDashboard = async (request) => {
       omzet: aggSelesai._sum.total_price || 0,
       pesanan_selesai: aggSelesai._count || 0,
       pesanan_batal: aggBatal._count || 0,
-      trend, // TAMBAHAN: persentase MTD bulan ini vs bulan lalu (capped)
+     
     },
   };
 };

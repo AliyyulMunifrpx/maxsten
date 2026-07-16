@@ -52,36 +52,6 @@ function StatMetric({ label, value }) {
   );
 }
 
-// KOMPONEN BARU: Untuk menampilkan trend persentase
-function TrendIndicator({ value, isInverse = false }) {
-  if (value === undefined || value === null) return null;
-  
-  if (value === 0) {
-    return (
-      <span className="ml-2 inline-flex items-center rounded-full bg-[#F1EFE9] px-2 py-0.5 text-[10px] font-bold text-[#8A8375]">
-        0%
-      </span>
-    );
-  }
-
-  const isPositive = value > 0;
-  // Jika isInverse true (misal untuk pesanan batal), nilai positif = buruk (merah), nilai negatif = baik (hijau)
-  const isGood = isInverse ? !isPositive : isPositive;
-
-  const colorClass = isGood
-    ? "bg-[#E7F3EC] text-[#147356]"
-    : "bg-[#FBEAE7] text-[#B23A2E]";
-  const arrow = isPositive ? "↑" : "↓";
-
-  return (
-    <span
-      className={`ml-2 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${colorClass}`}
-    >
-      {arrow} {Math.abs(value)}%
-    </span>
-  );
-}
-
 const TABS = [
   { key: "queues", label: "Antrean" },
   { key: "products", label: "Produk" },
@@ -395,9 +365,11 @@ export default function DashboardSeller() {
             </p>
             <div className="mt-2 flex items-baseline gap-2">
               <p className="font-mono text-2xl font-bold text-[#147356] sm:text-3xl">
-                Rp {(dashboardData.sales_today?.omzet || 0).toLocaleString("id-ID")}
+                Rp{" "}
+                {(dashboardData.sales_today?.omzet || 0).toLocaleString(
+                  "id-ID",
+                )}
               </p>
-              <TrendIndicator value={dashboardData.sales_today?.trend?.omzet} />
             </div>
           </div>
 
@@ -414,7 +386,6 @@ export default function DashboardSeller() {
               <span className="text-sm font-semibold text-[#8A8375]">
                 transaksi
               </span>
-              <TrendIndicator value={dashboardData.sales_today?.trend?.pesanan_selesai} />
             </div>
           </div>
 
@@ -431,10 +402,6 @@ export default function DashboardSeller() {
               <span className="text-sm font-semibold text-[#8A8375]">
                 transaksi
               </span>
-              <TrendIndicator 
-                value={dashboardData.sales_today?.trend?.pesanan_batal} 
-                isInverse={true} 
-              />
             </div>
           </div>
         </div>
@@ -616,16 +583,10 @@ export default function DashboardSeller() {
               </h2>
               <div className="flex gap-3 text-sm">
                 <Link
-                  to={`/seller/all-addons/${dashboardData.public_id}`}
+                  to={`/seller/addon-groups`}
                   className="flex items-center text-[#C98A1F] hover:underline"
                 >
                   Semua Addon
-                </Link>
-                <Link
-                  to="/seller/create-addon"
-                  className="rounded-lg bg-[#1C2321] px-4 py-2 font-semibold text-white transition hover:bg-[#333B38]"
-                >
-                  + Tambah
                 </Link>
               </div>
             </div>
@@ -673,12 +634,6 @@ export default function DashboardSeller() {
                         </li>
                       )}
                     </ul>
-                    <Link
-                      to={`/seller/edit-addon-group/${group.id}`}
-                      className="block border-t border-[#E4E1D8] px-4 py-2.5 text-center text-xs font-semibold text-[#8A8375] transition hover:bg-[#FAF9F6] hover:text-[#1C2321]"
-                    >
-                      Edit Grup Addon
-                    </Link>
                   </div>
                 ))}
               </div>

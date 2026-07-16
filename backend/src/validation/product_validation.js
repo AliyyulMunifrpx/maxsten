@@ -1,7 +1,6 @@
 import Joi from "joi";
 const getProductValidation = Joi.string().uuid().required();
 const getAllProductValidation = Joi.string().required();
-const deleteProduct = Joi.string().required();
 
 const createProductValidation = Joi.object({
   userId: Joi.number().required().integer().positive(),
@@ -36,10 +35,12 @@ const updateAvailabilityValidation = Joi.object({
   productId: Joi.string().required(),
   is_available: Joi.boolean().required(),
 });
+const deleteProduct = Joi.string().uuid().required();
 export {
   getProductValidation,
   updateAvailabilityValidation,
   getAllProductValidation,
   createProductValidation,
   updateProductValidation,
+  deleteProduct,
 };

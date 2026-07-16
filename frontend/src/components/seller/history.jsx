@@ -318,7 +318,7 @@ export default function StoreHistory() {
             {/* ROW 2: CHARTS */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               {/* Kolom Kiri: Tren Omzet Bulanan */}
-              <div className="flex flex-col rounded-2xl border border-[#E4E1D8] bg-white shadow-sm lg:col-span-2">
+              <div className="flex  bg-gradient-to-b from-orange-600 to-yellow-600 flex-col rounded-2xl border border-[#E4E1D8] bg-white shadow-sm lg:col-span-2">
                 <div className="border-b border-[#E4E1D8] px-6 py-5">
                   <h2 className="text-base font-bold">
                     Tren Penjualan Bulanan
@@ -345,12 +345,12 @@ export default function StoreHistory() {
                             >
                               <stop
                                 offset="5%"
-                                stopColor="#147356"
+                                stopColor="#ffffff"
                                 stopOpacity={0.4}
                               />
                               <stop
                                 offset="95%"
-                                stopColor="#147356"
+                                stopColor="#ffffff"
                                 stopOpacity={0}
                               />
                             </linearGradient>
@@ -358,32 +358,32 @@ export default function StoreHistory() {
                           <CartesianGrid
                             strokeDasharray="3 3"
                             vertical={false}
-                            stroke="#E4E1D8"
+                            stroke="#ffffff"
                           />
                           <XAxis
                             dataKey="label"
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fontSize: 11, fill: "#8A8375" }}
+                            tick={{ fontSize: 11, fill: "#ffffff" }}
                             dy={10}
                           />
                           <YAxis
                             axisLine={false}
                             tickLine={false}
-                            tick={{ fontSize: 11, fill: "#8A8375" }}
+                            tick={{ fontSize: 11, fill: "#ffffff" }}
                             tickFormatter={(val) =>
                               val >= 1000 ? `${val / 1000}k` : val
                             }
                           />
                           <RechartsTooltip
                             cursor={{
-                              stroke: "#C98A1F",
+                              stroke: "#000000",
                               strokeWidth: 1,
                               strokeDasharray: "4 4",
                             }}
                             contentStyle={{
                               borderRadius: "12px",
-                              border: "1px solid #E4E1D8",
+                              border: "1px solid #ff9100",
                               boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
                             }}
                             formatter={(value) => [
@@ -391,15 +391,18 @@ export default function StoreHistory() {
                               "Omzet",
                             ]}
                             labelStyle={{
-                              color: "#8A8375",
+                              color: "#000000",
                               marginBottom: "4px",
                               fontWeight: "bold",
+                            }}
+                            itemStyle={{
+                              color: "#000000",
                             }}
                           />
                           <Area
                             type="monotone"
                             dataKey="omzet"
-                            stroke="#147356"
+                            stroke="#ffffff"
                             strokeWidth={3}
                             fillOpacity={1}
                             fill="url(#colorOmzet)"

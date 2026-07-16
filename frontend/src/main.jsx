@@ -10,7 +10,6 @@ import Login from "./components/users/login.jsx";
 import ProtectedRoute from "./components/layout/protected-route.jsx";
 import CreateStore from "./components/seller/create-store.jsx";
 import CreateProduct from "./components/seller/create-product.jsx";
-import CreateAddon from "./components/seller/create-addon.jsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import DisplayProduct from "./components/buyer/display-product.jsx";
 import SocketManager from "./components/layout/socket-manajer.jsx";
@@ -23,9 +22,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import EditProfile from "./components/users/settings";
 import StoreHistory from "./components/seller/history.jsx";
 import EditJadwal from "./components/seller/edit-operational-hours.jsx";
-import EditAddon from "./components/seller/addon/edit-addon.jsx";
+import AddonGroups from "./components/seller/addon/edit-addon.jsx";
 import AllProduct from "./components/seller/product/allProduct.jsx";
-import CreateCancelReason from "./components/seller/store/cancelReasonTemplate.jsx";
+import CancelReasons from "./components/seller/reason/cancel-reason.jsx";
 
 const queryClient = new QueryClient();
 
@@ -51,21 +50,22 @@ createRoot(document.getElementById("root")).render(
                 <Route path="history" element={<StoreHistory />} />
                 <Route path="create-store" element={<CreateStore />} />
                 <Route path="create-product" element={<CreateProduct />} />
-                <Route path="create-addon" element={<CreateAddon />} />
                 <Route path="edit-store" element={<EditStore />} />
                 <Route path="edit-profile" element={<EditProfile />} />
                 <Route path="edit-jadwal" element={<EditJadwal />} />
+
                 <Route
-                  path="create-reason-cancel-templates"
-                  element={<CreateCancelReason />}
+                  path="reason-cancel-templates"
+                  element={<CancelReasons />}
                 />
+
                 <Route
                   path="all-products/:publicId"
                   element={<AllProduct></AllProduct>}
                 ></Route>
                 <Route
-                  path="edit-addon-group/:id"
-                  element={<EditAddon></EditAddon>}
+                  path="addon-groups/"
+                  element={<AddonGroups></AddonGroups>}
                 ></Route>
                 <Route
                   path="products/:productId/edit"

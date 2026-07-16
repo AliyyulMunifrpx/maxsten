@@ -10,11 +10,9 @@ const editQueueStatusValidation = Joi.object({
   status: Joi.string().required(),
   reason: Joi.string().optional().max(100),
 });
-const getStoreValidation = Joi.number().integer().positive().required();
 
 
 export {
   getAllQueueValidation,
   editQueueStatusValidation,
-  getStoreValidation,
 };

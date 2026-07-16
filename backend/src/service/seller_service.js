@@ -4,7 +4,6 @@ import { calculateStoreStatus } from "../utils/store_status_helper.js";
 import {
   editQueueStatusValidation,
   getAllQueueValidation,
-  getStoreValidation,
 } from "../validation/seller_validation.js";
 import { validate } from "../validation/validation.js";
 
@@ -88,7 +87,6 @@ const editQueueStatus = async (request) => {
   return prisma.queue.update({
     where: {
       id: req.id,
-      
     },
     data: {
       status: req.status,
@@ -104,92 +102,7 @@ const editQueueStatus = async (request) => {
   });
 };
 
-const getStore = async (request) => {
-  const userId = validate(getStoreValidation, request);
-
-  const store = await prisma.store.findUnique({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-    select: {
-      public_id: true,
-      name: true,
-      description: true,
-      address: true,
-      logo_url: true,
-      timezone: true,
-      manual_status: true,
-      manual_updated_at: true,
-      operational_hours: true,
-      // FIX: tambahin ini, biar EditStore.jsx bisa prefill nilai payment_timeout
-      // yang lagi aktif. Sebelumnya field ini gak pernah keikut ke frontend.
-      payment_timeout: true,
-
-      products: {
-        where: {
-          is_delete: false,
-        },
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          image_url: true,
-          is_available: true,
-          productAddonGroups: {
-            where: {
-              addon_group: {
-                is_delete: false,
-              },
-            },
-            select: {
-              addon_group: {
-                select: {
-                  id: true,
-                  name: true,
-                  addons: {
-                    where: {
-                      is_delete: false,
-                    },
-                    select: {
-                      id: true,
-                      name: true,
-                      price: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          variants: {
-            where: {
-              is_delete: false,
-            },
-            select: {
-              id: true,
-              name: true,
-              additional_price: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!store) {
-    throw new ResponseError(404, "Toko tidak ditemukan");
-  }
-
-  const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
-
-  return {
-    ...store,
-    is_open: isStoreOpen,
-  };
-};
-
 export default {
   getAllQueue,
   editQueueStatus,
-  getStore,
 };

@@ -59,16 +59,6 @@ export const updateProductInfo = async ({ productId, data }) => {
   return response.data;
 };
 
-export const getAddonGroups = async () => {
-  const response = await apiPrivate.get(`/stores/get-addon-groups`);
-  return response.data.data;
-};
-
-export const createAddonGroup = async (data) => {
-  const response = await apiPrivate.post(`/stores/addon-groups`, data);
-  return response.data;
-};
-
 // 2. Update Foto Produk (FormData)
 export const updateProductImage = async ({ productId, formData }) => {
   const response = await apiPrivate.patch(
@@ -134,4 +124,16 @@ export const createCancelReasonApi = async ({ reason }) => {
 export const getCancelReasons = async () => {
   const response = await apiPrivate.get("/seller/cancel-reasons");
   return response.data.data;
+};
+export const updateCancelReasonApi = async (data) => {
+  const response = await apiPrivate.patch(`/seller/update-reason`, data);
+  return response.data;
+};
+export const deleteCancelReason = async (templateId) => {
+  const response = await apiPrivate.patch(`/delete-template/${templateId}`);
+  return response.data;
+};
+export const deleteStore = async () => {
+  const response = await apiPrivate.patch(`/delete-store`);
+  return response.data;
 };
