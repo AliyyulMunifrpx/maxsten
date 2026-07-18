@@ -71,8 +71,9 @@ export const updateProductImage = async ({ productId, formData }) => {
     },
   );
   return response.data;
-};
-export const getStoreHistory = async ({
+};export const getStoreHistory = async ({
+  month,  
+  year,   
   filter = "all",
   page = 1,
   limit = 10,
@@ -82,6 +83,8 @@ export const getStoreHistory = async ({
 }) => {
   const response = await apiPrivate.get("/stores/history", {
     params: {
+      month, 
+      year,  
       filter,
       page,
       limit,

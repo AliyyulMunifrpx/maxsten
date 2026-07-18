@@ -10,7 +10,6 @@ import { socketAuth } from "./middleware/socket_auth.js";
 import { registerSellerEvents } from "./socket/seller_events.js";
 import { registerBuyerEvents } from "./socket/buyer_events.js";
 import { registerDebugEvents } from "./socket/debug_events.js";
-
 // 2. Bungkus Express 'web' lu pakai HTTP Server
 const httpServer = createServer(web);
 const io = new Server(httpServer, {
@@ -19,6 +18,7 @@ const io = new Server(httpServer, {
     credentials: true, // Biar Cookie bisa dikirim ke backend
   },
 });
+
 
 io.use(socketAuth);
 

@@ -1,6 +1,7 @@
 import { useState, useMemo, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getStoreHistory } from "../../lib/sellerApi.js"; // Sesuaikan path
+import { useQuery, useMutation } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { getStoreHistory } from "../../lib/sellerApi.js"; // Pastikan generateAiReport di-import!
 
 import {
   AreaChart,
@@ -13,14 +14,29 @@ import {
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from "recharts";
+import { generateAiReport } from "../../lib/aiApi.js";
 
 // --- KOMPONEN KECIL ---
 
 function TrendBadge({ value, inverse = false }) {
   if (value === undefined || value === null || Number.isNaN(value)) return null;
+
   // Jika inverse (misal pembatalan), tren naik itu merah, turun itu hijau.
   const isPositiveNumber = value >= 0;
   const isGood = inverse ? !isPositiveNumber : isPositiveNumber;
+  const absValue = Math.abs(value);
+
+  // LOGIKA BARU: Format tampilan biar UI rapi kalau angkanya gila-gilaan
+  let displayText;
+  if (absValue > 999) {
+    // Kalau di atas 999%, ubah jadi format "x Lipat"
+    // Contoh: 6300% itu artinya naik 63x (total jadi 64x lipat)
+    const multiplier = Math.round(absValue / 100 + 1);
+    displayText = `${isPositiveNumber ? "▲" : "▼"} ${multiplier}x Lipat`;
+  } else {
+    // Kalau wajar, tetap pakai persen
+    displayText = `${isPositiveNumber ? "▲" : "▼"} ${absValue.toFixed(1)}%`;
+  }
 
   return (
     <span
@@ -28,11 +44,10 @@ function TrendBadge({ value, inverse = false }) {
         isGood ? "bg-[#E7F3EC] text-[#147356]" : "bg-[#FBEAE7] text-[#B23A2E]"
       }`}
     >
-      {isPositiveNumber ? "▲" : "▼"} {Math.abs(value).toFixed(1)}%
+      {displayText}
     </span>
   );
 }
-
 function MetricCard({
   title,
   value,
@@ -54,7 +69,6 @@ function MetricCard({
     colorClass = "text-[#B23A2E]";
   }
 
-  // Khusus untuk waktu tunggu karena formatnya string
   if (typeof value === "string") displayValue = value;
 
   return (
@@ -152,15 +166,16 @@ function buildMonthOptions(storeCreatedAt, currentYear, currentMonth) {
 
 export default function StoreHistory() {
   const [selectedMonthOpt, setSelectedMonthOpt] = useState(null);
-
   const [selectedDay, setSelectedDay] = useState(() => {
     return String(new Date().getDate()).padStart(2, "0");
   });
-
   const [page, setPage] = useState(1);
   const [topPage, setTopPage] = useState(1);
   const [txStatus, setTxStatus] = useState("ALL");
   const topLimit = 10;
+
+  // STATE UNTUK AI REPORT
+  const [aiReportData, setAiReportData] = useState(null);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: [
@@ -183,7 +198,7 @@ export default function StoreHistory() {
       }),
     keepPreviousData: true,
   });
-  console.log(data);
+  console.log(JSON.stringify(data))
   const meta = data?.meta;
   const summary = data?.summary;
   const charts = data?.charts;
@@ -198,11 +213,13 @@ export default function StoreHistory() {
     );
   }, [meta]);
 
-  const selectedValue = meta
-    ? `${meta.selectedYear}-${String(meta.selectedMonth).padStart(2, "0")}`
-    : "";
+  const activeYear = selectedMonthOpt?.year || meta?.selectedYear;
+  const activeMonth = selectedMonthOpt?.month || meta?.selectedMonth;
 
-  // Transformasi data untuk Chart Jam Sibuk sesuai tanggal yang dipilih
+  const selectedValue =
+    activeYear && activeMonth
+      ? `${activeYear}-${String(activeMonth).padStart(2, "0")}`
+      : "";
   const activeHourlyTraffic = useMemo(() => {
     if (!charts?.trafficHourlyByDate || !selectedDay) return [];
     const rawData =
@@ -219,19 +236,51 @@ export default function StoreHistory() {
     setPage(1);
     setTopPage(1);
 
-    // Ambil waktu saat ini
+    // Reset laporan AI setiap pindah bulan biar ga salah baca data bulan lalu
+    setAiReportData(null);
+
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1; // getMonth() dimulai dari 0
+    const currentMonth = now.getMonth() + 1;
 
-    // Jika user pindah ke bulan yang sama dengan bulan saat ini, set ke tanggal hari ini
-    // Jika pindah ke bulan lalu/lainnya, kembalikan ke tanggal 01
     if (y === currentYear && m === currentMonth) {
       setSelectedDay(String(now.getDate()).padStart(2, "0"));
     } else {
       setSelectedDay("01");
     }
   };
+
+  // --- MUTASI AI REPORT ---
+  const aiMutation = useMutation({
+    mutationFn: async ({ month, year }) => {
+      const res = await generateAiReport(month, year);
+      return res.ai_report; // Nyesuaiin key dari backend JSON format lu
+    },
+    onSuccess: (result) => {
+      setAiReportData(result);
+      toast.success("Analisa AI berhasil dibuat!");
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.errors || "Gagal menghubungi AI.");
+    },
+  });
+
+  const handleGenerateAI = () => {
+    if (!meta) return;
+    aiMutation.mutate({
+      month: selectedMonthOpt?.month || meta.selectedMonth,
+      year: selectedMonthOpt?.year || meta.selectedYear,
+    });
+  };
+
+  // Teks Tombol Dinamis
+  const currentSelectedOption = monthOptions.find(
+    (opt) => opt.value === selectedValue,
+  );
+  const buttonAIText = currentSelectedOption
+    ? `Buat Laporan AI Bulan ${currentSelectedOption.label}`
+    : "Buat Laporan AI";
+
   return (
     <div className="min-h-screen bg-[#FAF9F6] p-4 font-sans text-[#1C2321] sm:p-8 md:p-10">
       <div className="mx-auto max-w-7xl">
@@ -315,15 +364,67 @@ export default function StoreHistory() {
               />
             </div>
 
+            {/* ROW 1.5: AI REPORT GENERATOR */}
+            <div className="flex flex-col gap-5 rounded-2xl border border-[#147356]/20 bg-gradient-to-r from-[#E7F3EC] to-[#FAF9F6] p-6 shadow-sm">
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-[#147356]">
+                    ✨ Asisten AI
+                  </h3>
+                  <p className="mt-1 text-sm text-[#8A8375]">
+                    Dapatkan analisa instan dan strategi jitu untuk toko Anda
+                    bulan ini.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerateAI}
+                  disabled={aiMutation.isPending || !meta}
+                  className="rounded-xl bg-[#147356] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#0F5C44] disabled:opacity-50"
+                >
+                  {aiMutation.isPending
+                    ? "Sedang Menganalisa..."
+                    : buttonAIText}
+                </button>
+              </div>
+
+              {/* TAMPILAN HASIL AI */}
+              {aiReportData && (
+                <div className="rounded-xl border border-[#E4E1D8] bg-white p-5 shadow-sm">
+                  <p className="mb-3 text-sm font-bold text-[#1C2321]">
+                    {aiReportData.greeting}
+                  </p>
+                  <p className="mb-5 text-sm leading-relaxed text-[#1C2321]">
+                    {aiReportData.evaluation}
+                  </p>
+
+                  <div className="rounded-lg bg-[#FAF9F6] p-4">
+                    <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[#C98A1F]">
+                      💡 Saran Perbaikan:
+                    </p>
+                    <ul className="flex flex-col gap-3">
+                      {aiReportData.recommendations?.map((rec, index) => (
+                        <li key={index} className="flex items-start gap-3">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#FCEFDA] text-[10px] font-bold text-[#C98A1F]">
+                            {index + 1}
+                          </span>
+                          <span className="text-sm text-[#1C2321]">{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* ROW 2: CHARTS */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               {/* Kolom Kiri: Tren Omzet Bulanan */}
-              <div className="flex  bg-gradient-to-b from-orange-600 to-yellow-600 flex-col rounded-2xl border border-[#E4E1D8] bg-white shadow-sm lg:col-span-2">
-                <div className="border-b border-[#E4E1D8] px-6 py-5">
+              <div className="flex bg-gradient-to-b from-orange-600 to-yellow-600 flex-col rounded-2xl border border-[#E4E1D8] bg-white shadow-sm lg:col-span-2">
+                <div className="border-b border-[#ffffff]/20 px-6 py-5 text-white">
                   <h2 className="text-base font-bold">
                     Tren Penjualan Bulanan
                   </h2>
-                  <p className="mt-1 text-xs text-[#8A8375]">
+                  <p className="mt-1 text-xs text-white/80">
                     Pergerakan omzet bersih berdasarkan tanggal.
                   </p>
                 </div>
@@ -359,6 +460,7 @@ export default function StoreHistory() {
                             strokeDasharray="3 3"
                             vertical={false}
                             stroke="#ffffff"
+                            opacity={0.3}
                           />
                           <XAxis
                             dataKey="label"
@@ -377,7 +479,7 @@ export default function StoreHistory() {
                           />
                           <RechartsTooltip
                             cursor={{
-                              stroke: "#000000",
+                              stroke: "#ffffff",
                               strokeWidth: 1,
                               strokeDasharray: "4 4",
                             }}
@@ -385,6 +487,7 @@ export default function StoreHistory() {
                               borderRadius: "12px",
                               border: "1px solid #ff9100",
                               boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+                              backgroundColor: "#ffffff",
                             }}
                             formatter={(value) => [
                               `Rp ${(value || 0).toLocaleString("id-ID")}`,
@@ -411,8 +514,8 @@ export default function StoreHistory() {
                       </ResponsiveContainer>
                     </div>
                   ) : (
-                    <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-[#D8D3C4] bg-[#FAF9F6]">
-                      <p className="text-sm font-medium text-[#8A8375]">
+                    <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-[#ffffff]/30 bg-black/5">
+                      <p className="text-sm font-medium text-white/70">
                         Data omzet belum tersedia.
                       </p>
                     </div>

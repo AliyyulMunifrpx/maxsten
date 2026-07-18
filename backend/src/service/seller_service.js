@@ -53,7 +53,6 @@ const getAllQueue = async (request) => {
 
   return queues;
 };
-
 const editQueueStatus = async (request) => {
   const req = validate(editQueueStatusValidation, request);
   const queue = await prisma.queue.findFirst({
@@ -91,6 +90,7 @@ const editQueueStatus = async (request) => {
     data: {
       status: req.status,
       cancellation_reason: req.reason,
+      ...(req.status === "SELESAI" ? { completed_at: new Date() } : {}),
     },
     include: {
       queueDetails: {

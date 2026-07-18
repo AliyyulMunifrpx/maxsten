@@ -8,6 +8,7 @@ import { uploadLogo } from "../middleware/upload_middleware.js";
 import addonController from "../controller/addon_controller.js";
 import dashboardController from "../controller/dashboard_controller.js";
 import reasonController from "../controller/reason_controller.js";
+import aiController from "../controller/ai_controller.js";
 
 const userRouter = express.Router();
 
@@ -122,4 +123,8 @@ userRouter.patch(
   "/api/delete-template/:templateId",
   reasonController.deleteReasonTemplate,
 );
+// ==========================================
+// 📋 AI
+// ==========================================
+userRouter.post("/api/ai-report-generator", aiController.reportGenerator);
 export { userRouter };

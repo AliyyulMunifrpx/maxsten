@@ -292,9 +292,14 @@ const getStoreHistory = async (
 
   const averageOrderValue =
     totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
-
   const calcTrend = (current, previous) => {
-    if (!previous) return 100;
+    // 1. Jika bulan lalu 0 dan bulan ini juga 0 = Tidak ada perubahan (0%)
+    if (previous === 0 && current === 0) return 0;
+
+    // 2. Jika bulan lalu 0, tapi bulan ini ada pemasukan = Naik 100% (karena dibagi 0 itu error/infinity)
+    if (previous === 0 && current > 0) return 100;
+
+    // 3. Jika datanya normal, hitung persentase kenaikan/penurunan
     return Number((((current - previous) / previous) * 100).toFixed(1));
   };
 
