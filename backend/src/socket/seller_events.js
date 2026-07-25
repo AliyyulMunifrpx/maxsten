@@ -14,6 +14,6 @@ export function registerSellerEvents(socket) {
 
     socket.join(room);
 
-    console.log(`${socket.user.username} join ${room}`);
+    console.log(`${socket.user.email} join ${room}`);
   });
 }

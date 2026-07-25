@@ -17,50 +17,18 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 model User {
-  id             Int       @id @default(autoincrement())
-  username       String    @unique @db.VarChar(100)
-  password       String    @db.VarChar(100)
-  name           String    @db.VarChar(100)
-  otp            String?   @db.VarChar(10)
-  otp_expired_at DateTime?
+  id          String @id @default(uuid())
+  supabase_id String @unique
+  email       String @unique @db.VarChar(150) // Jembatan penghubung ke Supabase Auth
+  name        String @db.VarChar(100)
 
-  contacts Contact[]
-  store    Store[]
+  store Store[]
 
   @@map("users")
-}
-
-model Contact {
-  id         Int     @id @default(autoincrement())
-  first_name String  @db.VarChar(100)
-  last_name  String? @db.VarChar(100)
-  email      String? @db.VarChar(100)
-  phone      String? @db.VarChar(100)
-
-  user_id Int
-  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  addresses Address[]
-
-  @@map("contacts")
-}
-
-model Address {
-  id          Int     @id @default(autoincrement())
-  street      String? @db.VarChar(255)
-  city        String? @db.VarChar(100)
-  province    String? @db.VarChar(100)
-  country     String  @db.VarChar(100)
-  postal_code String  @db.VarChar(10)
-
-  contact_id Int
-  contact    Contact @relation(fields: [contact_id], references: [id], onDelete: Cascade)
-
-  @@map("addresses")
 }
 
 model Store {
@@ -69,13 +37,20 @@ model Store {
 
   name                  String                 @db.VarChar(100)
   description           String?                @db.Text
-  address               String                 @db.VarChar(100)
+  street_address        String?                @db.Text // Ketikan manual: nama jalan, nomor, patokan, RT/RW
+  village               String? // Desa / Kelurahan (dari dropdown API)
+  district              String? // Kecamatan (auto-fill API)
+  city                  String? // Kota / Kabupaten (auto-fill API)
+  province              String? // Provinsi (auto-fill API)
+  postal_code           String? // Kodepos 5 digit
+  latitude              Float? // Titik koordinat peta dari Leaflet
+  longitude             Float? // Titik koordinat peta dari Leaflet
   manual_status         String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
   manual_updated_at     DateTime? // Waktu terakhir tombol manual ditekan
   logo_url              String?                @db.VarChar(255)
-  user_id               Int
+  user_id               String?
   is_delete             Boolean                @default(false)
-  user                  User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                  User?                  @relation(fields: [user_id], references: [id], onDelete: SetNull)
   timezone              String                 @default("Asia/Jakarta")
   payment_timeout       Int                    @default(30)
   products              Product[]
@@ -85,6 +60,11 @@ model Store {
   created_at            DateTime               @default(now())
   cancelReasonTemplates CancelReasonTemplate[]
 
+  // NB: aturan "1 toko aktif per user" DIENFORCE MANUAL lewat partial unique
+  // index di migration.sql, BUKAN lewat @@unique di sini (Prisma versi ini
+  // belum support `where` di @@unique). Index di bawah ini cuma buat
+  // performance query filter by user_id, bukan buat enforce uniqueness.
+  @@index([user_id])
   @@map("stores")
 }
 
@@ -103,16 +83,15 @@ model StoreOperationalHour {
 }
 
 model Product {
-  id           String  @id @default(uuid())
-  name         String  @db.VarChar(100)
-  price        Int
-  is_available Boolean @default(true)
-  // FIX 1: Ubah tipe data dari String ke Int biar match dengan Store.id
-  store_id     Int
-  store        Store   @relation(fields: [store_id], references: [id])
-  image_url    String? @db.VarChar(255)
-  is_delete    Boolean @default(false)
-
+  id                 String              @id @default(uuid())
+  name               String              @db.VarChar(100)
+  price              Int
+  is_available       Boolean             @default(true)
+  store_id           Int
+  store              Store               @relation(fields: [store_id], references: [id])
+  image_url          String?             @db.VarChar(255)
+  is_delete          Boolean             @default(false)
+  description        String?             @db.Text
   variants           Variant[]
   productAddonGroups ProductAddonGroup[]
   queueDetail        QueueDetail[]
@@ -200,7 +179,6 @@ model Queue {
 model QueueDetail {
   id String @id @default(uuid())
 
-  // FIX 2: Ubah tipe data dari String ke Int biar match dengan Queue.id
   queue_id Int
 
   product_id      String
@@ -223,6 +201,5 @@ model CancelReasonTemplate {
   is_delete  Boolean  @default(false)
   created_at DateTime @default(now())
 
-  // Relasi hanya ke tabel Store, bukan ke Queue
   store Store @relation(fields: [store_id], references: [id])
 }

@@ -26,14 +26,14 @@ io.use(socketAuth);
 web.set("socketio", io);
 
 io.on("connection", (socket) => {
-  logger.info(`${socket.user.username} connected`);
+  logger.info(`${socket.user.email} connected`);
 
   registerSellerEvents(socket);
 
   registerBuyerEvents(socket);
 
   socket.on("disconnect", () => {
-    logger.info(`${socket.user.username} disconnect`);
+    logger.info(`${socket.user.email} disconnect`);
   });
 });
 startCronJobs(io);

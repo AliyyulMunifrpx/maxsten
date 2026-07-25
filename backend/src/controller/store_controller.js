@@ -1,19 +1,25 @@
+import { ResponseError } from "../error/response_error.js";
 import storeService from "../service/store_service.js";
 
 const create = async (req, res, next) => {
   try {
+    if (typeof req.body.operational_hours === "string") {
+      try {
+        req.body.operational_hours = JSON.parse(req.body.operational_hours);
+      } catch {
+        throw new ResponseError(
+          400,
+          "'operational_hours' must be a valid JSON array of objects",
+        );
+      }
+    }
+
     const result = await storeService.create(
-      {
-        userId: req.user.id,
-        name: req.body.name,
-        description: req.body.description,
-        address: req.body.address,
-        timezone: req.body.timezone,
-      },
+      { ...req.body, userId: req.user.id },
       req.file,
     );
-    console.log(req.body);
-    res.status(200).json({
+
+    res.status(201).json({
       data: result,
     });
   } catch (e) {
@@ -25,8 +31,8 @@ const openCloseStore = async (req, res, next) => {
     const result = await storeService.openCloseStore({
       store_id: req.params.storeId,
       userId: req.user.id,
+      manual_status: req.body.manual_status,
     });
-    console.log(req.params.storeId, req.user.id);
     res.json({
       data: result,
     });
@@ -80,15 +86,6 @@ const getHistory = async (req, res, next) => {
     next(e);
   }
 };
-const getOperationalHours = async (req, res, next) => {
-  try {
-    const result = await storeService.getOperationalHours(req.user.id);
-    res.status(200).json({ data: result });
-  } catch (e) {
-    next(e);
-  }
-};
-
 const updateOperationalHours = async (req, res, next) => {
   try {
     // req.body isinya berupa json: { "operational_hours": [ { day: 0, open_time: "08:00", ... }, ... ] }
@@ -122,6 +119,16 @@ const deleteStore = async (req, res, next) => {
     next(e);
   }
 };
+const postalCode = async (req, res, next) => {
+  try {
+    const result = await storeService.postalCode(req.query.postalCode);
+    res.status(200).json({
+      data: result.data,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
 export default {
   getStore,
   create,
@@ -130,6 +137,6 @@ export default {
   updateLogo,
   updateStoreProfile,
   getHistory,
-  getOperationalHours,
   updateOperationalHours,
+  postalCode,
 };

@@ -2,13 +2,12 @@ import { useState } from "react";
 import { userLogin } from "../../lib/userApi.js";
 import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
-import {  useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { connectToSocket } from "../../lib/socket/socket.js";
 
-
 export default function Login() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
@@ -28,15 +27,21 @@ export default function Login() {
     },
     onError: (error) => {
       const errorCode = error.response?.data?.errors;
-      toast.error(t(`api_errors.${errorCode}`));
-
-      console.error("Login error:", error.message);
+      
+      if (errorCode === "ERR_UNVERIFIED_EMAIL") {
+        toast.error("Email kamu belum diverifikasi!");
+        // Lempar ke halaman verifikasi dengan bawa emailnya
+        navigate("/verify-email", { state: { email: email } });
+      } else {
+        toast.error("Email atau password salah.");
+      }
+      console.error("Login error:", errorCode);
     },
   });
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    mutation.mutate({ username, password });
+    mutation.mutate({ email, password });
   };
 
   return (
@@ -76,23 +81,23 @@ export default function Login() {
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="flex flex-col gap-1">
             <label
-              htmlFor="username"
+              htmlFor="email"
               className="text-sm font-medium text-gray-700"
             >
-              {t("login.label.username", "Nama Pengguna")}
+              {t("login.label.email", "Email")}
             </label>
             <input
-              id="username"
-              name="username"
+              id="email"
+              name="email"
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               aria-required="true"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
               placeholder={t(
-                "login.placeholder.username",
-                "Masukkan Nama Pengguna",
+                "login.placeholder.email",
+                "Masukkan Email",
               )}
             />
           </div>

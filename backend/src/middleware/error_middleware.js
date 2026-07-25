@@ -1,3 +1,4 @@
+import multer from "multer";
 import { ResponseError } from "../error/response_error.js";
 
 const errorMiddleware = (error, req, res, next) => {
@@ -12,10 +13,26 @@ const errorMiddleware = (error, req, res, next) => {
     });
   }
 
+  // Handle Multer Error (upload file: ukuran, tipe, dll)
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        errors: "Maximum file size: 2MB",
+      });
+    }
+    return res.status(400).json({
+      errors: error.message,
+    });
+  }
+
+  // Handle error dari fileFilter (bukan instance MulterError, tapi Error biasa)
+  if (error.message === "Only image files are allowed!") {
+    return res.status(400).json({
+      errors: error.message,
+    });
+  }
+
   // Handle Server Error (500)
-
-
-  // Jangan kirim error.message asli ke client di mode production
   const isProduction = process.env.NODE_ENV === "production";
   return res.status(500).json({
     errors: isProduction ? "Terjadi kesalahan pada server." : error.message,

@@ -11,18 +11,22 @@ import { validate } from "../validation/validation.js";
 
 const getProduct = async (userId, request) => {
   const req = validate(getProductValidation, request);
+
   const store = await prisma.store.findFirst({
     where: {
       user_id: userId,
       is_delete: false,
     },
   });
+
   if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
+    throw new ResponseError(404, "Store not found");
   }
+
+
   const product = await prisma.product.findFirst({
     where: {
-      id: req,
+      id: req, 
       is_delete: false,
       store: {
         user_id: userId,
@@ -36,48 +40,52 @@ const getProduct = async (userId, request) => {
       image_url: true,
       is_available: true,
       productAddonGroups: {
-        where: {
-          addon_group: {
-            is_delete: false,
-          },
-        },
+        where: { addon_group: { is_delete: false } },
         select: {
           addon_group: {
             select: {
               id: true,
               name: true,
               addons: {
-                where: {
-                  is_delete: false,
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  price: true,
-                },
+                where: { is_delete: false },
+                select: { id: true, name: true, price: true },
               },
             },
           },
         },
       },
-
-      // Nested select lagi buat ngambil varian dari produk tersebut
       variants: {
-        where: {
-          is_delete: false,
-        },
-        select: {
-          id: true,
-          name: true,
-          additional_price: true,
-        },
+        where: { is_delete: false },
+        select: { id: true, name: true, additional_price: true },
       },
     },
   });
+
   if (!product) {
-    throw new ResponseError(404, "product tidak ditemukan");
+    throw new ResponseError(404, "Product not found");
   }
-  return product;
+
+  // 2. Hitung jumlah terjual menggunakan Prisma Aggregate
+  const soldAggregate = await prisma.queueDetail.aggregate({
+    _sum: {
+      quantity: true, // Jumlahkan kolom quantity
+    },
+    where: {
+      product_id: product.id,
+      queue: {
+        status: "SELESAI", // HANYA hitung pesanan yang sudah selesai
+      },
+    },
+  });
+
+  // Jika belum ada yang terjual, hasilnya null, jadi kita set default ke 0
+  const totalSold = soldAggregate._sum.quantity || 0;
+
+  // 3. Gabungkan hasil aggregate ke dalam objek produk yang di-return
+  return {
+    ...product,
+    total_sold: totalSold,
+  };
 };
 const getAllProducts = async (userId, request) => {
   const publicId = validate(getAllProductValidation, request);

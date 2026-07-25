@@ -71,9 +71,10 @@ export const updateProductImage = async ({ productId, formData }) => {
     },
   );
   return response.data;
-};export const getStoreHistory = async ({
-  month,  
-  year,   
+};
+export const getStoreHistory = async ({
+  month,
+  year,
   filter = "all",
   page = 1,
   limit = 10,
@@ -83,8 +84,8 @@ export const updateProductImage = async ({ productId, formData }) => {
 }) => {
   const response = await apiPrivate.get("/stores/history", {
     params: {
-      month, 
-      year,  
+      month,
+      year,
       filter,
       page,
       limit,
@@ -139,4 +140,11 @@ export const deleteCancelReason = async (templateId) => {
 export const deleteStore = async () => {
   const response = await apiPrivate.patch(`/delete-store`);
   return response.data;
+};
+export const postalCode = async (postalCode) => {
+  const response = await apiPrivate.get(
+    `/postal-code?postalCode=${postalCode}`,
+  );
+  return response.data.data;
+
 };

@@ -27,7 +27,7 @@ const getDashboard = async (request) => {
       public_id: true,
       name: true,
       description: true,
-      address: true,
+      city: true,
       logo_url: true,
       manual_status: true,
       manual_updated_at: true,
@@ -205,7 +205,6 @@ const getDashboard = async (request) => {
       omzet: aggSelesai._sum.total_price || 0,
       pesanan_selesai: aggSelesai._count || 0,
       pesanan_batal: aggBatal._count || 0,
-     
     },
   };
 };

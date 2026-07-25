@@ -4,17 +4,20 @@ import buyerController from "../controller/buyer_controller.js";
 import rateLimit from "express-rate-limit";
 const publicRouter = express.Router();
 const queueLimiter = rateLimit({
-  windowMs: 0 * 60 * 1000, // Waktu: 5 menit
+  windowMs: 1000, // Waktu: 1 detik(development)
   max: 1, // Maksimal hit API: 1 kali per IP dalam 5 menit
   message: {
-    errors: 'ERR_TOO_MANY_REQUESTS',
+    errors: "ERR_TOO_MANY_REQUESTS",
   },
 });
 publicRouter.post(`/api/users`, userController.register);
 publicRouter.post(`/api/users/login`, userController.login);
-publicRouter.post("/api/users/forgot-password", userController.forgotPassword);
-publicRouter.post("/api/users/verify-otp", userController.verifyOtp);
-publicRouter.post("/api/stores/queues", queueLimiter, buyerController.createQueue);
+publicRouter.post("/api/users/email", userController.syncEmailWebhook);
+publicRouter.post(
+  "/api/stores/queues",
+  queueLimiter,
+  buyerController.createQueue,
+);
 publicRouter.get(
   "/api/:storeId/products",
   buyerController.getAllProductDisplay,
@@ -22,6 +25,6 @@ publicRouter.get(
 publicRouter.get("/api/:publicId/queues/:queueId", buyerController.getQueue);
 publicRouter.patch(
   "/api/:publicId/queues/:queueId/cancel",
-  buyerController.cancelQueue
+  buyerController.cancelQueue,
 );
 export { publicRouter };

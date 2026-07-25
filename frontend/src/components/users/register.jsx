@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 
 export default function Register() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
@@ -21,7 +21,7 @@ export default function Register() {
     mutationFn: userRegister,
     onSuccess: () => {
       toast.success(t("register.success", "Akun berhasil dibuat"));
-      navigate("/login");
+      navigate("/verify-email", { state: { email: email } });
     },
     onError: (error) => {
       const errorCode = error.response?.data?.errors;
@@ -35,7 +35,7 @@ export default function Register() {
     if (password !== confirmPassword) {
       return toast.error("password tidak sesuai");
     }
-    mutation.mutate({ username, password, name });
+    mutation.mutate({ email, password, name });
   };
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 font-sans">
@@ -97,21 +97,18 @@ export default function Register() {
               htmlFor="username"
               className="text-sm font-medium text-gray-700"
             >
-              {t("register.label.username", "Nama Pengguna")}
+              {t("register.label.email", "Email")}
             </label>
             <input
-              id="username"
-              name="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              id="email"
+              name="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               aria-required="true"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-              placeholder={t(
-                "register.placeholder.username",
-                "Masukkan Nama Pengguna",
-              )}
+              placeholder={t("register.placeholder.email", "Masukkan Email")}
             />
           </div>
 

@@ -18,10 +18,10 @@ userRouter.use(authMiddleware);
 // ==========================================
 // 👤 USER API
 // ==========================================
-userRouter.get("/api/users/me", userController.get);
-userRouter.patch("/api/users/me", userController.update);
-userRouter.delete("/api/users/logout", userController.logout);
-
+userRouter.get("/api/users/me", userController.getUser);
+userRouter.patch("/api/users/update", userController.updateUser);
+userRouter.delete('/api/users/logout', authMiddleware, userController.logout);
+userRouter.delete('/api/users/delete', authMiddleware, userController.deleteUser);
 // ==========================================
 // 🏪 STORE API
 // ==========================================
@@ -33,26 +33,22 @@ userRouter.post(
   storeController.create,
 );
 userRouter.patch("/api/delete-store", storeController.deleteStore);
-userRouter.patch("/api/stores/me", storeController.updateStoreProfile);
+userRouter.patch("/api/stores", storeController.updateStoreProfile);
 
 userRouter.patch(
   "/api/stores/logo",
   uploadLogo.single("logo"),
   storeController.updateLogo,
 );
-userRouter.patch("/api/:storeId/status", storeController.openCloseStore); // Catatan: pertimbangkan ubah ke /api/stores/:storeId/status agar seragam
+userRouter.patch("/api/stores/:storeId/status", storeController.openCloseStore); // Catatan: pertimbangkan ubah ke /api/stores/:storeId/status agar seragam
 userRouter.get("/api/stores/history", storeController.getHistory);
 
 // Operational Hours
-userRouter.get(
-  "/api/stores/operational-hours",
-  storeController.getOperationalHours,
-);
-userRouter.put(
+userRouter.patch(
   "/api/stores/operational-hours",
   storeController.updateOperationalHours,
 );
-
+userRouter.get("/api/postal-code", storeController.postalCode);
 // ==========================================
 // 📦 PRODUCT API
 // ==========================================

@@ -1,5 +1,7 @@
 import { redisClient } from "../application/redis.js";
 import crypto from "crypto";
+import { supabase } from "../application/supabase.js";
+import { prisma } from "../application/database.js";
 
 export async function socketAuth(socket, next) {
   const cookie = socket.handshake.headers.cookie;
@@ -17,15 +19,30 @@ export async function socketAuth(socket, next) {
 
     return next();
   }
-  const hashToken = crypto.createHash("sha256").update(token).digest("hex");
 
   try {
-    const cachedUser = await redisClient.get(hashToken);
-    if (!cachedUser) {
-      return next(new Error("Token tidak valid"));
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
+
+    if (!user) {
+      return next(new Error("Invalid token"));
     }
-    socket.user = JSON.parse(cachedUser);
-    socket.user.role = "seller";
+    const prismaUser = await prisma.user.findUnique({
+      where: {
+        email: user.email,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+    socket.user = {
+      ...prismaUser,
+      role: "seller",
+    };
 
     next();
   } catch (err) {

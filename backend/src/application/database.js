@@ -1,14 +1,14 @@
 import "dotenv/config";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import { logger } from "./logging.js";
-const adapter = new PrismaMariaDb({
-  host: process.env.DATABASE_HOST,
-  user: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD,
-  database: process.env.DATABASE_NAME,
-  connectionLimit: 5,
-});
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+const connectionString = `${process.env.DATABASE_URL}`;
+
+const pool = new Pool({ connectionString });
+
+const adapter = new PrismaPg(pool);
+
 const prisma = new PrismaClient({
   adapter,
   log: [
@@ -30,6 +30,7 @@ const prisma = new PrismaClient({
     },
   ],
 });
+
 prisma.$on("error", (e) => {
   logger.error(e);
 });
@@ -42,4 +43,5 @@ prisma.$on("info", (e) => {
 prisma.$on("query", (e) => {
   logger.info(e);
 });
+
 export { prisma };

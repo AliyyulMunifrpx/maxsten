@@ -2,9 +2,9 @@ import { prisma } from "../application/database.js";
 import nodemailer from "nodemailer";
 import {
   forgotPasswordValidation,
-  getUserValidation,
   loginUserValidation,
   registerUserValidation,
+  updateUserProfileValidation,
   updateUserValidation,
   verifyOtpvalidation,
 } from "../validation/user_validation.js";
@@ -14,188 +14,187 @@ import bcrypt from "bcrypt";
 import { v7 as uuid } from "uuid";
 import crypto from "crypto";
 import { redisClient } from "../application/redis.js";
-
-// Samain nama variabelnya jadi testAccount
-
-const transporter = nodemailer.createTransport({
-  host: "smtp.resend.com",
-  port: 465,
-  secure: true,
-  auth: {
-    user: "resend",
-    pass: process.env.RESEND_API_KEY,
-  },
-});
+import { supabase, supabaseAdmin } from "../application/supabase.js";
 
 const register = async function (request) {
+  // 1. Validasi input dari user
   const user = validate(registerUserValidation, request);
-  const countUser = await prisma.user.count({
+
+  // 2. Cek apakah Email udah dipakai di Prisma
+  const existingUser = await prisma.user.findFirst({
     where: {
-      username: user.username,
+      email: user.email,
     },
   });
-  if (countUser === 1) {
-    throw new ResponseError(400, "ERR_USER_IS_ALREADY_EXIST");
+
+  if (existingUser) {
+    throw new ResponseError(400, "That email address already exists");
   }
-  user.password = await bcrypt.hash(user.password, 10);
+
+  // 3. Daftarin ke Supabase
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: user.email,
+    password: user.password,
+  });
+
+  if (authError) {
+    throw new ResponseError(400, authError.message);
+  }
+
+  // 4. Simpan ke Prisma dengan supabase_id sebagai Jembatan Beton
   return await prisma.user.create({
-    data: user,
+    data: {
+      supabase_id: authData.user.id, // <--- Wajib masuk!
+      email: user.email,
+      name: user.name,
+      // PASSWORD NGGAK USAH DIMASUKIN KE SINI
+    },
     select: {
-      username: true,
+      email: true,
       name: true,
     },
   });
 };
+
 const login = async function (request) {
+  // 1. Validasi input
   const loginRequest = validate(loginUserValidation, request);
 
-  const user = await prisma.user.findUnique({
-    where: { username: loginRequest.username },
-    // Ambil data yang sekiranya kamu butuhkan di middleware nanti
-    select: { id: true, username: true, password: true, name: true },
+  // ==========================================
+  // 2. BIARKAN SATPAM SUPABASE YANG BEKERJA
+  // ==========================================
+  const { data: authData, error: authError } =
+    await supabase.auth.signInWithPassword({
+      email: loginRequest.email,
+      password: loginRequest.password,
+    });
+
+  if (authError) {
+    console.log("SUPABASE LOGIN ERROR:", authError.message, authError.status);
+    if (authError.message.includes("Email not confirmed")) {
+      throw new ResponseError(403, "Email not verified");
+    }
+    throw new ResponseError(401, authError.message);
+  }
+
+  const supabaseId = authData.user.id;
+  const supabaseEmail = authData.user.email;
+
+  // ==========================================
+  // 3. AMBIL BIODATA PAKE ID SUPABASE (Bukan Email)
+  // ==========================================
+  let user = await prisma.user.findUnique({
+    where: { supabase_id: supabaseId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
   });
 
   if (!user) {
-    throw new ResponseError(401, "ERR_USERNAME_OR_PASSWORD_WRONG");
+    throw new ResponseError(404, "User not found");
   }
 
-  const isPasswordValid = await bcrypt.compare(
-    loginRequest.password,
-    user.password,
-  );
-  if (!isPasswordValid) {
-    throw new ResponseError(401, "ERR_USERNAME_OR_PASSWORD_WRONG");
+  // ==========================================
+  // 4. FITUR AUTO-HEALING EMAIL
+  // ==========================================
+  if (user.email !== supabaseEmail) {
+    user = await prisma.user.update({
+      where: { supabase_id: supabaseId },
+      data: { email: supabaseEmail },
+    });
+    console.log(`[AUTO-HEAL] Email synced for ID: ${supabaseId}`);
   }
 
-  // 1. Generate token mentah biasa
-  const rawToken = uuid().toString();
-  const hashToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-  // 2. Siapkan data user yang mau disimpan di sesi Redis (harus berbentuk String)
-  const sessionData = JSON.stringify({
-    id: user.id,
-    username: user.username,
-    name: user.name,
-  });
-
-  // 3. Simpan ke Redis dengan Key = rawToken
-  // EX: 2592000 adalah 30 hari dalam satuan detik (60 * 60 * 24 * 30)
-  await redisClient.set(hashToken, sessionData, "EX", 60 * 60 * 24 * 30);
-  // Gak perlu update tabel token di Prisma lagi!
-
+  // ==========================================
+  // 5. KEMBALIKAN TOKEN RESMI DARI SUPABASE
+  // ==========================================
   return {
-    username: user.username,
-    token: rawToken,
+    email: user.email,
+    name: user.name,
+    access_token: authData.session.access_token,
+    refresh_token: authData.session.refresh_token,
+    access_token_expires: authData.session.expires_in,
   };
 };
-const getUser = async (userId) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, username: true, name: true }, // Jangan pernah nge-select password!
-  });
-
-  if (!user) throw new ResponseError(404, "User tidak ditemukan");
-  return user;
-};
-
-// 2. UPDATE USER
 const updateUser = async (userId, request) => {
-  const req = validate(updateUserValidation, request);
+  // 1. Validasi request dari user
+  const req = validate(updateUserProfileValidation, request);
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) throw new ResponseError(404, "User tidak ditemukan");
-
-  const data = {};
-  if (req.name) data.name = req.name;
-
-  // Kalau user ngisi password baru, kita hash dulu sebelum masuk DB
-  if (req.password) {
-    data.password = await bcrypt.hash(req.password, 10);
-  }
-
-  return await prisma.user.update({
-    where: { id: userId },
-    data: data,
-    select: { id: true, username: true, name: true },
-  });
-};
-
-// 3. LOGOUT (Hapus sesi dari Redis)
-const logout = async (token) => {
-  if (!token) return; // Kalau emang gak ada token, biarin aja
-
-  // Hash tokennya (karena yang disimpan di Redis adalah versi Hash)
-  const hashToken = crypto.createHash("sha256").update(token).digest("hex");
-
-  // Hapus kunci tersebut dari memori Redis
-  await redisClient.del(hashToken);
-};
-const forgotPassword = async (usernamereq) => {
-  const data = validate(forgotPasswordValidation, usernamereq);
-
-  // Ganti count jadi findUnique biar dapet datanya (termasuk user.name)
-  const user = await prisma.user.findUnique({
+  // 2. Cek eksistensi user di database dulu biar Prisma nggak teriak error P2025
+  const totalUserInDatabase = await prisma.user.count({
     where: {
-      username: data.username, // Panggil dari object data hasil validasi
+      id: userId,
     },
   });
 
-  if (!user) {
-    throw new ResponseError(404, "ERR_USER_NOT_FOUND");
+  if (totalUserInDatabase !== 1) {
+    throw new ResponseError(404, "User not found");
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiredAt = new Date();
-  expiredAt.setMinutes(expiredAt.getMinutes() + 5);
-
-  await prisma.user.update({
-    where: { username: data.username },
+  // 3. Kalau aman, baru hajar update
+  return await prisma.user.update({
+    where: {
+      id: userId,
+    },
     data: {
-      otp: otp,
-      otp_expired_at: expiredAt,
+      name: req.name,
     },
+    select: { name: true },
   });
-
-  // 👇 TAMBAHIN BLOK INI BUAT NGIRIM EMAIL
-  const info = await transporter.sendMail({
-    from: "onboarding@resend.dev", // Sesuaikan dengan email pengirim lu
-    to: user.username, // Asumsi username lu adalah email
-    subject: "Reset Password OTP",
-    text: `Kode OTP kamu adalah: ${otp}. Kode ini hangus dalam 5 menit.`,
-  });
-
-  // Sekarang variabel info udah ada, jadi gak akan eror
-  console.log("Preview URL Email Kamu: %s", nodemailer.getTestMessageUrl(info));
-
-  return "OTP successfully sent";
 };
+const syncEmailWebhook = async (payload) => {
+  const { type, record, old_record } = payload;
 
-const verifyOtp = async (request) => {
-  const req = validate(verifyOtpvalidation, request);
+  // Cek kalau ini action UPDATE dan emailnya beneran berubah
+  if (type === "UPDATE" && old_record?.email && record?.email) {
+    if (old_record.email !== record.email) {
+      // Kita cari datanya pakai ID Supabase (record.id), lalu timpa pakai email baru
+      await prisma.user.update({
+        where: { supabase_id: record.id },
+        data: { email: record.email },
+      });
+      console.log(`[WEBHOOK] Successfully updated email for ID: ${record.id}`);
+    }
+  }
+
+  return "OK";
+};
+const logout = async (userId) => {
+  return "OK";
+};
+const deleteUser = async (userId, supabaseId) => {
+  // 1. Pastikan user-nya ada di database kita
   const user = await prisma.user.findUnique({
-    where: { username: req.username },
+    where: { id: userId },
   });
+
   if (!user) {
-    throw new ResponseError(404, "ERR_USER_NOT_FOUND"); // Pakai 404 kalau data gak ketemu
+    throw new ResponseError(404, "User not found");
   }
-  if (user.otp !== req.otp) {
-    throw new ResponseError(400, "ERR_INVALID_OTP"); // Pakai 400 (Bad Request)
+
+  // 2. Hapus dari Supabase Auth (Satpam) pakai Client Dewa
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(supabaseId);
+
+  if (error) {
+    // Kalau gagal di sini, data di Prisma belum disentuh sama sekali — aman
+    console.error("Failed to delete user from Supabase:", error.message);
+    throw new ResponseError(500, "Failed to delete user authentication");
   }
-  // Pakai huruf D besar: new Date()
-  if (user.otp_expired_at < new Date()) {
-    throw new ResponseError(400, "ERR_EXPIRED_OTP");
-  }
+
+  // 3. Hapus dari Prisma (Buku HRD)
+  await prisma.user.delete({
+    where: { id: userId },
+  });
 
   return "OK";
 };
 export default {
   register,
   login,
-  getUser,
   updateUser,
+  syncEmailWebhook,
   logout,
-  forgotPassword,
-  verifyOtp,
+  deleteUser,
 };

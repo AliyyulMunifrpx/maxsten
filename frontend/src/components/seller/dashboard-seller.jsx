@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import QueueCard from "../components/seller/queue-card.jsx";
 import { useEffect, useState, useMemo } from "react";
@@ -62,7 +62,7 @@ const TABS = [
 export default function DashboardSeller() {
   const queryClient = useQueryClient();
   const backendUrl = import.meta.env.VITE_API_PATH.replace("/api", "");
-
+  const [searchParams, setSearchParams] = useSearchParams();
   const [pinnedQueueId, setPinnedQueueId] = useState(null);
   const [activeTab, setActiveTab] = useState("queues");
 
@@ -224,7 +224,17 @@ export default function DashboardSeller() {
     if (!pinned) return queues;
     return [pinned, ...others];
   }, [queues, pinnedQueueId]);
+  useEffect(() => {
+    // Cek apakah di URL ada tulisan "?verified=true"
+    if (searchParams.get("verified") === "true") {
+      toast.success("Email berhasil diverifikasi! Selamat datang di Toko.");
 
+      // Hapus tulisan '?verified=true' dari URL saat itu juga
+      // Biar kalau user iseng pencet F5 (Refresh), toast-nya gak muncul lagi!
+      searchParams.delete("verified");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   useEffect(() => {
     if (queues && pinnedQueueId) {
       const stillExists = queues.some((q) => q.id === pinnedQueueId);
@@ -233,7 +243,7 @@ export default function DashboardSeller() {
     }
   }, [queues, pinnedQueueId]);
 
-  // ================= RENDER =================
+
   if (isLoading)
     return (
       <div className="flex h-screen items-center justify-center bg-[#FAF9F6]">
@@ -267,7 +277,13 @@ export default function DashboardSeller() {
         </div>
       </div>
     );
-
+  if (!dashboardData) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#FAF9F6]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E4E1D8] border-t-[#C98A1F]" />
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-[#FAF9F6]">
       <div className="mx-auto max-w-5xl p-4 sm:p-6">

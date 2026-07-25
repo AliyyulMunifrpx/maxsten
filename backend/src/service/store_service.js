@@ -1,3 +1,4 @@
+import path from "path";
 import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
 import { calculateStoreStatus } from "../utils/store_status_helper.js";
@@ -12,7 +13,8 @@ import { validate } from "../validation/validation.js";
 
 import { getDaysInMonth, subMonths } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
-
+import fs from "fs/promises";
+import assertValidOperationalHours from "../utils/valid_operational_hours.js";
 const create = async (requestBody, file) => {
   const req = validate(createStoreValidation, requestBody);
 
@@ -20,87 +22,170 @@ const create = async (requestBody, file) => {
     where: { user_id: req.userId, is_delete: false },
   });
   if (existingStore > 0) {
-    throw new ResponseError(400, "Kamu sudah memiliki toko.");
+    throw new ResponseError(400, "You already have a store");
   }
 
   const logoPath = file ? `/uploads/${file.filename}` : null;
 
-  return await prisma.store.create({
-    data: {
-      name: req.name,
-      description: req.description,
-      address: req.address,
-      user_id: req.userId,
-      logo_url: logoPath,
-      timezone: req.timezone,
-    },
-    select: {
-      id: true,
-      public_id: true,
-      name: true,
-      logo_url: true,
-    },
-  });
-};
+  // Bikin array jadwal default (7 hari: 0 = Minggu s/d 6 = Sabtu)
+  const defaultOperationalHours = Array.from({ length: 7 }).map((_, index) => ({
+    day: index,
+    open_time: "08:00",
+    close_time: "20:00",
+    is_active: true,
+  }));
+  const operationalHoursData =
+    req.operational_hours && req.operational_hours.length > 0
+      ? req.operational_hours
+      : defaultOperationalHours;
 
+  assertValidOperationalHours(operationalHoursData);
+
+  try {
+    return await prisma.store.create({
+      data: {
+        user_id: req.userId,
+        name: req.name,
+        description: req.description,
+        street_address: req.street_address,
+        village: req.village,
+        city: req.city,
+        district: req.district,
+        province: req.province,
+        postal_code: req.postal_code,
+        latitude: req.latitude,
+        longitude: req.longitude,
+        is_delete: false,
+        logo_url: logoPath,
+        timezone: req.timezone,
+        operational_hours: {
+          create: operationalHoursData,
+        },
+      },
+      select: {
+        public_id: true,
+      },
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      throw new ResponseError(400, "You already have a store");
+    }
+    throw error;
+  }
+};
 const openCloseStore = async (request) => {
   const req = validate(openCloseStoreValidation, request);
 
-  const store = await prisma.store.findFirst({
-    where: {
-      public_id: req.store_id,
-      user_id: req.userId,
-      is_delete: false,
-    },
-    include: {
-      operational_hours: true,
-    },
+  // Bungkus seluruh operasi membaca & menulis dalam 1 transaksi
+  return await prisma.$transaction(async (tx) => {
+    // 1. Cari toko di dalam transaksi (tx)
+    const store = await tx.store.findFirst({
+      where: {
+        public_id: req.store_id,
+        user_id: req.userId,
+        is_delete: false,
+      },
+      select: {
+        id: true,
+        // FIX: _count butuh nested `select` buat bisa filter relasinya
+        // dengan `where`. Tanpa itu, Prisma bakal throw validation error
+        // setiap kali query ini jalan.
+        _count: {
+          select: {
+            queues: {
+              where: {
+                status: {
+                  in: ["BELUM_BAYAR", "DIPROSES"],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!store) {
+      throw new ResponseError(404, "Store not found");
+    }
+
+    const activeQueueCount = store._count.queues;
+
+    if (req.manual_status === "CLOSED" && activeQueueCount > 0) {
+      throw new ResponseError(400, "You still have active queues");
+    }
+
+    // 2. Update status toko di dalam transaksi yang sama
+    const updatedStore = await tx.store.update({
+      where: {
+        id: store.id,
+      },
+      data: {
+        manual_status: req.manual_status,
+        manual_updated_at: new Date(),
+      },
+      select: {
+        manual_status: true,
+      },
+    });
+
+    return {
+      message:
+        req.manual_status === "OPEN"
+          ? "Successfully opened the store"
+          : "Successfully closed the store",
+      manual_status: updatedStore.manual_status,
+    };
   });
-
-  if (!store) {
-    throw new ResponseError(
-      404,
-      "toko tidak ditemukan, atau anda tidak memiliki akses",
-    );
-  }
-
-  const isCurrentlyOpen = calculateStoreStatus(store, store.operational_hours);
-  const newManualStatus = isCurrentlyOpen ? "CLOSED" : "OPEN";
-
-  await prisma.store.update({
-    where: {
-      id: store.id,
-    },
-    data: {
-      manual_status: newManualStatus,
-      manual_updated_at: new Date(),
-    },
-  });
-
-  return {
-    message:
-      newManualStatus === "OPEN"
-        ? "berhasil membuka toko"
-        : "berhasil menutup toko",
-    is_open: newManualStatus === "OPEN",
-  };
 };
-
 const updateLogo = async (userId, file) => {
-  if (!file) throw new ResponseError(400, "Tidak ada file yang diupload");
+  if (!file) throw new ResponseError(400, "No files were uploaded");
 
   const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
   });
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
+  if (!store) throw new ResponseError(404, "Store not found");
 
-  const imagePath = `/uploads/${file.filename}`;
+  const oldLogoUrl = store.logo_url;
+  const newImagePath = `/uploads/${file.filename}`;
 
-  return await prisma.store.update({
-    where: { id: store.id },
-    data: { logo_url: imagePath },
-    select: { id: true, name: true, logo_url: true },
-  });
+  // 1. Update DB DULUAN. Kalau ini gagal, kita belum nyentuh file lama
+  //    sama sekali - store.logo_url tetap valid, nunjuk ke file yang
+  //    masih beneran ada di disk.
+  let updatedStore;
+  try {
+    updatedStore = await prisma.store.update({
+      where: { id: store.id },
+      data: { logo_url: newImagePath },
+      select: { id: true, name: true, logo_url: true },
+    });
+  } catch (err) {
+    // DB gagal -> file baru yang barusan diupload jadi gak kepake.
+    // Bersihin biar gak orphan, baru lempar error aslinya ke caller.
+    await fs.unlink(path.join("public", newImagePath)).catch(() => {}); // upload-nya sendiri mungkin juga gagal, gak masalah
+    throw err;
+  }
+
+  // 2. Baru hapus file lama SETELAH DB dikonfirmasi berhasil.
+  if (oldLogoUrl) {
+    const oldPath = path.join("public", oldLogoUrl);
+    try {
+      await fs.unlink(oldPath);
+    } catch (err) {
+      // ENOENT = file emang udah gak ada -> aman, gak perlu ribut.
+      // Selain itu (permission denied, file terkunci, dll) -> ini file
+      // beneran nyangkut/orphan di disk. Log yang lebih informatif biar
+      // kebaca di monitoring, bukan cuma console.error generik.
+      // (Perbaikan lebih permanen: catat path yang gagal dihapus ke tabel
+      // "pending_cleanup" dan jalanin cron/job buat retry berkala.)
+      if (err.code !== "ENOENT") {
+        console.error(
+          `[updateLogo] gagal hapus logo lama untuk store ${store.id} di path "${oldPath}": ${err.message}`,
+        );
+      }
+    }
+  }
+
+  return getStore(userId);
 };
 
 const updateStoreProfile = async (userId, request) => {
@@ -109,32 +194,27 @@ const updateStoreProfile = async (userId, request) => {
   const existingStore = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
   });
-  if (!existingStore) throw new ResponseError(404, "Toko tidak ditemukan");
+  if (!existingStore) throw new ResponseError(404, "Store not found.");
 
-  return await prisma.store.update({
+  await prisma.store.update({
     where: { id: existingStore.id },
     data: {
       name: req.name,
       description: req.description,
-      address: req.address,
+      street_address: req.street_address,
+      village: req.village,
+      district: req.district,
+      city: req.city,
+      province: req.province,
+      postal_code: req.postal_code,
+      latitude: req.latitude,
+      longitude: req.longitude,
       timezone: req.timezone,
-      // FIX: sebelumnya field ini gak pernah disimpen, jadi walau seller
-      // ngisi form-nya, nilainya gak pernah nyampe ke database.
       payment_timeout: req.payment_timeout,
     },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      address: true,
-      timezone: true,
-      // FIX: di-return juga biar frontend bisa langsung sinkron abis save,
-      // gak perlu nunggu refetch ["storeMe"] buat liat nilai barunya.
-      payment_timeout: true,
-    },
   });
+  return await getStore(userId);
 };
-
 const getStoreHistory = async (
   userId,
   month,
@@ -145,12 +225,19 @@ const getStoreHistory = async (
   topLimit = 10,
   status = "ALL",
 ) => {
+  const ALLOWED_STATUS = ["ALL", "SELESAI", "DIBATALKAN"];
+  const MAX_LIMIT = 100;
+  const toPositiveInt = (value) => {
+    const num = Number(value);
+    return Number.isInteger(num) ? num : NaN;
+  };
+
   const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
     select: { id: true, timezone: true, created_at: true },
   });
 
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
+  if (!store) throw new ResponseError(404, "Store not found");
 
   const tz = store.timezone || "Asia/Jakarta";
 
@@ -169,7 +256,42 @@ const getStoreHistory = async (
     selectedMonth > 12 ||
     !Number.isInteger(selectedYear)
   ) {
-    throw new ResponseError(400, "Parameter bulan/tahun tidak valid.");
+    throw new ResponseError(400, "Invalid month/year parameters");
+  }
+
+  if (!ALLOWED_STATUS.includes(status)) {
+    throw new ResponseError(
+      400,
+      `Invalid status parameter. Allowed values: ${ALLOWED_STATUS.join(", ")}`,
+    );
+  }
+
+  const pageNum = toPositiveInt(page);
+  const limitNum = toPositiveInt(limit);
+  const topPageNum = toPositiveInt(topPage);
+  const topLimitNum = toPositiveInt(topLimit);
+
+  if (
+    !Number.isInteger(pageNum) ||
+    pageNum < 1 ||
+    !Number.isInteger(limitNum) ||
+    limitNum < 1 ||
+    !Number.isInteger(topPageNum) ||
+    topPageNum < 1 ||
+    !Number.isInteger(topLimitNum) ||
+    topLimitNum < 1
+  ) {
+    throw new ResponseError(
+      400,
+      "page, limit, topPage, and topLimit must be positive integers",
+    );
+  }
+
+  if (limitNum > MAX_LIMIT || topLimitNum > MAX_LIMIT) {
+    throw new ResponseError(
+      400,
+      `limit and topLimit must not exceed ${MAX_LIMIT}`,
+    );
   }
 
   const isCurrentMonth =
@@ -292,6 +414,7 @@ const getStoreHistory = async (
 
   const averageOrderValue =
     totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
+
   const calcTrend = (current, previous) => {
     // 1. Jika bulan lalu 0 dan bulan ini juga 0 = Tidak ada perubahan (0%)
     if (previous === 0 && current === 0) return 0;
@@ -313,7 +436,7 @@ const getStoreHistory = async (
   if (status === "SELESAI") statusCondition = "SELESAI";
   else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
 
-  const skip = (page - 1) * limit;
+  const skip = (pageNum - 1) * limitNum;
   const history = await prisma.queue.findMany({
     where: {
       store_id: store.id,
@@ -321,8 +444,8 @@ const getStoreHistory = async (
       ...dateCondition,
     },
     orderBy: { created_at: "desc" },
-    skip: skip,
-    take: Number(limit),
+    skip,
+    take: limitNum,
     include: {
       queueDetails: {
         include: { product: true, variant: true },
@@ -333,7 +456,7 @@ const getStoreHistory = async (
   let totalRows = totalPesananSelesai + totalBatal;
   if (status === "SELESAI") totalRows = totalPesananSelesai;
   if (status === "DIBATALKAN") totalRows = totalBatal;
-  const totalPages = Math.ceil(totalRows / limit);
+  const totalPages = Math.ceil(totalRows / limitNum);
 
   // --- DATA UNTUK CHART ---
   const revenueRows = await prisma.queue.findMany({
@@ -431,10 +554,10 @@ const getStoreHistory = async (
   });
 
   const totalTopSellingRows = allTopSellingGroups.length;
-  const skipTop = (topPage - 1) * topLimit;
+  const skipTop = (topPageNum - 1) * topLimitNum;
   const topSellingGroups = allTopSellingGroups.slice(
     skipTop,
-    skipTop + topLimit,
+    skipTop + topLimitNum,
   );
 
   const productIdsForNames = Array.from(
@@ -523,61 +646,56 @@ const getStoreHistory = async (
     pagination: {
       totalRows,
       totalPages,
-      currentPage: Number(page),
-      limit: Number(limit),
+      currentPage: pageNum,
+      limit: limitNum,
     },
     history,
     topSelling: {
       rankings: topSellingList,
       pagination: {
         totalRows: totalTopSellingRows,
-        totalPages: Math.ceil(totalTopSellingRows / topLimit),
-        currentPage: Number(topPage),
-        limit: Number(topLimit),
+        totalPages: Math.ceil(totalTopSellingRows / topLimitNum),
+        currentPage: topPageNum,
+        limit: topLimitNum,
       },
     },
     topAddons: topSellingAddons,
   };
 };
 const getOperationalHours = async (userId) => {
-  const store = await prisma.store.findUnique({
-    where: { user_id: userId, is_delete: false },
-    select: { id: true },
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: {
+      operational_hours: true,
+    },
   });
-
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan.");
-
-  const hours = await prisma.storeOperationalHour.findMany({
-    where: { store_id: store.id },
-    orderBy: { day: "asc" },
-  });
-
-  if (hours.length === 0) {
-    return Array.from({ length: 7 }).map((_, i) => ({
-      day: i,
-      open_time: null,
-      close_time: null,
-      is_active: false,
-    }));
+  if (!store) {
+    throw new ResponseError(404, "Store not found.");
   }
-
-  return hours;
+  return store;
 };
-
 const updateOperationalHours = async (userId, request) => {
   const req = validate(updateOperationalHoursValidation, request);
 
-  const store = await prisma.store.findUnique({
+  const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
     select: { id: true },
   });
 
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan.");
+  if (!store) throw new ResponseError(404, "Store not found.");
+
+  assertValidOperationalHours(req.operational_hours);
 
   const updates = req.operational_hours.map((hour) => {
     return prisma.storeOperationalHour.upsert({
       where: {
-        store_id_day: { store_id: store.id, day: hour.day },
+        store_id_day: {
+          store_id: store.id,
+          day: hour.day,
+        },
       },
       update: {
         open_time: hour.open_time,
@@ -611,68 +729,23 @@ const getStore = async (request) => {
       public_id: true,
       name: true,
       description: true,
-      address: true,
+      city: true,
+      province: true,
+      village: true,
+      district: true,
+      street_address: true,
+      postal_code: true,
       logo_url: true,
       timezone: true,
       manual_status: true,
       manual_updated_at: true,
-      operational_hours: true,
-      // FIX: tambahin ini, biar EditStore.jsx bisa prefill nilai payment_timeout
-      // yang lagi aktif. Sebelumnya field ini gak pernah keikut ke frontend.
+      operational_hours: { orderBy: { day: "asc" } },
       payment_timeout: true,
-
-      products: {
-        where: {
-          is_delete: false,
-        },
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          image_url: true,
-          is_available: true,
-          productAddonGroups: {
-            where: {
-              addon_group: {
-                is_delete: false,
-              },
-            },
-            select: {
-              addon_group: {
-                select: {
-                  id: true,
-                  name: true,
-                  addons: {
-                    where: {
-                      is_delete: false,
-                    },
-                    select: {
-                      id: true,
-                      name: true,
-                      price: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          variants: {
-            where: {
-              is_delete: false,
-            },
-            select: {
-              id: true,
-              name: true,
-              additional_price: true,
-            },
-          },
-        },
-      },
     },
   });
 
   if (!store) {
-    throw new ResponseError(404, "Toko tidak ditemukan");
+    throw new ResponseError(404, "Store not found");
   }
 
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
@@ -683,24 +756,64 @@ const getStore = async (request) => {
   };
 };
 const deleteStore = async (userId) => {
+  // 1. Ambil id DAN logo_url dari store
   const store = await prisma.store.findFirst({
     where: {
       user_id: userId,
       is_delete: false,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      logo_url: true, // <-- Tambahkan ini
+    },
   });
+
   if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
+    throw new ResponseError(404, "Store not found");
   }
+
+  // 2. Soft delete toko di database terlebih dahulu
   await prisma.store.update({
     where: {
       id: store.id,
     },
     data: {
       is_delete: true,
+      user_id: null, // Opsional: lepas relasi user agar user bisa buat store baru jika perlu
     },
   });
+
+  // 3. Hapus file logo dari server jika toko punya logo
+  if (store.logo_url) {
+    try {
+      // Hilangkan tanda '/' di depan path jika ada, lalu arahkan ke lokasi folder upload kamu
+      // Sesuaikan 'public' atau '.' sesuai letak folder uploads di project kamu
+      const filePath = path.join(
+        process.cwd(),
+        "public",
+        ...store.logo_url.split("/"),
+      );
+      console.log(filePath);
+      await fs.unlink(filePath);
+    } catch (error) {
+      // Log error saja tanpa throw, agar kegagalan hapus file tidak membatalkan soft delete di DB
+      console.error(
+        "Failed to delete the logo file from the server:",
+        error.message,
+      );
+    }
+  }
+};
+const postalCode = async (postalCode) => {
+  const response = await fetch(
+    `https://carikodepos.id/api/search?q=${postalCode}&limit=5`,
+  );
+
+  if (!response.ok) {
+    throw new ResponseError(500, "Gagal mengambil data kode pos");
+  }
+
+  return await response.json();
 };
 export default {
   create,
@@ -708,8 +821,8 @@ export default {
   updateLogo,
   updateStoreProfile,
   getStoreHistory,
-  getOperationalHours,
   updateOperationalHours,
   getStore,
   deleteStore,
+  postalCode,
 };

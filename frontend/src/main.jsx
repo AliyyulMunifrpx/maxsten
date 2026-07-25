@@ -25,6 +25,7 @@ import EditJadwal from "./components/seller/edit-operational-hours.jsx";
 import AddonGroups from "./components/seller/addon/edit-addon.jsx";
 import AllProduct from "./components/seller/product/allProduct.jsx";
 import CancelReasons from "./components/seller/reason/cancel-reason.jsx";
+import VerifyEmail from "./components/users/verify-email.jsx";
 
 const queryClient = new QueryClient();
 
@@ -41,7 +42,10 @@ createRoot(document.getElementById("root")).render(
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />
             <Route path="/:storeId/products" element={<DisplayProduct />} />
-
+            <Route
+              path="/verify-email"
+              element={<VerifyEmail></VerifyEmail>}
+            ></Route>
             {/* Halaman seller */}
             <Route path="/seller" element={<ProtectedRoute />}>
               {/* Komponen Layout ini yang bakal jadi tempat mangkalnya Sidebar Shadcn nanti */}
