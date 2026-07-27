@@ -95,6 +95,8 @@ model Product {
   variants           Variant[]
   productAddonGroups ProductAddonGroup[]
   queueDetail        QueueDetail[]
+  created_at         DateTime            @default(now())
+  updated_at         DateTime?
 
   @@map("products")
 }

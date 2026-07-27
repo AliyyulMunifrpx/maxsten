@@ -99,7 +99,7 @@ curl -X POST https://example.com/api/stores \
 ```json
 {
   "data": {
-    "public_id": "str_8kd93jf82j"
+    "public_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
   }
 }
 ```

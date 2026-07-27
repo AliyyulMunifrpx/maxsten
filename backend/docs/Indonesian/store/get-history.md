@@ -22,7 +22,7 @@ Query parameters, semuanya opsional:
 | `year`     | number | tahun sekarang (di timezone toko) | —                                                                    |
 | `status`   | string | `"ALL"`                           | `"ALL"` \| `"SELESAI"` \| `"DIBATALKAN"` — filter tabel `history`    |
 | `page`     | number | `1`                               | Halaman untuk `history`                                              |
-| `limit`    | number | `10`                              | Jumlah baris per halaman untuk `history`, maksimal `100`             |
+| `limit`    | number | `10`                              | Jumlah baris per halaman untuk `history`,        maksimal `100`             |
 | `topPage`  | number | `1`                               | Halaman untuk `topSelling.rankings`                                  |
 | `topLimit` | number | `10`                              | Jumlah baris per halaman untuk `topSelling.rankings`, maksimal `100` |
 

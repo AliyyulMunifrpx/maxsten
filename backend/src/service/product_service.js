@@ -1,32 +1,23 @@
+import { unlink } from "fs/promises";
 import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
+import path from "path";
 import {
   createProductValidation,
+  deleteProductValidation,
   getAllProductValidation,
   getProductValidation,
   updateAvailabilityValidation,
   updateProductValidation,
 } from "../validation/product_validation.js";
 import { validate } from "../validation/validation.js";
-
 const getProduct = async (userId, request) => {
-  const req = validate(getProductValidation, request);
+  const req = validate(getProductValidation, request); // Asumsi ini balikin ID string/UUID
 
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-  });
-
-  if (!store) {
-    throw new ResponseError(404, "Store not found");
-  }
-
-
+  // Langsung tembak ke produknya aja, filternya udah sangat aman
   const product = await prisma.product.findFirst({
     where: {
-      id: req, 
+      id: req,
       is_delete: false,
       store: {
         user_id: userId,
@@ -36,6 +27,7 @@ const getProduct = async (userId, request) => {
     select: {
       id: true,
       name: true,
+      description: true,
       price: true,
       image_url: true,
       is_available: true,
@@ -65,100 +57,155 @@ const getProduct = async (userId, request) => {
     throw new ResponseError(404, "Product not found");
   }
 
-  // 2. Hitung jumlah terjual menggunakan Prisma Aggregate
   const soldAggregate = await prisma.queueDetail.aggregate({
-    _sum: {
-      quantity: true, // Jumlahkan kolom quantity
-    },
+    _sum: { quantity: true },
     where: {
       product_id: product.id,
-      queue: {
-        status: "SELESAI", // HANYA hitung pesanan yang sudah selesai
-      },
+      queue: { status: "SELESAI" },
     },
   });
 
-  // Jika belum ada yang terjual, hasilnya null, jadi kita set default ke 0
-  const totalSold = soldAggregate._sum.quantity || 0;
-
-  // 3. Gabungkan hasil aggregate ke dalam objek produk yang di-return
   return {
     ...product,
-    total_sold: totalSold,
+    total_sold: soldAggregate._sum.quantity || 0,
   };
 };
 const getAllProducts = async (userId, request) => {
-  const publicId = validate(getAllProductValidation, request);
+  const req = validate(getAllProductValidation, request);
+  const pageNum = req.page;
+
   const store = await prisma.store.findFirst({
     where: {
+      public_id: req.publicId,
       user_id: userId,
       is_delete: false,
     },
+    select: { id: true },
   });
+
   if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
+    throw new ResponseError(404, "Store not found");
   }
-  return await prisma.product.findMany({
-    where: {
-      store: {
-        user_id: userId,
-        is_delete: false,
-        public_id: publicId,
-      },
-      is_delete: false, // kalau Product juga pakai soft delete
-    },
-    select: {
-      id: true,
-      name: true,
-      price: true,
-      image_url: true,
-      is_available: true,
-      productAddonGroups: {
-        where: {
-          addon_group: {
-            is_delete: false,
-          },
-        },
-        select: {
-          addon_group: {
-            select: {
-              id: true,
-              name: true,
-              addons: {
-                where: {
-                  is_delete: false,
-                },
-                select: {
-                  id: true,
-                  name: true,
-                  price: true,
+
+  const skipCurrent = (pageNum - 1) * 20;
+  const skipNext = pageNum * 20;
+
+  // 3 query jalan bareng: halaman sekarang, halaman berikutnya (prefetch),
+  // dan total row buat pagination metadata.
+  const [currentPageProducts, nextPageProducts, totalRows] = await Promise.all([
+    prisma.product.findMany({
+      where: { store_id: store.id, is_delete: false },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        price: true,
+        image_url: true,
+        is_available: true,
+        productAddonGroups: {
+          where: { addon_group: { is_delete: false } },
+          select: {
+            addon_group: {
+              select: {
+                id: true,
+                name: true,
+                addons: {
+                  where: { is_delete: false },
+                  select: { id: true, name: true, price: true },
                 },
               },
             },
           },
         },
+        variants: {
+          where: { is_delete: false },
+          select: { id: true, name: true, additional_price: true },
+        },
       },
+      orderBy: { created_at: "desc" },
+      skip: skipCurrent,
+      take: 20,
+    }),
+    prisma.product.findMany({
+      where: { store_id: store.id, is_delete: false },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        price: true,
+        image_url: true,
+        is_available: true,
+        productAddonGroups: {
+          where: { addon_group: { is_delete: false } },
+          select: {
+            addon_group: {
+              select: {
+                id: true,
+                name: true,
+                addons: {
+                  where: { is_delete: false },
+                  select: { id: true, name: true, price: true },
+                },
+              },
+            },
+          },
+        },
+        variants: {
+          where: { is_delete: false },
+          select: { id: true, name: true, additional_price: true },
+        },
+      },
+      orderBy: { created_at: "desc" },
+      skip: skipNext,
+      take: 20,
+    }),
+    prisma.product.count({
+      where: { store_id: store.id, is_delete: false },
+    }),
+  ]);
 
-      variants: {
+  // total_sold buat SEMUA produk di kedua halaman, 1 query groupBy
+  // (bukan 1 query aggregate per produk - biar gak N+1).
+  const allProductIds = [...currentPageProducts, ...nextPageProducts].map(
+    (p) => p.id,
+  );
+
+  const soldAggregates = allProductIds.length
+    ? await prisma.queueDetail.groupBy({
+        by: ["product_id"],
         where: {
-          is_delete: false, // kalau ada soft delete
+          product_id: { in: allProductIds },
+          queue: { status: "SELESAI" },
         },
-        select: {
-          id: true,
-          name: true,
-          additional_price: true,
-        },
-      },
-    },
-  });
-};
+        _sum: { quantity: true },
+      })
+    : [];
 
+  const soldMap = new Map(
+    soldAggregates.map((row) => [row.product_id, row._sum.quantity || 0]),
+  );
+
+  const attachSold = (products) =>
+    products.map((p) => ({ ...p, total_sold: soldMap.get(p.id) || 0 }));
+
+  return {
+    currentPage: attachSold(currentPageProducts),
+    nextPage: attachSold(nextPageProducts),
+    pagination: {
+      currentPage: pageNum,
+      limit: 20,
+      totalRows,
+      totalPages: Math.ceil(totalRows / 20),
+    },
+  };
+};
 const createProduct = async (request, file) => {
+  // 1. Rapihkan data string dari FormData (Hanya lakukan 1x di sini)
   if (typeof request.variants === "string") {
     try {
       request.variants = JSON.parse(request.variants);
     } catch (e) {
-      request.variants = [];
+      throw new ResponseError(400, "Invalid data format variants");
     }
   }
 
@@ -166,7 +213,10 @@ const createProduct = async (request, file) => {
     try {
       request.addon_group_ids = JSON.parse(request.addon_group_ids);
     } catch (e) {
-      request.addon_group_ids = [];
+      throw new ResponseError(
+        400,
+        "The format of the addon_group_ids data is invalid",
+      );
     }
   }
 
@@ -174,267 +224,316 @@ const createProduct = async (request, file) => {
     request.price = Number(request.price);
   }
 
+  // 2. Validasi dengan Zod
   const req = validate(createProductValidation, request);
 
+  // 3. Cek apakah toko milik user ini ada
   const store = await prisma.store.findFirst({
     where: { user_id: req.userId, is_delete: false },
     select: { id: true },
   });
+
   if (!store) {
-    throw new ResponseError(
-      404,
-      "Toko tidak ditemukan. Silakan pastikan toko sudah dibuat terlebih dahulu.",
-    );
+    throw new ResponseError(404, "Store not found");
   }
 
-  const existingProduct = await prisma.product.count({
-    where: {
-      store_id: store.id,
-      name: req.name,
-      is_delete: false,
-    },
-  });
-
-  if (existingProduct > 0) {
-    throw new ResponseError(
-      400,
-      `Produk dengan nama '${req.name}' sudah ada di toko ini.`,
-    );
-  }
-
-  const productImagePath = file ? `/uploads/${file.filename}` : null;
-
-  let parsedVariants = req.variants;
-  if (typeof req.variants === "string") {
-    try {
-      parsedVariants = JSON.parse(req.variants);
-    } catch (e) {
-      parsedVariants = [];
-    }
-  }
-
-  let parsedAddonGroupIds = req.addon_group_ids;
-  if (typeof req.addon_group_ids === "string") {
-    try {
-      parsedAddonGroupIds = JSON.parse(req.addon_group_ids);
-    } catch (e) {
-      parsedAddonGroupIds = [];
-    }
-  }
-
-  if (parsedAddonGroupIds && parsedAddonGroupIds.length > 0) {
+  // 4. Validasi Add-on (Satpam Add-on)
+  if (req.addon_group_ids && req.addon_group_ids.length > 0) {
     const validAddonGroups = await prisma.addonGroup.count({
       where: {
-        id: { in: parsedAddonGroupIds },
+        id: { in: req.addon_group_ids },
         store_id: store.id,
         is_delete: false,
       },
     });
-    if (validAddonGroups !== parsedAddonGroupIds.length) {
+    if (validAddonGroups !== req.addon_group_ids.length) {
       throw new ResponseError(
         400,
-        "Beberapa grup add-on tidak valid untuk toko ini.",
+        "Some add-on groups are not valid for this store.",
       );
     }
   }
 
-  return await prisma.product.create({
-    data: {
-      name: req.name,
-      price: Number(req.price),
-      image_url: productImagePath,
-      store_id: store.id,
+  const productImagePath = file ? `/uploads/${file.filename}` : null;
 
-      ...(parsedVariants &&
-        parsedVariants.length > 0 && {
-          variants: {
-            create: parsedVariants.map((variant) => ({
-              name: variant.name,
-              additional_price: Number(variant.additional_price) || 0,
-            })),
-          },
-        }),
-
-      ...(parsedAddonGroupIds &&
-        parsedAddonGroupIds.length > 0 && {
-          productAddonGroups: {
-            create: parsedAddonGroupIds.map((addonGroupId) => ({
-              addon_group_id: addonGroupId,
-            })),
-          },
-        }),
-    },
-    include: {
-      variants: true,
-      productAddonGroups: {
-        include: {
-          addon_group: {
-            include: {
-              addons: true,
-            },
-          },
-        },
-      },
-    },
-  });
-};
-
-const updateProductInfo = async (userId, productId, request) => {
-  const req = validate(updateProductValidation, request);
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-  });
-  if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
-  }
-  const product = await prisma.product.findFirst({
-    where: {
-      id: productId,
-      is_delete: false,
-      store: { user_id: userId, is_delete: false },
-    },
-    include: {
-      variants: {
-        where: { is_delete: false },
-      },
-    },
-  });
-
-  if (!product)
-    throw new ResponseError(404, "Produk tidak ditemukan atau bukan milikmu");
-
-  const reqVariants = req.variants || [];
-  const existingVariantsToUpdate = reqVariants.filter((v) => v.id);
-  const newVariantsToCreate = reqVariants.filter((v) => !v.id);
-
-  const selectedAddonGroupIds = Array.isArray(req.addon_group_ids)
-    ? req.addon_group_ids
-    : [];
-
-  if (selectedAddonGroupIds.length > 0) {
-    const validAddonGroups = await prisma.addonGroup.count({
-      where: {
-        id: { in: selectedAddonGroupIds },
-        is_delete: false,
-        store: { user_id: userId },
-      },
-    });
-    if (validAddonGroups !== selectedAddonGroupIds.length) {
-      throw new ResponseError(
-        400,
-        "Beberapa grup add-on tidak valid untuk produk ini.",
-      );
-    }
-  }
-
-  const existingProductAddonGroups = await prisma.productAddonGroup.findMany({
-    where: { product_id: productId },
-    select: { addon_group_id: true },
-  });
-
-  const existingAddonGroupIds = existingProductAddonGroups.map(
-    (row) => row.addon_group_id,
-  );
-
-  const addonGroupsToCreate = selectedAddonGroupIds.filter(
-    (id) => !existingAddonGroupIds.includes(id),
-  );
-  const addonGroupsToDelete = existingAddonGroupIds.filter(
-    (id) => !selectedAddonGroupIds.includes(id),
-  );
-
-  const retainedVariantIds = existingVariantsToUpdate.map((v) => v.id);
-
+  // 5. Eksekusi Create dengan pengaman Unique Index
   try {
-    return await prisma.product.update({
-      where: { id: productId },
+    return await prisma.product.create({
       data: {
         name: req.name,
+        description: req.description,
         price: req.price,
+        image_url: productImagePath,
+        store_id: store.id,
 
-        variants: {
-          updateMany: {
-            where: { id: { notIn: retainedVariantIds } },
-            data: { is_delete: true },
-          },
-          update: existingVariantsToUpdate.map((v) => ({
-            where: { id: v.id },
-            data: { name: v.name, additional_price: v.additional_price },
-          })),
-          create: newVariantsToCreate.map((v) => ({
-            name: v.name,
-            additional_price: v.additional_price,
-          })),
-        },
-
-        productAddonGroups: {
-          ...(addonGroupsToDelete.length > 0 && {
-            deleteMany: {
-              addon_group_id: { in: addonGroupsToDelete },
+        ...(req.variants &&
+          req.variants.length > 0 && {
+            variants: {
+              create: req.variants.map((variant) => ({
+                name: variant.name,
+                additional_price: Number(variant.additional_price) || 0,
+              })),
             },
           }),
-          ...(addonGroupsToCreate.length > 0 && {
-            create: addonGroupsToCreate.map((addonGroupId) => ({
-              addon_group_id: addonGroupId,
-            })),
+
+        ...(req.addon_group_ids &&
+          req.addon_group_ids.length > 0 && {
+            productAddonGroups: {
+              create: req.addon_group_ids.map((addonGroupId) => ({
+                addon_group_id: addonGroupId,
+              })),
+            },
           }),
+      },
+      include: {
+        variants: true,
+        productAddonGroups: {
+          include: {
+            addon_group: {
+              include: { addons: true },
+            },
+          },
         },
       },
-      include: { variants: true },
     });
   } catch (error) {
-    if (error.code === "P2003") {
+    if (error.code === "P2002") {
+      // PERBAIKAN: Gunakan backtick (`) dan status 400
       throw new ResponseError(
         400,
-        "Tidak bisa memproses permintaan karena sedang ada pesanan aktif.",
+        `A product named '${req.name}' already exists in this store`,
       );
     }
     throw error;
   }
 };
 
-const updateProductImage = async (userId, productId, file) => {
-  if (!file)
-    throw new ResponseError(400, "Tidak ada file gambar yang diupload");
+const updateProductInfo = async (userId, productId, request) => {
+  const req = validate(updateProductValidation, request);
+
   const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
+    where: { user_id: userId, is_delete: false },
   });
   if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
+    throw new ResponseError(404, "Store not found");
   }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Lock the product row (prevents race conditions between concurrent requests)
+      const lockedProduct = await tx.$queryRaw`
+  SELECT p.id FROM "products" p
+  INNER JOIN "stores" s ON p.store_id = s.id
+  WHERE p.id = ${productId}
+    AND p.is_delete = false
+    AND s.user_id = ${userId}
+    AND s.is_delete = false
+  FOR UPDATE
+`;
+      if (!lockedProduct || lockedProduct.length === 0) {
+        throw new ResponseError(404, "Product not found or not owned by you");
+      }
+
+      const product = await tx.product.findFirst({
+        where: {
+          id: productId,
+          is_delete: false,
+          store: { user_id: userId, is_delete: false },
+        },
+        include: { variants: { where: { is_delete: false } } },
+      });
+      if (!product)
+        throw new ResponseError(404, "Product not found or not owned by you");
+
+      const reqVariants = req.variants || [];
+      const existingVariantIds = product.variants.map((v) => v.id);
+
+      const invalidVariantIds = reqVariants
+        .filter((v) => v.id && !existingVariantIds.includes(v.id))
+        .map((v) => v.id);
+      if (invalidVariantIds.length > 0) {
+        throw new ResponseError(
+          400,
+          "Some variants are invalid or do not belong to this product.",
+        );
+      }
+
+      const existingVariantsToUpdate = reqVariants.filter(
+        (v) => v.id && existingVariantIds.includes(v.id),
+      );
+      const newVariantsToCreate = reqVariants.filter((v) => !v.id);
+      const retainedVariantIds = existingVariantsToUpdate.map((v) => v.id);
+      const variantIdsToDelete = existingVariantIds.filter(
+        (id) => !retainedVariantIds.includes(id),
+      );
+
+      const selectedAddonGroupIds = Array.isArray(req.addon_group_ids)
+        ? req.addon_group_ids
+        : [];
+
+      if (selectedAddonGroupIds.length > 0) {
+        const validAddonGroups = await tx.addonGroup.count({
+          where: {
+            id: { in: selectedAddonGroupIds },
+            is_delete: false,
+            store: { user_id: userId, is_delete: false },
+          },
+        });
+        if (validAddonGroups !== selectedAddonGroupIds.length) {
+          throw new ResponseError(
+            400,
+            "Some add-on groups are invalid for this product.",
+          );
+        }
+      }
+
+      const existingProductAddonGroups = await tx.productAddonGroup.findMany({
+        where: { product_id: productId },
+        select: { addon_group_id: true },
+      });
+      const existingAddonGroupIds = existingProductAddonGroups.map(
+        (r) => r.addon_group_id,
+      );
+
+      const addonGroupsToCreate = selectedAddonGroupIds.filter(
+        (id) => !existingAddonGroupIds.includes(id),
+      );
+      const addonGroupsToDelete = existingAddonGroupIds.filter(
+        (id) => !selectedAddonGroupIds.includes(id),
+      );
+
+      // Check whether this product currently has any active queue.
+      const activeQueueCount = await tx.queueDetail.count({
+        where: {
+          product_id: productId,
+          queue: { status: { in: ["BELUM_BAYAR", "DIPROSES"] } },
+        },
+      });
+      const hasActiveQueue = activeQueueCount > 0;
+
+      if (hasActiveQueue) {
+        // If there's an active queue, only name & description may change.
+        // price, variants, and addon groups are frozen.
+        const priceChanged =
+          req.price !== undefined && req.price !== product.price;
+
+        const variantsChanged =
+          newVariantsToCreate.length > 0 ||
+          variantIdsToDelete.length > 0 ||
+          existingVariantsToUpdate.some((v) => {
+            const current = product.variants.find((pv) => pv.id === v.id);
+            return (
+              current &&
+              (v.name !== current.name ||
+                v.additional_price !== current.additional_price)
+            );
+          });
+
+        const addonGroupsChanged =
+          addonGroupsToCreate.length > 0 || addonGroupsToDelete.length > 0;
+
+        if (priceChanged || variantsChanged || addonGroupsChanged) {
+          throw new ResponseError(
+            400,
+            "This product has an active order in progress. Only the name and description can be updated.",
+          );
+        }
+      }
+
+      return await tx.product.update({
+        where: { id: productId },
+        data: {
+          name: req.name,
+          price: req.price,
+          description: req.description,
+          updated_at: new Date(),
+          variants: {
+            updateMany: {
+              where: { id: { notIn: retainedVariantIds } },
+              data: { is_delete: true },
+            },
+            update: existingVariantsToUpdate.map((v) => ({
+              where: { id: v.id },
+              data: { name: v.name, additional_price: v.additional_price },
+            })),
+            create: newVariantsToCreate.map((v) => ({
+              name: v.name,
+              additional_price: v.additional_price,
+            })),
+          },
+          productAddonGroups: {
+            ...(addonGroupsToDelete.length > 0 && {
+              deleteMany: { addon_group_id: { in: addonGroupsToDelete } },
+            }),
+            ...(addonGroupsToCreate.length > 0 && {
+              create: addonGroupsToCreate.map((addonGroupId) => ({
+                addon_group_id: addonGroupId,
+              })),
+            }),
+          },
+        },
+        include: { variants: true },
+      });
+    });
+  } catch (error) {
+    if (error instanceof ResponseError) throw error;
+    if (error.code === "P2002") {
+      throw new ResponseError(
+        409,
+        "This change conflicts with another update in progress, please try again.",
+      );
+    }
+    throw error;
+  }
+};
+const updateProductImage = async (userId, productId, file) => {
+  if (!file) throw new ResponseError(400, "No image files were uploaded");
+
+  // 1. Cari produk sekaligus pastikan kepemilikannya
   const product = await prisma.product.findFirst({
     where: {
       id: productId,
       is_delete: false,
       store: { user_id: userId, is_delete: false },
     },
+    select: { id: true, image_url: true },
   });
-  if (!product) throw new ResponseError(404, "Produk tidak ditemukan");
 
-  return await prisma.product.update({
+  if (!product) {
+    // PENTING: Kalau produk nggak ketemu, file baru yang terlanjur di-upload oleh multer
+    // harus dihapus agar tidak menjadi sampah di server!
+    if (file.path) {
+      try {
+        await unlink(file.path);
+      } catch (e) {}
+    }
+    throw new ResponseError(404, "Product not found");
+  }
+
+  const oldImageUrl = product.image_url;
+  const newImageUrl = `/uploads/${file.filename}`;
+
+  // 2. Update database terlebih dahulu
+  const updatedProduct = await prisma.product.update({
     where: { id: productId },
-    data: { image_url: `/uploads/${file.filename}` },
+    data: { image_url: newImageUrl },
     select: { id: true, name: true, image_url: true },
   });
-};
 
+  // 3. Jika update database sukses dan produk punya gambar lama, hapus file lamanya
+  if (oldImageUrl) {
+    try {
+      const oldFilePath = path.join(process.cwd(), "public", oldImageUrl);
+      await unlink(oldFilePath);
+    } catch (error) {
+      // Abaikan jika file lama sudah tidak ada (ENOENT)
+    }
+  }
+
+  return updatedProduct;
+};
 const updateProductAvailability = async (userId, request) => {
   const req = validate(updateAvailabilityValidation, request);
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-  });
-  if (!store) {
-    throw new ResponseError(404, "toko tidak ditemukan");
-  }
   const product = await prisma.product.findFirst({
     where: {
       id: req.productId,
@@ -447,64 +546,106 @@ const updateProductAvailability = async (userId, request) => {
   });
 
   if (!product) {
-    throw new ResponseError(
-      404,
-      "Produk tidak ditemukan atau bukan milik tokomu.",
-    );
+    throw new ResponseError(404, "Product not found");
   }
 
   return await prisma.product.update({
     where: { id: req.productId },
     data: { is_available: req.is_available },
-  });
-};
-const deleteProduct = async (userId, productId) => {
-  // 1. Cari toko milik user yang sedang login
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-    select: { id: true },
-  });
-
-  if (!store) {
-    throw new ResponseError(404, "Toko tidak ditemukan");
-  }
-
-  // 2. Pastikan produk yang mau dihapus ada dan memang milik toko tersebut
-  const product = await prisma.product.findFirst({
-    where: {
-      id: productId,
-      store_id: store.id,
-      is_delete: false,
-      store: {
-        user_id: userId,
-      },
-    },
     select: {
       id: true,
-    },
-  });
-
-  if (!product) {
-    throw new ResponseError(404, "Produk tidak ditemukan atau sudah dihapus");
-  }
-
-  // 3. Lakukan Soft Delete
-  return await prisma.product.update({
-    where: { id: product.id },
-    data: {
-      is_delete: true,
-      variants: {
-        updateMany: {
-          where: { is_delete: false },
-          data: { is_delete: true },
-        },
-      },
+      name: true,
+      is_available: true,
     },
   });
 };
+const deleteProduct = async (userId, id) => {
+  const productId = validate(deleteProductValidation, id);
+  // 1. Jalankan transaksi dengan pessimistic locking
+  return await prisma.$transaction(async (tx) => {
+    // Lock row produk untuk mencegah race condition dari request bersamaan
+    const lockedProduct = await tx.$queryRaw`
+  SELECT p.id FROM "products" p
+  INNER JOIN "stores" s ON p.store_id = s.id
+  WHERE p.id = ${productId}
+    AND p.is_delete = false
+    AND s.user_id = ${userId}
+    AND s.is_delete = false
+  FOR UPDATE
+`;
+    if (!lockedProduct || lockedProduct.length === 0) {
+      throw new ResponseError(404, "Product not found or not owned by you");
+    }
+    // 2. Cari produk sekaligus pastikan kepemilikan store milik user yang login
+    const product = await tx.product.findFirst({
+      where: {
+        id: productId,
+        is_delete: false,
+        store: {
+          user_id: userId,
+          is_delete: false,
+        },
+      },
+      select: {
+        id: true,
+        image_url: true,
+      },
+    });
+
+    if (!product) {
+      throw new ResponseError(404, "Product not found or not owned by you");
+    }
+
+    // 3. Cek apakah produk ini sedang ada di antrean aktif
+    const activeQueueCount = await tx.queueDetail.count({
+      where: {
+        product_id: productId,
+        queue: {
+          status: { in: ["BELUM_BAYAR", "DIPROSES"] },
+        },
+      },
+    });
+
+    if (activeQueueCount > 0) {
+      throw new ResponseError(
+        400,
+        "Cannot delete product with active orders in progress",
+      );
+    }
+
+    // 4. Lakukan Soft Delete pada produk & varian
+    const deletedProduct = await tx.product.update({
+      where: { id: productId },
+      data: {
+        is_delete: true,
+        variants: {
+          updateMany: {
+            where: { is_delete: false },
+            data: { is_delete: true },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        is_delete: true,
+      },
+    });
+
+    // 5. Cleanup file fisik gambar produk jika ada
+    if (product.image_url) {
+      try {
+        const filePath = path.join(process.cwd(), "public", product.image_url);
+        await unlink(filePath);
+      } catch (error) {
+        // Abaikan jika file fisik tidak ditemukan
+      }
+    }
+
+    return deletedProduct;
+  });
+};
+
 export default {
   updateProductImage,
   createProduct,

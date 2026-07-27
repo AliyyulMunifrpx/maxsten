@@ -20,8 +20,12 @@ userRouter.use(authMiddleware);
 // ==========================================
 userRouter.get("/api/users/me", userController.getUser);
 userRouter.patch("/api/users/update", userController.updateUser);
-userRouter.delete('/api/users/logout', authMiddleware, userController.logout);
-userRouter.delete('/api/users/delete', authMiddleware, userController.deleteUser);
+userRouter.delete("/api/users/logout", authMiddleware, userController.logout);
+userRouter.delete(
+  "/api/users/delete",
+  authMiddleware,
+  userController.deleteUser,
+);
 // ==========================================
 // 🏪 STORE API
 // ==========================================
@@ -52,7 +56,7 @@ userRouter.get("/api/postal-code", storeController.postalCode);
 // ==========================================
 // 📦 PRODUCT API
 // ==========================================
-userRouter.get("/api/product/:productId", productController.getProduct);
+userRouter.get("/api/stores/product/:productId", productController.getProduct);
 userRouter.post(
   "/api/stores/products",
   uploadLogo.single("image"),
@@ -68,12 +72,15 @@ userRouter.patch(
   productController.updateProductImage,
 );
 userRouter.patch(
-  "/api/products/:productId/availability",
+  "/api/stores/products/:productId/availability",
   productController.updateProductAvailability,
 );
-userRouter.get("/api/all-products/:publicId", productController.getAllProducts);
+userRouter.get(
+  "/api/stores/all-products/:publicId",
+  productController.getAllProducts,
+);
 userRouter.patch(
-  "/api/delete-product/:productId",
+  "/api/stores/product/delete/:productId",
   productController.deleteProduct,
 );
 // ==========================================

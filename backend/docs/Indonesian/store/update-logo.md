@@ -42,7 +42,7 @@ Shape sama persis dengan `GET /api/stores/me`:
 ```json
 {
   "data": {
-    "public_id": "str_8kd93jf82j",
+    "public_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
     "name": "Toko Sumber Rejeki",
     "logo_url": "/uploads/logo-1721654321-987654321.png",
     "timezone": "Asia/Jakarta",

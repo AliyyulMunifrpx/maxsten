@@ -13,16 +13,15 @@ const getProduct = async (req, res, next) => {
 };
 const getAllProducts = async (req, res, next) => {
   try {
-    const result = await productService.getAllProducts(
-      req.user.id,
-      req.params.publicId,
-    );
+    const result = await productService.getAllProducts(req.user.id, {
+      publicId: req.params.publicId,
+      page: req.query.page,
+    });
     res.status(200).json({ data: result });
   } catch (e) {
     next(e);
   }
 };
-
 const createProduct = async (req, res, next) => {
   try {
     const result = await productService.createProduct(
@@ -31,9 +30,9 @@ const createProduct = async (req, res, next) => {
         ...req.body,
       },
       req.file,
-    ); // Teruskan req.file ke service
+    );
 
-    res.status(200).json({
+    res.status(201).json({
       data: result,
     });
   } catch (e) {
