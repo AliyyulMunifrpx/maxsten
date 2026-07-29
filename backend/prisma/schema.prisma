@@ -109,6 +109,7 @@ model AddonGroup {
   addons             Addon[]
   productAddonGroups ProductAddonGroup[]
   is_delete          Boolean             @default(false)
+  created_at         DateTime
 
   @@map("AddonGroup")
 }
@@ -120,6 +121,7 @@ model Addon {
   addon_group_id String
   addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
   is_delete      Boolean    @default(false)
+  created_at     DateTime
 
   @@map("Addon")
 }

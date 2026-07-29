@@ -203,10 +203,12 @@ const createAddonGroup = async (request) => {
     data: {
       name: req.name,
       store_id: store.id,
+      created_at: new Date(),
       addons: {
         create: req.addons.map((addon) => ({
           name: addon.name,
           price: Number(addon.price),
+          created_at: new Date(),
         })),
       },
     },

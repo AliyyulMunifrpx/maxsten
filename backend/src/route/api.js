@@ -98,9 +98,9 @@ userRouter.patch(
   addonController.deleteAddonGroup,
 );
 // ==========================================
-// 📋 QUEUE
+// 📋 SELLER
 // ==========================================
-userRouter.get("/api/stores/all-queues/:storeId", sellerController.getAllQueue);
+userRouter.get("/api/stores/queues/:storeId", sellerController.getAllQueue);
 userRouter.patch(
   "/api/stores/queues/:queueId",
   sellerController.editQueueStatus,
@@ -109,7 +109,7 @@ userRouter.patch(
 // ==========================================
 // 📋 DASHBOARD
 // ==========================================
-userRouter.get("/api/dashboard", dashboardController.getDashboard);
+userRouter.get("/api/stores/dashboard", dashboardController.getDashboard);
 // ==========================================
 // 📋 REASON
 // ==========================================

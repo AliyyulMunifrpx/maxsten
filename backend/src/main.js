@@ -26,19 +26,18 @@ io.use(socketAuth);
 web.set("socketio", io);
 
 io.on("connection", (socket) => {
-  logger.info(`${socket.user.email} connected`);
+  logger.info(`${socket.user.name} connected`);
 
   registerSellerEvents(socket);
 
   registerBuyerEvents(socket);
 
   socket.on("disconnect", () => {
-    logger.info(`${socket.user.email} disconnect`);
+    logger.info(`${socket.user.name} disconnect`);
   });
 });
 startCronJobs(io);
-// UBAH DARI web.listen JADI httpServer.listen
-// (Btw, gw ganti port-nya jadi 3000 ya, tadi di kode lu cuma 300 kayaknya typo)
+
 httpServer.listen(3000, () => {
   logger.info("App & WebSocket API started on port 3000");
 });

@@ -99,3 +99,4 @@ Shape sama persis dengan `GET /api/stores/me`:
 ## Catatan
 
 - Kalau `timezone` yang dikirim tidak valid, request ditolak (400) dan `timezone` toko **tidak berubah** — tidak ada kondisi di mana toko tersimpan dengan timezone yang salah.
+- `payment_timeout` menentukan `expired_at` antrean baru — tiap antrean `BELUM_BAYAR` dapat `expired_at` yang dihitung sekali saat dibuat (waktu dibuat + `payment_timeout` yang berlaku saat itu). Kalau toko mengubah `payment_timeout`, perubahan itu hanya berlaku untuk antrean baru yang dibuat setelahnya — antrean yang sudah ada tetap memakai batas waktu lama, tidak ikut berubah retroaktif.

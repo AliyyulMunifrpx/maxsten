@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { prisma } from "../application/database.js";
 
 export const startCronJobs = (io) => {
-  cron.schedule("*/1 * * * * *", async () => {
+  cron.schedule("* * * * *", async () => {
     try {
       const now = new Date();
 
@@ -35,12 +35,16 @@ export const startCronJobs = (io) => {
           io.to(`ANTREAN_${queue.id}`).emit("STATUS_UPDATED", {
             id: queue.id,
             status: "DIBATALKAN",
+            triggered_by: "system",
+            reason: "queue is expired",
           });
         });
         expiredQueues.forEach((queue) => {
           io.to(`TOKO_${queue.store_id}`).emit("STATUS_UPDATED", {
             id: queue.id,
             status: "DIBATALKAN",
+            triggered_by: "system",
+            reason: "queue is expired",
           });
         });
 

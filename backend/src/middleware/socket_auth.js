@@ -1,20 +1,29 @@
-import { redisClient } from "../application/redis.js";
-import crypto from "crypto";
 import { supabase } from "../application/supabase.js";
 import { prisma } from "../application/database.js";
 
 export async function socketAuth(socket, next) {
-  const cookie = socket.handshake.headers.cookie;
-  const token = cookie
+  const cookieHeader = socket.handshake.headers.cookie;
 
+  const token = cookieHeader
     ?.split(";")
-    .find((c) => c.trim().startsWith("token="))
+    .find((c) => c.trim().startsWith("access_token="))
     ?.split("=")[1];
-  // Buyer
+
+  const guestId = cookieHeader
+    ?.split(";")
+    .find((c) => c.trim().startsWith("guest_id="))
+    ?.split("=")[1];
+
   if (!token) {
+    
+    if (!guestId) {
+      return next(new Error("Unauthorized: Missing guest identity"));
+    }
+
     socket.user = {
+      id: guestId, 
       role: "buyer",
-      username: "Guest",
+      name: "Guest",
     };
 
     return next();
@@ -26,22 +35,26 @@ export async function socketAuth(socket, next) {
       error,
     } = await supabase.auth.getUser(token);
 
-    if (!user) {
+    if (error || !user) {
       return next(new Error("Invalid token"));
     }
+
     const prismaUser = await prisma.user.findUnique({
-      where: {
-        email: user.email,
-      },
+      where: { email: user.email },
       select: {
         id: true,
         email: true,
         name: true,
       },
     });
+
+    if (!prismaUser) {
+      return next(new Error("User not found in database"));
+    }
+
     socket.user = {
       ...prismaUser,
-      role: "seller",
+      role: "seller", 
     };
 
     next();

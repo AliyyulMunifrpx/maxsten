@@ -1,4 +1,3 @@
 import Joi from "joi";
-const getDashboardValidation = Joi.number().required();
-
+const getDashboardValidation = Joi.string().required().uuid();
 export { getDashboardValidation };

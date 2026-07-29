@@ -3,17 +3,40 @@ import { logger } from "../application/logging.js";
 
 export function registerSellerEvents(socket) {
   socket.on("JOIN_STORE_ROOM", async () => {
-    const store = await prisma.store.findFirst({
-      where: {
-        user_id: socket.user.id,
-      },
-    });
-    if (!store) return;
+    try {
+      const store = await prisma.store.findFirst({
+        where: {
+          user_id: socket.user.id,
+        },
+      });
 
-    const room = `TOKO_${store.id}`;
+      if (!store) {
+        logger.warn(
+          `Unauthorized room access attempt: Store room by user ${socket.user.email}`,
+        );
 
-    socket.join(room);
+        // Meniru error 404/401 dari middleware lu
+        socket.emit("ROOM_ERROR", {
+          errors: "Store not found or unauthorized access.",
+        });
+        return;
+      }
 
-    console.log(`${socket.user.email} join ${room}`);
+      const room = `TOKO_${store.id}`;
+      socket.join(room);
+      logger.info(
+        `Seller ${socket.user.email} successfully joined room: ${room}`,
+      );
+    } catch (error) {
+      // Meniru error 500 dari middleware lu
+      logger.error(
+        `[Socket Error] Failed to join store room: ${error.message}`,
+      );
+
+      const isProduction = process.env.NODE_ENV === "production";
+      socket.emit("ROOM_ERROR", {
+        errors: isProduction ? "Internal server error." : error.message,
+      });
+    }
   });
 }

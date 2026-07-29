@@ -101,3 +101,5 @@ Exact same shape as `GET /api/stores/me`:
 ## Notes
 
 - If the sent `timezone` is invalid, the request is rejected (400) and the store's `timezone` **does not change** — there is no condition where the store is saved with an incorrect timezone.
+
+- `payment_timeout` determines the `expired_at` for new queues — each `BELUM_BAYAR` queue is assigned an `expired_at` that is calculated once upon creation (creation time + the `payment_timeout` in effect at that time). If the store modifies the `payment_timeout`, the change only applies to new queues created afterward — existing queues will retain their original deadlines and are not affected retroactively.

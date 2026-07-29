@@ -22,7 +22,11 @@ publicRouter.get(
   "/api/:storeId/products",
   buyerController.getAllProductDisplay,
 );
-publicRouter.get("/api/:publicId/queues/:queueId", buyerController.getQueue);
+publicRouter.get(
+  "/api/:storeId/:productId/details",
+  buyerController.getProductDetails,
+);
+publicRouter.get("/api/:publicId/queue/:queueId", buyerController.getQueue);
 publicRouter.patch(
   "/api/:publicId/queues/:queueId/cancel",
   buyerController.cancelQueue,
