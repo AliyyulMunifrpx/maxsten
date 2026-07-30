@@ -4,7 +4,7 @@ const register = async (req, res, next) => {
   try {
     const result = await userService.register(req.body);
     res.status(201).json({
-      data: result,
+      data: result, // result dari service cuma ngembaliin email & name
     });
   } catch (e) {
     next(e);
@@ -14,29 +14,39 @@ const register = async (req, res, next) => {
 const login = async (req, res, next) => {
   try {
     const result = await userService.login(req.body);
+
+    // Set Access Token ke Cookie
     res.cookie("access_token", result.access_token, {
-      httpOnly: true, // HACKER GAK BISA BACA INI LEWAT JAVASCRIPT
-      secure: process.env.NODE_ENV === "production", // Kalau udah live wajib HTTPS (true)
-      sameSite: "none", // Mencegah serangan CSRF (serangan dari web lain)
+      httpOnly: true, // Aman dari bacaan JavaScript (XSS)
+      secure: true, // Wajib true karena beda domain & sameSite "none"
+      sameSite: "none", // Syarat wajib beda domain (Cross-Origin)
       maxAge: result.access_token_expires * 1000,
     });
+
+    // Set Refresh Token ke Cookie
     res.cookie("refresh_token", result.refresh_token, {
-      httpOnly: true, // HACKER GAK BISA BACA INI LEWAT JAVASCRIPT
-      secure: process.env.NODE_ENV === "production", // Kalau udah live wajib HTTPS (true)
-      sameSite: "none", // Mencegah serangan CSRF (serangan dari web lain)
-      maxAge: 1000 * 60 * 60 * 24 * 30,
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 hari
     });
+
+    // PENTING: Potong response. Jangan masukkan token ke JSON body!
     res.status(200).json({
-      data: result,
+      data: {
+        email: result.email,
+        name: result.name,
+      },
     });
   } catch (e) {
     next(e);
   }
 };
-
 const getUser = async (req, res, next) => {
   try {
-    res.status(200).json({ data: req.user });
+    res
+      .status(200)
+      .json({ data: { name: req.user.name, email: req.user.email } });
   } catch (e) {
     next(e);
   }
@@ -67,19 +77,27 @@ const syncEmailWebhook = async (req, res, next) => {
 };
 const logout = async (req, res, next) => {
   try {
-    await userService.logout(req.user.id);
+    // 1. Ambil token dari cookie (asumsi lu pakai library cookie-parser)
+    // Atau ambil dari Header Authorization jika FE mengirimkannya via Header
+    const accessToken =
+      req.cookies?.access_token || req.headers.authorization?.split(" ")[1];
 
+    // 2. Lempar token ke service untuk dihanguskan di Supabase
+    await userService.logout(accessToken);
+
+    // 3. Bersihkan cookie di browser user (wajib secure: true untuk sameSite: none)
     res.clearCookie("access_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "none",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "none",
     });
 
+    // 4. Kasih respons sukses
     res.status(200).json({
       data: "OK",
       message: "Logout successful",
@@ -90,18 +108,17 @@ const logout = async (req, res, next) => {
 };
 const deleteUser = async (req, res, next) => {
   try {
-    // req.user.id dapet dari Prisma ID, req.user.supabase_id dapet dari middleware lu
     await userService.deleteUser(req.user.id, req.user.supabase_id);
 
     // Otomatis logout-in usernya (buang cookie)
     res.clearCookie("access_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "none",
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "none",
     });
 

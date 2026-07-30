@@ -33,7 +33,7 @@ const getDashboard = async (request) => {
     },
   });
 
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
+  if (!store) throw new ResponseError(404, "Store not found");
   const tz = store.timezone || "Asia/Jakarta";
 
   // ==========================================

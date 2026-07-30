@@ -810,7 +810,7 @@ const postalCode = async (postalCode) => {
   );
 
   if (!response.ok) {
-    throw new ResponseError(500, "Gagal mengambil data kode pos");
+    throw new ResponseError(500, "Failed to retrieve the ZIP code data");
   }
 
   return await response.json();

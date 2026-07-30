@@ -9,17 +9,17 @@ DELETE /api/users/logout
 
 ## Auth
 
-Requires authentication. A valid `access_token` cookie is mandatory (checked via `authMiddleware`, and the decoded payload is assigned to `req.user`).
+Cookie-based auth (`access_token`). It can still be called even if the `access_token` is missing or invalid — see the notes below.
 
 ## Request
 
-No body. The `access_token` (and `refresh_token`) cookies are sent automatically by the browser as long as the request uses `credentials: "include"` (fetch) or `withCredentials: true` (axios).
+No body required.
 
-## Request Example
+## Example Request
 
 ```bash
 curl -X DELETE https://example.com/api/users/logout \
-  -H "Cookie: access_token=<token>; refresh_token=<token>"
+  -b "access_token=<token>; refresh_token=<token>"
 
 ```
 
@@ -30,32 +30,15 @@ curl -X DELETE https://example.com/api/users/logout \
 ```json
 {
   "data": "OK",
-  "message": "Successfully logged out"
+  "message": "Logout successful"
 }
+
 ```
 
-The server sends a `Set-Cookie` header to clear the cookies in the browser:
-
-| Cookie          | Action                      |
-| --------------- | --------------------------- |
-| `access_token`  | Cleared (`res.clearCookie`) |
-| `refresh_token` | Cleared (`res.clearCookie`) |
-
-### Errors
-
-| Status | Condition                                                            | Example `errors` |
-| ------ | -------------------------------------------------------------------- | ---------------- |
-| 401    | No cookie / invalid cookie / expired cookie (fails `authMiddleware`) | `Unauthorized`   |
-
-```json
-{
-  "errors": "Unauthorized"
-}
-```
+> This endpoint **always** returns `200` — no error conditions are returned to the FE for this endpoint.
 
 ## Notes
 
-- A successful response only returns `"data": "OK"`, with no user data — do not expect other fields in the response body.
-- The `access_token` & `refresh_token` cookies are `httpOnly`, so the FE cannot (and does not need to) read or delete them manually via JS. Just rely on the response status to update the auth state on the client.
-- After receiving a 200, immediately clear/reset the auth state on the client (redirect to the login page, etc.) — there is no need to wait for another request to confirm the user has logged out.
-- If you receive a 401 when calling this endpoint, still treat it as "already logged out" (the session is already invalid) — do not display it as a blocking error to the user.
+* **Logout is always "successful" from the FE's perspective**, even if the process of invalidating the session on the auth server fails behind the scenes (e.g., because the `access_token` has already expired, or the auth server is experiencing issues) — such failures are only recorded in the server logs and never cause this request to fail. This is intentional: if logout could fail, the cookies in the browser wouldn't be cleared (`res.clearCookie` would never execute), and the user would be "stuck" unable to log out from their own browser.
+* The `access_token` and `refresh_token` cookies are always cleared from the browser after this request, regardless of the outcome mentioned above.
+* After logout, any previously existing cookies become invalid for subsequent requests — the FE should immediately redirect the user to the login page upon receiving this response, without needing to wait for additional verification.

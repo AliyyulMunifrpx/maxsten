@@ -34,10 +34,10 @@ function jakarta(y, m, d, h = 12, min = 0) {
 }
 
 function endpoint() {
-  return "/api/stores/history";
+  return "/api/stores/me/history";
 }
 
-describe("GET /api/stores/history", () => {
+describe("GET /api/stores/me/history", () => {
   let cookies = [];
   let userId;
   let store;

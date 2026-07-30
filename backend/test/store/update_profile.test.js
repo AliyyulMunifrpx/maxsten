@@ -7,7 +7,7 @@ const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
 const LOGIN_PASSWORD = "aliyyul";
 
 // ASUMSI ROUTE: PATCH /api/stores. Sesuaikan kalau method/path aslinya beda.
-const ENDPOINT = "/api/stores";
+const ENDPOINT = "/api/stores/me";
 
 function baseProfilePayload(name) {
   return {

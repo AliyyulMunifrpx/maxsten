@@ -5,10 +5,10 @@ Allows a buyer to cancel their own order as long as its status is still `BELUM_B
 ## Endpoint
 
 ```http
-PATCH /api/:publicId/queues/:queueId/cancel
+PATCH /api/stores/:storeId/queues/:queueId/cancel
 ```
 
-- `:publicId` = the store's `public_id`.
+- `:storeId` = the store's `public_id`.
 - `:queueId` = the queue ID (integer).
  
 ## Authentication
@@ -26,7 +26,7 @@ Content-Type: `application/json`
 ## Example Request
 
 ```bash
-curl -X PATCH https://example.com/api/8kd93jf82j/queues/42/cancel \
+curl -X PATCH https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues/90/cancel \
   -b "guest_id=123e4567-e89b-12d3-a456-426614174000" \
   -H "Content-Type: application/json" \
   -d '{"reason": "Taking too long"}'
@@ -50,7 +50,7 @@ curl -X PATCH https://example.com/api/8kd93jf82j/queues/42/cancel \
 
 | Status | Condition                                                                                             | `errors`                                                                               |
 | ------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 400    | Validation failed (`publicId`/`queueId` has an invalid format, or `reason` exceeds 100 characters).   | Validation error message                                                               |
+| 400    | Validation failed (`storeId`/`queueId` has an invalid format, or `reason` exceeds 100 characters).   | Validation error message                                                               |
 | 400    | The queue has already been processed by the seller (its status is no longer `BELUM_BAYAR`).           | `The order has been processed and cannot be canceled`                                  |
 | 400    | The queue started being processed **exactly while** this request was being executed (race condition). | `Oh, someone beat you to it! Your order has just started being processed by the store` |
 | 401    | The `guest_id` cookie is missing.                                                                     | `Unauthorized`                                                                         |

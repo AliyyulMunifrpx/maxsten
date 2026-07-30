@@ -9,7 +9,7 @@ const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
 const LOGIN_PASSWORD = "aliyyul";
 
 // ASUMSI ROUTE: DELETE /api/stores. Sesuaikan kalau path aslinya beda.
-const ENDPOINT = "/api/delete-store";
+const ENDPOINT = "/api/stores/me";
 
 describe("delete store", () => {
   let cookies = [];
@@ -66,8 +66,7 @@ describe("delete store", () => {
   test("should soft-delete the store and respond with { data: 'OK' }", async () => {
     const created = await createStoreDirect("Warung Mau Dihapus");
 
-    const result = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
-
+    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
 
@@ -86,7 +85,7 @@ describe("delete store", () => {
   test("should detach the store from the user (user_id set to null) on soft-delete", async () => {
     const created = await createStoreDirect("Warung Cek Detach");
 
-    const result = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(result.status).toBe(200);
 
     const store = await prisma.store.findUnique({
@@ -96,7 +95,7 @@ describe("delete store", () => {
   });
 
   test("should return 404 when the user has no store", async () => {
-    const result = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
 
     expect(result.status).toBe(404);
   });
@@ -104,7 +103,7 @@ describe("delete store", () => {
   test("should return 401 when unauthorized", async () => {
     await createStoreDirect("Warung Tanpa Login Hapus");
 
-    const result = await supertest(web).patch(ENDPOINT);
+    const result = await supertest(web).delete(ENDPOINT);
 
     expect(result.status).toBe(401);
   });
@@ -112,17 +111,17 @@ describe("delete store", () => {
   test("should return 404 on a repeated delete call for an already-deleted store", async () => {
     await createStoreDirect("Warung Hapus Dua Kali");
 
-    const first = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const first = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(first.status).toBe(200);
 
-    const second = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const second = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(second.status).toBe(404);
   });
 
   test("a soft-deleted store should no longer be returned by GET /api/stores (cross-endpoint consistency)", async () => {
     await createStoreDirect("Warung Konsistensi Get");
 
-    const del = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(del.status).toBe(200);
 
     const get = await supertest(web)
@@ -139,7 +138,7 @@ describe("delete store", () => {
   test("should allow creating a brand new store after the previous one was soft-deleted", async () => {
     await createStoreDirect("Warung Lama Dihapus");
 
-    const del = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(del.status).toBe(200);
 
     const createResult = await supertest(web)
@@ -182,7 +181,8 @@ describe("delete store", () => {
       logo_url: logoRelativePath,
     });
 
-    const del = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    console.log(del.body)
     expect(del.status).toBe(200);
 
     const stillExists = await fsPromises
@@ -200,7 +200,7 @@ describe("delete store", () => {
   test("should not throw when the store has no logo file to delete", async () => {
     await createStoreDirect("Warung Tanpa Logo Dihapus", { logo_url: null });
 
-    const del = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
 
     expect(del.status).toBe(200);
   });

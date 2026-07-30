@@ -5,7 +5,7 @@ Retrieve detailed store information along with its product catalog. This is a **
 ## Endpoint
 
 ```http
-GET /api/:storeId/products
+GET /api/stores/:storeId/products
 ```
 
 `:storeId` refers to the store's `public_id` (not the internal database `id`).
@@ -25,7 +25,7 @@ No authentication is required. This is a **public endpoint** and can be accessed
 ## Example Request
 
 ```bash
-curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/products?page=1&keyword=Grilled Chicken"
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products?page=1&keyword=Grilled Chicken"
 ```
 
 ## Response

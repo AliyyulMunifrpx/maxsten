@@ -31,6 +31,18 @@ model User {
   @@map("users")
 }
 
+model PendingSupabaseCleanup {
+  supabase_id          String  @id
+  reason              String  @db.Text
+  attempt_count       Int     @default(0)
+  needs_manual_review Boolean @default(false)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("pending_supabase_cleanup")
+}
+
 model Store {
   id        Int    @id @default(autoincrement())
   public_id String @unique @default(uuid()) @db.Char(36)

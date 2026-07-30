@@ -5,7 +5,7 @@ Soft-delete produk beserta seluruh variannya.
 ## Endpoint
 
 ```
-PATCH /api/stores/product/delete/:productId
+DELETE /api/stores/products/:productId
 ```
 
 
@@ -23,7 +23,7 @@ Tidak ada body — cukup `productId` di URL dan cookie auth valid.
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/stores/product/delete/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://example.com/api/stores/products/550e8400-e29b-41d4-a716-446655440000 \
   -b "access_token=<token>; refresh_token=<token>"
 ```
 
@@ -37,7 +37,7 @@ curl -X PATCH https://example.com/api/stores/product/delete/550e8400-e29b-41d4-a
 }
 ```
 
-> Sama seperti `PATCH /api/delete-store`, `data` di sini cuma string `"OK"`, bukan object produk.
+> Sama seperti `DELETE /api/delete-store`, `data` di sini cuma string `"OK"`, bukan object produk.
 
 ### Error
 

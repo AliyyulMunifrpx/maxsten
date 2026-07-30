@@ -8,17 +8,17 @@ DELETE /api/users/logout
 
 ## Auth
 
-Butuh autentikasi. Cookie `access_token` wajib ada & valid (dicek lewat `authMiddleware`, hasil decode-nya jadi `req.user`).
+Cookie-based auth (`access_token`). Tetap bisa dipanggil walaupun `access_token` sudah tidak ada/invalid — lihat catatan di bawah.
 
 ## Request
 
-Tidak ada body. Cookie `access_token` (dan `refresh_token`) dikirim otomatis oleh browser selama request pakai `credentials: "include"` (fetch) atau `withCredentials: true` (axios).
+Tidak ada body.
 
 ## Contoh Request
 
 ```bash
 curl -X DELETE https://example.com/api/users/logout \
-  -H "Cookie: access_token=<token>; refresh_token=<token>"
+  -b "access_token=<token>; refresh_token=<token>"
 ```
 
 ## Response
@@ -28,32 +28,14 @@ curl -X DELETE https://example.com/api/users/logout \
 ```json
 {
   "data": "OK",
-  "message": "Berhasil logout"
+  "message": "Logout successful"
 }
 ```
 
-Server ngirim ulang `Set-Cookie` buat ngosongin cookie di browser:
-
-| Cookie          | Aksi                            |
-| --------------- | ------------------------------- |
-| `access_token`  | Dikosongkan (`res.clearCookie`) |
-| `refresh_token` | Dikosongkan (`res.clearCookie`) |
-
-### Error
-
-| Status | Kondisi                                                                    | Contoh `errors` |
-| ------ | -------------------------------------------------------------------------- | --------------- |
-| 401    | Tidak ada cookie / cookie invalid / expired (gagal lolos `authMiddleware`) | `Unauthorized`  |
-
-```json
-{
-  "errors": "Unauthorized"
-}
-```
+> Endpoint ini **selalu** balas `200` — tidak ada kondisi error yang dikembalikan ke FE untuk endpoint ini.
 
 ## Catatan
 
-- Response sukses cuma ngasih `"data": "OK"`, nggak ada data user — jangan expect field lain di response body.
-- Cookie `access_token` & `refresh_token` itu `httpOnly`, jadi FE nggak bisa (dan nggak perlu) baca/hapus manual lewat JS. Cukup andalkan status response buat update auth state di client.
-- Setelah dapet 200, langsung clear/reset auth state di client (redirect ke halaman login, dsb) — nggak perlu nunggu request lain buat tau user udah logout.
-- Kalau dapet 401 pas manggil endpoint ini, tetap treat sebagai "udah logout" (sesi emang udah invalid) — jangan ditampilin sebagai error yang blocking ke user.
+- **Logout selalu "berhasil" dari sudut pandang FE**, bahkan kalau proses menghanguskan sesi di server auth gagal di belakang layar (misal karena `access_token` sudah expired duluan, atau server auth sedang bermasalah) — kegagalan itu hanya dicatat di log server, tidak pernah membuat request ini gagal. Ini disengaja: kalau logout bisa gagal, cookie di browser tidak akan sempat dibersihkan (`res.clearCookie` tidak pernah tereksekusi), dan user akan "terjebak" tidak bisa logout dari browser-nya sendiri.
+- Cookie `access_token` dan `refresh_token` selalu dihapus dari browser setelah request ini, terlepas dari hasil di atas.
+- Setelah logout, cookie yang sebelumnya ada menjadi tidak valid untuk request selanjutnya — FE sebaiknya langsung mengarahkan user ke halaman login setelah menerima response ini, tanpa perlu menunggu verifikasi tambahan.

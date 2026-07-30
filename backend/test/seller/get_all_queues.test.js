@@ -7,7 +7,7 @@ import crypto from "crypto";
 const email = "aliyyulmunif780@gmail.com";
 const password = "aliyyul";
 
-describe("GET /api/stores/queues/:storeId", () => {
+describe("GET /api/stores/:storeId/queues", () => {
   let cookies;
   let user;
   let store;
@@ -135,7 +135,7 @@ describe("GET /api/stores/queues/:storeId", () => {
   // --- TEST CASE 1: PAGINATION & PREFETCH HALAMAN 1 ---
   test("should successfully get queues for page 1 with prefetch page 2", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/queues/${store.public_id}?page=1`)
+      .get(`/api/stores/${store.public_id}/queues?page=1`)
       .set("Cookie", cookies);
     expect(result.status).toBe(200);
 
@@ -166,7 +166,7 @@ describe("GET /api/stores/queues/:storeId", () => {
   // --- TEST CASE 1b: SESI OVERNIGHT TETAP MUNCUL SETELAH LEWAT TENGAH MALAM ---
   test("should still include an active queue created before midnight (overnight session)", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/queues/${store.public_id}?page=1`)
+      .get(`/api/stores/${store.public_id}/queues?page=1`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(200);
@@ -184,7 +184,7 @@ describe("GET /api/stores/queues/:storeId", () => {
   // --- TEST CASE 2: PAGINATION HALAMAN 2 (SISA) ---
   test("should successfully get queues for page 2 (end of list)", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/queues/${store.public_id}?page=2`)
+      .get(`/api/stores/${store.public_id}/queues?page=2`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(200);
@@ -202,7 +202,7 @@ describe("GET /api/stores/queues/:storeId", () => {
     vi.setSystemTime(new Date("2026-07-27T22:00:00+07:00"));
 
     const result = await supertest(web)
-      .get(`/api/stores/queues/${store.public_id}?page=1`)
+      .get(`/api/stores/${store.public_id}/queues?page=1`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(200);
@@ -217,7 +217,7 @@ describe("GET /api/stores/queues/:storeId", () => {
     const fakeId = crypto.randomUUID();
 
     const result = await supertest(web)
-      .get(`/api/stores/queues/${fakeId}`)
+      .get(`/api/stores/${fakeId}/queues`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404);
@@ -227,7 +227,7 @@ describe("GET /api/stores/queues/:storeId", () => {
   // --- TEST CASE 5: UNAUTHENTICATED ---
   test("should return 401 if user is not logged in", async () => {
     const result = await supertest(web).get(
-      `/api/stores/queues/${store.public_id}`,
+      `/api/stores/${store.public_id}/queues`,
     );
 
     expect(result.status).toBe(401);

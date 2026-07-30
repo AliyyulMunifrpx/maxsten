@@ -5,7 +5,7 @@ Retrieve details of a single product belonging to the currently logged-in user's
 ## Endpoint
 
 ```
-GET /api/stores/product/:productId
+GET /api/stores/products/:productId
 
 ```
 
@@ -22,7 +22,7 @@ No body — just the `productId` in the URL and a valid auth cookie.
 ## Request Example
 
 ```bash
-curl -X GET https://example.com/api/stores/product/550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://example.com/api/stores/products/550e8400-e29b-41d4-a716-446655440000 \
   -b "access_token=<token>; refresh_token=<token>"
 
 ```

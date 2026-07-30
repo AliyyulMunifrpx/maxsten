@@ -1,12 +1,13 @@
 import cron from "node-cron";
 import { prisma } from "../application/database.js";
 
-export const startCronJobs = (io) => {
+export const initQueueCron = (io) => {
+  // Jalan setiap 1 menit
   cron.schedule("* * * * *", async () => {
     try {
       const now = new Date();
 
-      // 1. Cari dulu antrean mana saja yang mau dibatalkan berdasarkan expired_at
+      // 1. Cari antrean yang kedaluwarsa
       const expiredQueues = await prisma.queue.findMany({
         where: {
           status: "BELUM_BAYAR",
@@ -17,8 +18,9 @@ export const startCronJobs = (io) => {
           store_id: true,
         },
       });
+
       if (expiredQueues.length > 0) {
-        // 2. Update statusnya di database
+        // 2. Update statusnya di database secara massal
         await prisma.queue.updateMany({
           where: {
             id: { in: expiredQueues.map((q) => q.id) },
@@ -30,7 +32,7 @@ export const startCronJobs = (io) => {
           },
         });
 
-        // 3. Umumkan ke masing-masing kamar Socket.io
+        // 3. Broadcast ke masing-masing kamar Socket.io
         expiredQueues.forEach((queue) => {
           io.to(`ANTREAN_${queue.id}`).emit("STATUS_UPDATED", {
             id: queue.id,
@@ -39,6 +41,7 @@ export const startCronJobs = (io) => {
             reason: "queue is expired",
           });
         });
+
         expiredQueues.forEach((queue) => {
           io.to(`TOKO_${queue.store_id}`).emit("STATUS_UPDATED", {
             id: queue.id,
@@ -49,11 +52,11 @@ export const startCronJobs = (io) => {
         });
 
         console.log(
-          `${expiredQueues.length} antrean kedaluwarsa dibatalkan dan diumumkan via Socket.`,
+          `[CRON] ${expiredQueues.length} expired queues were canceled and announced via Socket`,
         );
       }
     } catch (error) {
-      console.error("Gagal menjalankan cron:", error);
+      console.error("[CRON] Failed to cancel expired queue:", error);
     }
   });
 };

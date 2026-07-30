@@ -5,11 +5,11 @@ Mengambil detail dari satu antrean spesifik milik pembeli. Endpoint ini akan mer
 ## Endpoint
 
 ```
-GET /api/:publicId/queue/:queueId
+GET /api/stores/:storeId/queues/:queueId
 
 ```
 
-- `:publicId` adalah `public_id` milik toko (format UUID).
+- `:storeId` adalah `public_id` milik toko (format UUID).
 - `:queueId` adalah `id` antrean (format Angka/Integer).
 
 ## Auth
@@ -20,13 +20,13 @@ Cookie-based auth otomatis. Sistem akan membaca cookie `guest_id` dari browser p
 
 | Param      | Lokasi    | Tipe          | Required | Keterangan                                   |
 | ---------- | --------- | ------------- | -------- | -------------------------------------------- |
-| `publicId` | URL param | string (UUID) | ✅       | `public_id` toko tempat pembeli memesan.     |
+| `storeId` | URL param | string (UUID) | ✅       | `public_id` toko tempat pembeli memesan.     |
 | `queueId`  | URL param | number        | ✅       | ID internal dari antrean yang ingin dilihat. |
 
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/queue/10" \
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues/10" \
   -H "Cookie: guest_id=11111111-2222-3333-4444-555555555555"
 
 ```
@@ -88,10 +88,10 @@ curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/queue/
 
 | Status | Kondisi                                                                                          | `errors`                  |
 | ------ | ------------------------------------------------------------------------------------------------ | ------------------------- |
-| 400    | Parameter `publicId` bukan UUID yang valid, atau `queueId` bukan angka positif.                  | Pesan validasi (dari Joi) |
+| 400    | Parameter `storeId` bukan UUID yang valid, atau `queueId` bukan angka positif.                  | Pesan validasi (dari Joi) |
 | 401    | Pembeli tidak mengirimkan cookie `guest_id` (sesi tidak ditemukan).                              | `Unauthorized`            |
 | 404    | Antrean tidak ditemukan.                                                                         | `No queue found`          |
-| 404    | Antrean ada, tapi pembeli mencoba mengaksesnya pakai `publicId` toko lain (Keamanan silang).     | `No queue found`          |
+| 404    | Antrean ada, tapi pembeli mencoba mengaksesnya pakai `storeId` toko lain (Keamanan silang).     | `No queue found`          |
 | 404    | Antrean ada, tapi `guest_id` di cookie tidak cocok dengan pemilik antrean aslinya (_Anti-Hack_). | `No queue found`          |
 
 ## Catatan Tambahan (Untuk Frontend)

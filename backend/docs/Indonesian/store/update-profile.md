@@ -4,16 +4,14 @@
 
 1. **GET** `/api/stores/me` — ambil data toko saat ini buat prefill form edit.
 2. User ubah field yang mau diedit.
-3. **PATCH** `/api/stores` — kirim field yang diupdate.
+3. **PATCH** `/api/stores/me` — kirim field yang diupdate.
 4. Response balikin **data toko lengkap terbaru** (shape sama persis dengan `GET /api/stores/me`, termasuk `is_open` yang dihitung ulang).
 
 ## Endpoint
 
 ```
-PATCH /api/stores
+PATCH /api/stores/me
 ```
-
-> ⚠️ Path-nya `/api/stores` (bukan `/api/stores/me`). Kalau sebelumnya sempat manggil `/api/stores/me` buat update, tolong disesuaikan — `/api/stores/me` khusus buat `GET` doang.
 
 ## Auth
 
@@ -45,7 +43,7 @@ Field yang tidak dikirim akan tetap dengan nilai lamanya (partial update).
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/stores \
+curl -X PATCH https://example.com/api/stores/me \
   -b "access_token=<token>; refresh_token=<token>" \
   -H "Content-Type: application/json" \
   -d '{"name": "Toko Sumber Rejeki Baru", "payment_timeout": 20}'

@@ -15,7 +15,8 @@ const createQueue = async (req, res, next) => {
     // 3. Gabungkan payload dari frontend dengan guestId dari backend
     const payload = {
       ...req.body,
-      guest_id: guestId, // <--- Timpa/Masukkan guestId valid ke payload
+      guest_id: guestId,
+      public_id: req.params.storeId, // <--- Timpa/Masukkan guestId valid ke payload
     };
 
     const result = await buyerService.createQueue(payload);
@@ -72,7 +73,7 @@ const getQueue = async (req, res, next) => {
     }
     const result = await buyerService.getQueue({
       queueId: req.params.queueId,
-      public_id: req.params.publicId,
+      public_id: req.params.storeId,
       guest_id: guestId,
     });
     res.status(200).json({
@@ -90,7 +91,7 @@ const cancelQueue = async (req, res, next) => {
       return res.status(401).json({ errors: "Unauthorized" });
     }
     const result = await buyerService.cancelQueue({
-      public_id: req.params.publicId,
+      public_id: req.params.storeId,
       queueId: req.params.queueId,
       guest_id: guestId,
       reason: req.body?.reason,

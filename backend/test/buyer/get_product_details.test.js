@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 const STORE_PUBLIC_ID = "123e4567-e89b-12d3-a456-426614174000";
 const FAKE_UUID = "999e9999-e99b-99d9-a999-999999999999";
 
-describe("GET /api/:storeId/:productId/details (Product Details)", () => {
+describe("GET /api/stores/:storeId/products/:productId (Product Details)", () => {
   let userId;
   let internalStoreId;
   let validProductId;
@@ -53,10 +53,21 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
       data: {
         store_id: internalStoreId,
         name: "Topping",
+        created_at: new Date(),
         addons: {
           create: [
-            { name: "Boba", price: 3000, is_delete: false },
-            { name: "Keju (Dihapus)", price: 2000, is_delete: true }, // Ini harusnya kesaring
+            {
+              name: "Boba",
+              price: 3000,
+              is_delete: false,
+              created_at: new Date(),
+            },
+            {
+              name: "Keju (Dihapus)",
+              price: 2000,
+              is_delete: true,
+              created_at: new Date(),
+            }, // Ini harusnya kesaring
           ],
         },
       },
@@ -160,7 +171,7 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
 
   test("should successfully return product details, filter deleted variants/addons, and calculate total_sold exactly", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/${validProductId}/details`,
+      `/api/stores/${STORE_PUBLIC_ID}/products/${validProductId}`,
     );
     expect(response.status).toBe(200);
     const data = response.body.data;
@@ -187,7 +198,7 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
 
   test("should reject 400 Bad Request if UUID format is invalid", async () => {
     const response = await supertest(web).get(
-      `/api/bukan-uuid-123/bukan-uuid-456/details`,
+      `/api/stores/bukan uuid 123/products/bukan uuid 456`,
     );
 
     // Ditolak Joi validator
@@ -196,7 +207,7 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
 
   test("should return 404 if product is already soft-deleted (is_delete = true)", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/${deletedProductId}/details`,
+      `/api/stores/${STORE_PUBLIC_ID}/products/${deletedProductId}`,
     );
 
     expect(response.status).toBe(404);
@@ -205,7 +216,7 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
 
   test("should return 404 if product does not exist at all", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/${FAKE_UUID}/details`,
+      `/api/stores/${STORE_PUBLIC_ID}/products/${FAKE_UUID}`,
     );
 
     expect(response.status).toBe(404);
@@ -214,7 +225,7 @@ describe("GET /api/:storeId/:productId/details (Product Details)", () => {
 
   test("should return 404 if store public_id is wrong (preventing access to other store's product)", async () => {
     const response = await supertest(web).get(
-      `/api/${FAKE_UUID}/${validProductId}/details`,
+      `/api/stores/${FAKE_UUID}/products/${validProductId}`,
     );
 
     expect(response.status).toBe(404);

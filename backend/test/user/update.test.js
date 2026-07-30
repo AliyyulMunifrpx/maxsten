@@ -19,7 +19,7 @@ describe("update user", () => {
   afterEach(async () => {
     // Balikin nama ke semula biar gak ngotorin data buat test berikutnya
     await supertest(web)
-      .patch("/api/users/update")
+      .patch("/api/users/me")
       .send({
         name: "aliyyul munif",
       })
@@ -29,7 +29,7 @@ describe("update user", () => {
   // 1. Test Skenario Sukses (Udah lu buat)
   test("should can update user successfully", async () => {
     const result = await supertest(web)
-      .patch("/api/users/update")
+      .patch("/api/users/me")
       .send({
         name: "aliyyul baru",
       })
@@ -42,7 +42,7 @@ describe("update user", () => {
   // 2. Test Skenario Gagal - Tipe Data Salah (Udah lu buat)
   test("should reject update if name is not a string", async () => {
     const result = await supertest(web)
-      .patch("/api/users/update")
+      .patch("/api/users/me")
       .send({
         name: 12345, // sengaja dikasih angka
       })
@@ -55,7 +55,7 @@ describe("update user", () => {
   // 3. TAMBAHAN: Test Skenario Gagal - Request Kosong
   test("should reject update if request body is empty", async () => {
     const result = await supertest(web)
-      .patch("/api/users/update")
+      .patch("/api/users/me")
       .send({}) // Sengaja gak ngirim atribut 'name'
       .set("Cookie", cookies);
 
@@ -65,7 +65,7 @@ describe("update user", () => {
 
   // 4. TAMBAHAN: Test Skenario Gagal - Tidak Bawa Cookie (Unauthorized)
   test("should reject update if unauthorized (no cookie)", async () => {
-    const result = await supertest(web).patch("/api/users/update").send({
+    const result = await supertest(web).patch("/api/users/me").send({
       name: "hacker mencoba update",
     });
     // Sengaja HAPUS .set("Cookie", cookies) di sini

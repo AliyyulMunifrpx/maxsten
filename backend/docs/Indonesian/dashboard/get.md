@@ -84,7 +84,7 @@ curl -X GET https://example.com/api/stores/dashboard \
 | Status | Kondisi                       | `errors`               |
 | ------ | ----------------------------- | ---------------------- |
 | 401    | Tidak login / session expired | `Unauthorized`         |
-| 404    | User belum punya toko         | `Toko tidak ditemukan` |
+| 404    | User belum punya toko         | `Store not found` |
 
 ## Catatan
 

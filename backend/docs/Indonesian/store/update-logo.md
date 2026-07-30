@@ -4,13 +4,13 @@
 
 1. **GET** `/api/stores/me` — ambil `logo_url` saat ini buat preview di halaman edit.
 2. User pilih file baru (crop di FE seperti alur create).
-3. **PATCH** `/api/stores/logo` — upload file baru.
+3. **PATCH** `/api/stores/me/logo` — upload file baru.
 4. Response balikin **data toko lengkap terbaru** (shape sama persis dengan `GET /api/stores/me`) — FE update preview & data lain langsung dari response, gak perlu refetch.
 
 ## Endpoint
 
 ```
-PATCH /api/stores/logo
+PATCH /api/stores/me/logo
 ```
 
 ## Auth
@@ -28,7 +28,7 @@ Content-Type: `multipart/form-data`
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/stores/logo \
+curl -X PATCH https://example.com/api/stores/me/logo \
   -b "access_token=<token>; refresh_token=<token>" \
   -F "logo=@/path/to/new-logo.png"
 ```

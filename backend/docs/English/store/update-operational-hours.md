@@ -4,17 +4,16 @@
 
 1. **GET** `/api/stores/me` — retrieve the current schedule (the `operational_hours` field) to prefill the form.
 2. The user changes the hours/active toggle per day.
-3. **PATCH** `/api/stores/operational-hours` — send the days to be updated.
+3. **PATCH** `/api/stores/me/operational-hours` — send the days to be updated.
 4. The response returns the latest complete schedule — the FE can sync directly from the response without needing to refetch.
 
 ## Endpoint
 
 ```
-PATCH /api/stores/operational-hours
+PATCH /api/stores/me/operational-hours
 
 ```
 
-> ⚠️ The method is `PATCH`, not `PUT`. If `PUT` was previously used in the FE code, please adjust it.
 
 ## Auth
 
@@ -55,7 +54,7 @@ Schedules crossing midnight (overnight) are allowed, e.g., `open_time: "20:00"`,
 ## Request Example
 
 ```bash
-curl -X PATCH https://example.com/api/stores/operational-hours \
+curl -X PATCH https://example.com/api/stores/me/operational-hours \
   -b "access_token=<token>; refresh_token=<token>" \
   -H "Content-Type: application/json" \
   -d '{"operational_hours":[{"day":0,"open_time":null,"close_time":null,"is_active":false}]}'

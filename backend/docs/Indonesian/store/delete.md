@@ -5,10 +5,8 @@ Soft-delete toko milik user yang sedang login.
 ## Endpoint
 
 ```
-PATCH /api/delete-store
+DELETE /api/stores/me
 ```
-
-> ⚠️ Method-nya `PATCH`, bukan `DELETE` — karena ini soft-delete (update flag), bukan penghapusan record beneran.
 
 ## Auth
 
@@ -21,7 +19,7 @@ Tidak ada body/parameter — cukup cookie auth valid.
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/delete-store \
+curl -X DELETE https://example.com/api/stores/me \
   -b "access_token=<token>; refresh_token=<token>"
 ```
 

@@ -250,7 +250,7 @@ describe("GET /api/stores/dashboard", () => {
         }),
       );
     }
-     
+
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
     expect(result.status).toBe(200);
     const latest = result.body.data.lists.latest_addons;

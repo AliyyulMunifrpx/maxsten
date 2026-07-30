@@ -5,10 +5,10 @@ Retrieves the details of a specific queue belonging to the buyer. This endpoint 
 ## Endpoint
 
 ```text
-GET /api/:publicId/queue/:queueId
+GET /api/stores/:storeId/queues/:queueId
 ```
 
-- `:publicId` is the store's `public_id` (UUID format).
+- `:storeId` is the store's `public_id` (UUID format).
 - `:queueId` is the queue's internal `id` (integer).
 
 ## Authentication
@@ -19,13 +19,13 @@ Cookie-based authentication. The system reads the `guest_id` cookie from the buy
 
 | Parameter  | Location      | Type          | Required | Description                                                    |
 | ---------- | ------------- | ------------- | -------- | -------------------------------------------------------------- |
-| `publicId` | URL parameter | string (UUID) | ✅       | The `public_id` of the store where the buyer placed the order. |
+| `storeId` | URL parameter | string (UUID) | ✅       | The `public_id` of the store where the buyer placed the order. |
 | `queueId`  | URL parameter | integer       | ✅       | The internal ID of the queue to retrieve.                      |
 
 ## Example Request
 
 ```bash
-curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/queue/10" \
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues/10" \
   -H "Cookie: guest_id=11111111-2222-3333-4444-555555555555"
 ```
 
@@ -86,10 +86,10 @@ curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/queue/
 
 | Status | Condition                                                                                                             | `errors`                      |
 | ------ | --------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| 400    | `publicId` is not a valid UUID, or `queueId` is not a positive integer.                                               | Validation message (from Joi) |
+| 400    | `storeId` is not a valid UUID, or `queueId` is not a positive integer.                                               | Validation message (from Joi) |
 | 401    | The buyer did not send the `guest_id` cookie (session not found).                                                     | `Unauthorized`                |
 | 404    | Queue not found.                                                                                                      | `No queue found`              |
-| 404    | The queue exists, but the buyer tries to access it using another store's `publicId` (cross-store access protection).  | `No queue found`              |
+| 404    | The queue exists, but the buyer tries to access it using another store's `storeId` (cross-store access protection).  | `No queue found`              |
 | 404    | The queue exists, but the `guest_id` cookie does not match the actual owner of the queue (anti-hijacking protection). | `No queue found`              |
 
 ## Additional Notes (Frontend)

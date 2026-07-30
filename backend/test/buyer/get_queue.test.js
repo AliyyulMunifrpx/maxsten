@@ -8,7 +8,7 @@ const OTHER_STORE_PUBLIC_ID = "999e4567-e89b-12d3-a456-426614174999";
 const GUEST_ID = "11111111-2222-3333-4444-555555555555";
 const HACKER_GUEST_ID = "99999999-8888-7777-6666-555555555555";
 
-describe("GET /api/:publicId/queue/:queueId", () => {
+describe("GET /api/stores/:storeId/queues/:queueId", () => {
   let userId;
   let storeId;
   let otherStoreId;
@@ -124,7 +124,7 @@ describe("GET /api/:publicId/queue/:queueId", () => {
 
   test("[SUCCESS] should return complete queue details with snapshot addons", async () => {
     const response = await supertest(web)
-      .get(`/api/${STORE_PUBLIC_ID}/queue/${queueId}`)
+      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     expect(response.status).toBe(200);
@@ -146,7 +146,7 @@ describe("GET /api/:publicId/queue/:queueId", () => {
 
   test("[ERROR] should return 401 Unauthorized if guest cookie is missing", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/queue/${queueId}`,
+      `/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`,
     );
 
     expect(response.status).toBe(401);
@@ -156,7 +156,7 @@ describe("GET /api/:publicId/queue/:queueId", () => {
   test("[ERROR] should return 404 if HACKER tries to access someone else's queue", async () => {
     // Skenario: Hacker login pakai guest_id dia sendiri, tapi nyoba nembak ID antrean orang lain
     const response = await supertest(web)
-      .get(`/api/${STORE_PUBLIC_ID}/queue/${queueId}`)
+      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`)
       .set("Cookie", [`guest_id=${HACKER_GUEST_ID}`]);
 
     expect(response.status).toBe(404);
@@ -166,16 +166,16 @@ describe("GET /api/:publicId/queue/:queueId", () => {
   test("[ERROR] should return 404 if accessed via wrong store's public_id", async () => {
     // Skenario: User pakai ID antrean yang bener, tapi nembak public_id toko tetangga
     const response = await supertest(web)
-      .get(`/api/${OTHER_STORE_PUBLIC_ID}/queue/${queueId}`)
+      .get(`/api/stores/${OTHER_STORE_PUBLIC_ID}/queues/${queueId}`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
-
+  console.log(response.body)
     expect(response.status).toBe(404);
     expect(response.body.errors).toContain("No queue found");
   });
 
   test("[ERROR] should return 400 Bad Request if queueId is not a number", async () => {
     const response = await supertest(web)
-      .get(`/api/${STORE_PUBLIC_ID}/queue/bukan-angka`)
+      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/bukan-angka`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     // Ditolak oleh Joi Validation
@@ -184,7 +184,7 @@ describe("GET /api/:publicId/queue/:queueId", () => {
 
   test("[ERROR] should return 400 Bad Request if publicId is not a valid UUID", async () => {
     const response = await supertest(web)
-      .get(`/api/bukan-uuid-valid/queue/${queueId}`)
+      .get(`/api/stores/bukan uuid valid/queues/${queueId}`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     // Ditolak oleh Joi Validation

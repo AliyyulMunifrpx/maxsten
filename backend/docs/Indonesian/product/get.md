@@ -5,7 +5,7 @@ Ambil detail 1 produk milik toko user yang sedang login.
 ## Endpoint
 
 ```
-GET /api/stores/product/:productId
+GET /api/stores/products/:productId
 ```
 
 `:productId` adalah UUID milik produk.
@@ -21,7 +21,7 @@ Tidak ada body — cukup `productId` di URL dan cookie auth valid.
 ## Contoh Request
 
 ```bash
-curl -X GET https://example.com/api/stores/product/550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://example.com/api/stores/products/550e8400-e29b-41d4-a716-446655440000 \
   -b "access_token=<token>; refresh_token=<token>"
 ```
 

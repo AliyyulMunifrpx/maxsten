@@ -1,24 +1,28 @@
-# Delete User
+# Delete Account
+
+Menghapus akun user secara permanen (bukan _soft-delete_) — beda dari `DELETE /api/delete-store` yang cuma _soft-delete_ toko.
 
 ## Endpoint
 
 ```
-DELETE /api/users/delete
+DELETE /api/users/me
+
 ```
 
 ## Auth
 
-Butuh autentikasi. Cookie `access_token` wajib ada & valid (dicek lewat `authMiddleware`, hasil decode-nya jadi `req.user`).
+Cookie-based auth (`access_token` / `refresh_token`, `httpOnly`). `userId` dan `supabase_id` diambil dari `req.user` (middleware).
 
 ## Request
 
-Tidak ada body. Cookie `access_token` (dan `refresh_token`) dikirim otomatis oleh browser selama request pakai `credentials: "include"` (fetch) atau `withCredentials: true` (axios).
+Tidak ada body.
 
 ## Contoh Request
 
 ```bash
-curl -X DELETE https://example.com/api/users/delete \
-  -H "Cookie: access_token=<token>; refresh_token=<token>"
+curl -X DELETE https://example.com/api/users/me \
+  -b "access_token=<token>; refresh_token=<token>"
+
 ```
 
 ## Response
@@ -32,29 +36,23 @@ curl -X DELETE https://example.com/api/users/delete \
 }
 ```
 
-Akun (dan data terkaitnya) dihapus permanen dari database, dan server otomatis ngirim ulang `Set-Cookie` buat ngosongin cookie (otomatis logout):
-
-| Cookie          | Aksi                            |
-| --------------- | ------------------------------- |
-| `access_token`  | Dikosongkan (`res.clearCookie`) |
-| `refresh_token` | Dikosongkan (`res.clearCookie`) |
+> Cookie `access_token` dan `refresh_token` otomatis dihapus dari browser — user langsung ter-logout, tidak perlu memanggil `DELETE /api/users/logout` terpisah setelah ini.
 
 ### Error
 
-| Status | Kondisi                                                                                             | Contoh `errors`                        |
-| ------ | --------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| 401    | Tidak ada cookie / cookie invalid / expired (gagal lolos `authMiddleware`)                          | `Unauthorized`                         |
-| 404    | Data user gak ketemu di database (sesi valid tapi record-nya udah gak ada)                          | `User not found`                       |
-| 500    | Gagal menghapus akun di sisi autentikasi (data user di database utama tetap utuh, gak ikut kehapus) | `Failed to delete user authentication` |
-
-```json
-{
-  "errors": "Unauthorized"
-}
-```
+| Status | Kondisi                                                                                             | `errors`                                                                              |
+| ------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 401    | Tidak login / session expired                                                                       | `Unauthorized` atau `Session Expired. Please login again.`                            |
+| 409    | Toko milik user masih memiliki antrean pelanggan yang aktif (status `BELUM_BAYAR` atau `DIPROSES`). | `You cannot delete your account because your store still has active customer queues.` |
+| 409    | Masih ada relasi data krusial lain di database yang menghalangi penghapusan.                        | `We cannot delete the account because there is still data associated with it.`        |
 
 ## Catatan
 
-- Aksi ini **permanen dan gak bisa dibatalin** — sebaiknya FE kasih dialog konfirmasi eksplisit sebelum manggil endpoint ini.
-- Kalau sukses (200), user otomatis ke-logout (cookie ke-clear) — FE tinggal redirect ke halaman login/landing, gak perlu manggil endpoint logout terpisah setelahnya.
-- Kalau dapet 500, akun & datanya masih utuh (belum kehapus sama sekali) — aman buat user coba lagi, atau arahkan ke CS kalau berulang.
+- **Penghapusan ini permanen:** Akun user benar-benar dihapus dari database. FE sangat disarankan menampilkan dialog konfirmasi eksplisit ke user (misal: meminta ketik ulang email atau tombol konfirmasi bahaya) sebelum memanggil endpoint ini.
+- **Validasi Antrean Aktif:** Sistem akan mengecek apakah toko milik user sedang melayani pelanggan. Jika ada antrean yang masih berjalan, penghapusan akan ditolak (409). FE perlu mengarahkan user untuk menyelesaikan atau membatalkan antrean tersebut terlebih dahulu.
+- **Toko akan otomatis di-soft-delete:** Jika syarat di atas terpenuhi, sistem menggunakan transaksi otomatis (`$transaction`) untuk melakukan _soft-delete_ (`is_delete: true`) pada toko milik user secara bersamaan dengan penghapusan akun.
+- **Keamanan Data Diutamakan (Fail-safe):** Data di database (Prisma) dihapus lebih dulu. Jika gagal di tengah jalan, proses berhenti total dan akun di sistem auth (Supabase) **belum disentuh sama sekali**, sehingga user masih bisa login seperti biasa.
+- **Auto-Cleanup untuk Kegagalan Auth:** Jika data di database berhasil dihapus namun sistem auth (Supabase) gagal merespons atau sedang _down_, endpoint akan tetap membalas `200 OK` ke FE agar pengalaman pengguna tidak terganggu. Sisa akun di sistem auth tersebut akan otomatis masuk ke antrean pembersihan di latar belakang (_Background Cron Job_) untuk dihapus secara berkala oleh server.
+
+---
+

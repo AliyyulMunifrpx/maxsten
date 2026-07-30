@@ -22,7 +22,7 @@ describe("logout user", () => {
     const result = await supertest(web)
       .delete("/api/users/logout")
       .set("Cookie", cookies);
-
+console.log(result.body)
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
     expect(result.body.message).toBe("Logout successful");

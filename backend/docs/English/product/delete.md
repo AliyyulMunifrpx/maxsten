@@ -5,7 +5,7 @@ Soft-delete a product along with all of its associated variants.
 ## Endpoint
 
 ```http
-PATCH /api/stores/product/delete/:productId
+DELETE /api/stores/products/:productId
 
 ```
 
@@ -22,7 +22,7 @@ No body required — only `productId` in the URL and valid auth cookies.
 ## Request Example
 
 ```bash
-curl -X PATCH https://example.com/api/stores/product/delete/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://example.com/api/stores/products/550e8400-e29b-41d4-a716-446655440000 \
   -b "access_token=<token>; refresh_token=<token>"
 
 ```
@@ -37,7 +37,7 @@ curl -X PATCH https://example.com/api/stores/product/delete/550e8400-e29b-41d4-a
 }
 ```
 
-> Just like `PATCH /api/delete-store`, `data` here is simply the string `"OK"`, not a product object.
+> Just like `DELETE /api/delete-store`, `data` here is simply the string `"OK"`, not a product object.
 
 ### Errors
 

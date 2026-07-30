@@ -3,8 +3,6 @@ import addonService from "../service/addon_service.js";
 const getAddonGroup = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    // Sesuaikan nama params dengan yang ada di route kamu, misalnya /api/stores/addon-groups/:addonGroupId
-
     const result = await addonService.getAddonGroup(userId);
 
     res.status(200).json({

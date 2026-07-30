@@ -9,7 +9,7 @@ import crypto from "crypto";
 const email = "aliyyulmunif780@gmail.com";
 const password = "aliyyul";
 
-describe("PATCH /api/stores/product/delete/:productId", () => {
+describe("DELETE /api/stores/products/:productId", () => {
   let cookies;
   let user;
   let store;
@@ -120,7 +120,7 @@ describe("PATCH /api/stores/product/delete/:productId", () => {
 
   test("should successfully soft delete product, its variants, and remove image file", async () => {
     const result = await supertest(web)
-      .patch(`/api/stores/product/delete/${product.id}`)
+      .delete(`/api/stores/products/${product.id}`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(200);
@@ -146,7 +146,7 @@ describe("PATCH /api/stores/product/delete/:productId", () => {
 
   test("should reject (400) if productId is not a valid UUID", async () => {
     const result = await supertest(web)
-      .patch("/api/stores/product/delete/bukan-uuid-valid")
+      .delete("/api/stores/products/bukan-uuid-valid")
       .set("Cookie", cookies);
     console.log(result.body)
     expect(result.status).toBe(400);
@@ -177,7 +177,7 @@ describe("PATCH /api/stores/product/delete/:productId", () => {
     });
 
     const result = await supertest(web)
-      .patch(`/api/stores/product/delete/${product.id}`)
+      .delete(`/api/stores/products/${product.id}`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(400);
@@ -198,7 +198,7 @@ describe("PATCH /api/stores/product/delete/:productId", () => {
     const fakeUuid = crypto.randomUUID();
 
     const result = await supertest(web)
-      .patch(`/api/stores/product/delete/${fakeUuid}`)
+      .delete(`/api/stores/products/${fakeUuid}`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404);
@@ -208,8 +208,8 @@ describe("PATCH /api/stores/product/delete/:productId", () => {
   // --- SKENARIO 5: ERROR UNAUTHENTICATED ---
 
   test("should reject (401) if user is not logged in", async () => {
-    const result = await supertest(web).patch(
-      `/api/stores/product/delete/${product.id}`,
+    const result = await supertest(web).delete(
+      `/api/stores/products/${product.id}`,
     );
 
     expect(result.status).toBe(401);

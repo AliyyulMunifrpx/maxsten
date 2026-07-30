@@ -72,7 +72,7 @@ describe("update operational hours", () => {
 
   // ASUMSI ROUTE: PATCH /api/stores/operational-hours. Sesuaikan kalau beda
   // (misal PUT, atau path lain).
-  const ENDPOINT = "/api/stores/operational-hours";
+  const ENDPOINT = "/api/stores/me/operational-hours";
 
   test("should update existing days with new values (upsert -> update path)", async () => {
     await createStoreDirect({ name: "Warung Update Jam 1" });

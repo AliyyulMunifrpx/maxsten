@@ -15,7 +15,7 @@ function fullOpenSchedule() {
   }));
 }
 
-describe("GET /api/:storeId/products (Buyer Catalog)", () => {
+describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
   let userId;
   let internalStoreId;
   let specificProductId;
@@ -151,7 +151,7 @@ describe("GET /api/:storeId/products (Buyer Catalog)", () => {
 
   test("should get page 1 catalog with 20 items and correct pagination metadata", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/products`,
+      `/api/stores/${STORE_PUBLIC_ID}/products`,
     );
     expect(response.status).toBe(200);
     expect(response.body.data.store.name).toBe("Warung Makan Enak");
@@ -168,7 +168,7 @@ describe("GET /api/:storeId/products (Buyer Catalog)", () => {
 
   test("should get page 2 catalog", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/products?page=2`,
+      `/api/stores/${STORE_PUBLIC_ID}/products?page=2`,
     );
 
     expect(response.status).toBe(200);
@@ -178,14 +178,14 @@ describe("GET /api/:storeId/products (Buyer Catalog)", () => {
 
   test("should return 404 if store is not found", async () => {
     const response = await supertest(web).get(
-      `/api/999e9999-e99b-99d9-a999-999999999999/products`,
+      `/api/stores/123e4567-e89b-12d3-a456-426614174000/products`,
     );
     expect(response.status).toBe(404);
   });
 
   test("should correctly aggregate total_sold ONLY from SELESAI queues", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/products`,
+      `/api/stores/${STORE_PUBLIC_ID}/products`,
     );
 
     const ayamProduct = response.body.data.currentPage.find(
@@ -199,7 +199,7 @@ describe("GET /api/:storeId/products (Buyer Catalog)", () => {
 
   test("should return exact match using search keyword (Fuse.js logic)", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/products?keyword=Ayam Bakar Madu`,
+      `/api/stores/${STORE_PUBLIC_ID}/products?keyword=Ayam Bakar Madu`,
     );
     expect(response.status).toBe(200);
     expect(response.body.data.currentPage[0].name).toBe(
@@ -209,7 +209,7 @@ describe("GET /api/:storeId/products (Buyer Catalog)", () => {
 
   test("should return fuzzy match (typo tolerance) using search keyword", async () => {
     const response = await supertest(web).get(
-      `/api/${STORE_PUBLIC_ID}/products?keyword=Ayan`,
+      `/api/stores/${STORE_PUBLIC_ID}/products?keyword=Ayan`,
     );
     expect(response.status).toBe(200);
     expect(response.body.data.currentPage[0].name).toBe(

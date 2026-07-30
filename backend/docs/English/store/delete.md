@@ -5,11 +5,9 @@ Soft-delete the store belonging to the currently logged-in user.
 ## Endpoint
 
 ```
-PATCH /api/delete-store
+DELETE /api/stores/me
 
 ```
-
-> ⚠️ The method is `PATCH`, not `DELETE` — because this is a soft-delete (updating a flag), not an actual record deletion.
 
 ## Auth
 
@@ -22,7 +20,7 @@ No body/parameters — just a valid auth cookie.
 ## Request Example
 
 ```bash
-curl -X PATCH https://example.com/api/delete-store \
+curl -X DELETE https://example.com/api/stores/me \
   -b "access_token=<token>; refresh_token=<token>"
 
 ```

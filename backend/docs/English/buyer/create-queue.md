@@ -1,71 +1,69 @@
 # Create Queue (Checkout)
 
-Creates a new queue based on the products selected from the store catalog. If the buyer does not already have a `guest_id`, the system will automatically create one and return it via the `Set-Cookie` response header.
+Creates a new queue based on the items selected from the catalog. This endpoint will automatically generate a `guest_id` if the buyer doesn't have one yet, and send it back via `Set-Cookie`.
 
 ## Endpoint
 
-```http
-POST /api/stores/queues
+```text
+POST /api/stores/:storeId/queues
+
 ```
 
-## Authentication
+## Auth
 
-Handled automatically via cookies. The system reads the `guest_id` cookie. If it does not exist, a new anonymous guest session is created automatically.
+Automatic via Cookie. The system will read the `guest_id` cookie. If it does not exist, the system will create a new buyer session (_anonymous guest_).
 
 ## Request
 
+**URL Parameters:**
+
+| Parameter | Type          | Required | Description                                              |
+| --------- | ------------- | -------- | -------------------------------------------------------- |
+| `storeId` | string (UUID) | ✅       | The `public_id` of the store where the buyer is queuing. |
+
 **Headers:**
+Make sure to send `Content-Type: application/json` and accept _credentials_ (cookies) if called from the FE (`withCredentials: true`).
 
-Make sure to send `Content-Type: application/json`. When calling this endpoint from the frontend, enable credentials (`withCredentials: true`) so cookies can be sent and received.
+**Body (JSON):**
 
-**Request Body (JSON):**
+| Field   | Type             | Required | Description                                            |
+| ------- | ---------------- | -------- | ------------------------------------------------------ |
+| `note`  | string           | ❌       | Optional note from the buyer (maximum 255 characters). |
+| `items` | array of objects | ✅       | At least 1 product purchased.                          |
 
-| Field       | Type             | Required | Description                                                         |
-| ----------- | ---------------- | -------- | ------------------------------------------------------------------- |
-| `public_id` | string (UUID)    | ✅       | The store's `public_id`.                                            |
-| `note`      | string           | ❌       | Optional note from the buyer (maximum 255 characters).              |
-| `items`     | array of objects | ✅       | The list of products being ordered. Must contain at least one item. |
+**Object Structure inside `items`:**
 
-### Item Object Structure
-
-| Field             | Type            | Required | Description                                    |
-| ----------------- | --------------- | -------- | ---------------------------------------------- |
-| `product_id`      | string (UUID)   | ✅       | Internal ID of the ordered product.            |
-| `quantity`        | number          | ✅       | Product quantity (minimum `1`, maximum `100`). |
-| `variant_id`      | string (UUID)   | ❌       | Selected product variant ID (e.g., "Spicy").   |
-| `selected_addons` | array of string | ❌       | Array of selected add-on IDs.                  |
+| Field             | Type            | Required | Description                                       |
+| ----------------- | --------------- | -------- | ------------------------------------------------- |
+| `product_id`      | string (UUID)   | ✅       | Internal ID of the ordered product.               |
+| `quantity`        | number          | ✅       | Product quantity (Minimum 1, Maximum 100).        |
+| `variant_id`      | string (UUID)   | ❌       | ID of the selected variant (e.g., "Spicy").       |
+| `selected_addons` | array of string | ❌       | Array containing the IDs of the selected Add-ons. |
 
 ## Example Request
 
 ```bash
-curl -X POST "https://example.com/api/stores/queues" \
+curl -X POST "https://example.com/api/stores/f47ac10b-58cc-4372-a567-0e02b2c3d479/queues" \
   -H "Content-Type: application/json" \
   -d '{
-    "public_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-    "note": "Please make it not spicy.",
+    "note": "Not too spicy, please",
     "items": [
       {
         "product_id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
         "quantity": 2,
         "variant_id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
-        "selected_addons": [
-          "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
-          "addon-101"
-        ]
+        "selected_addons": ["c9a5d102-18f3-4f68-b8d9-81a9424e8a1d", "addon-101"]
       }
     ]
   }'
+
 ```
 
 ## Response
 
 ### 200 OK
 
-In addition to the JSON response, if this is the buyer's first visit, the server will include the following response header:
-
-```http
-Set-Cookie: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400
-```
+In addition to replying with JSON, if this is the buyer's first visit, the Response will include the header `Set-Cookie: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400`.
 
 ```json
 {
@@ -75,7 +73,7 @@ Set-Cookie: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400
     "queue_number": 5,
     "guest_id": "guest-uuid-abcd",
     "status": "BELUM_BAYAR",
-    "note": "Please make it not spicy.",
+    "note": "Not too spicy, please",
     "total_price": 50000,
     "created_at": "2026-07-28T14:00:00.000Z",
     "expired_at": "2026-07-28T14:30:00.000Z",
@@ -89,37 +87,37 @@ Set-Cookie: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400
         "selected_addons": [
           {
             "id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
-            "name": "Cheese",
+            "name": "Keju",
             "price": 3000
           }
         ],
         "product": {
-          "name": "Special Burger",
+          "name": "Burger Spesial",
           "price": 20000
         },
         "variant": {
-          "name": "Spicy",
+          "name": "Pedas",
           "additional_price": 2000
         }
       }
-    ],
+    ]
   }
 }
 ```
 
-## Error Responses
+### Error
 
-| Status | Condition                                                                  | `errors`                                                        |
-| ------ | -------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 400    | The store is currently closed (automatically or manually).                 | `Sorry, the store is currently closed`                          |
-| 400    | The buyer already has an active queue (unpaid or being processed).         | `Please finish the previous queue first.`                       |
-| 400    | One or more products are unavailable (`is_available: false`).              | `Sorry, the product {product_name} is currently unavailable...` |
-| 400    | The provided `variant_id` or selected add-ons are invalid for the product. | `Invalid variant for product {product_name}`                    |
-| 400    | Request validation failed (negative quantity, invalid UUID, etc.).         | Validation error message (generated by Joi).                    |
-| 404    | The store does not exist or has been deleted.                              | `Store not found`                                               |
-| 404    | One or more products do not exist or have been deleted.                    | `Some products were not found`                                  |
+| Status | Condition                                                      | `errors`                                                |
+| ------ | -------------------------------------------------------------- | ------------------------------------------------------- |
+| 400    | The store is currently closed automatically/manually.          | `Sorry, the store is currently closed`                  |
+| 400    | There is still an active order (unpaid/processing).            | `Please finish the previous queue first.`               |
+| 400    | Product is out of stock (`is_available: false`).               | `Sorry, the product {nama} is currently unavailable...` |
+| 400    | The selected `variant_id` or add-on is mismatched/invalid.     | `Invalid variant for product {nama}`                    |
+| 400    | Parameter validation failed (negative quantity, invalid UUID). | (Automatic message from Joi)                            |
+| 404    | Store not found / deleted.                                     | `Store not found`                                       |
+| 404    | Product not found / deleted.                                   | `Some products were not found`                          |
 
-## Additional Notes (Frontend)
+## Additional Notes (For Frontend)
 
-- **Payment Countdown:** Use the difference between `server_now` and `expired_at` to calculate the payment countdown accurately. Do **not** rely on the client's local system clock.
-- **Socket.io:** See the WebSocket documentation for real-time queue updates.
+- **Payment Timer:** Use the difference between `server_now` and `expired_at` to accurately calculate the payment countdown timer; do not rely on the user's local OS clock.
+- **Socket.io:** Read the details in the websocket documentation.

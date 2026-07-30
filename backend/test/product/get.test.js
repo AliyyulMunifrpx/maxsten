@@ -118,7 +118,7 @@ describe("create product", () => {
 
   test("should successfully get the product with complete data", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/product/${productId}`)
+      .get(`/api/stores/products/${productId}`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(200);
@@ -133,7 +133,7 @@ describe("create product", () => {
 
   test("should reject if product id format is invalid (Joi Validation)", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/product/id-ngasal-bukan-uuid`)
+      .get(`/api/stores/products/id-ngasal-bukan-uuid`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(400); // Bad Request karena gagal validasi
@@ -145,7 +145,7 @@ describe("create product", () => {
     const FAKE_VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
 
     const result = await supertest(web)
-      .get(`/api/stores/product/${FAKE_VALID_UUID}`)
+      .get(`/api/stores/products/${FAKE_VALID_UUID}`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404); // Not Found

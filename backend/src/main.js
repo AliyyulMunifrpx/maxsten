@@ -5,11 +5,11 @@ import { redisClient } from "./application/redis.js";
 // 1. Import modul HTTP bawaan Node dan Socket.io
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { startCronJobs } from "./service/cron_service.js";
 import { socketAuth } from "./middleware/socket_auth.js";
 import { registerSellerEvents } from "./socket/seller_events.js";
 import { registerBuyerEvents } from "./socket/buyer_events.js";
 import { registerDebugEvents } from "./socket/debug_events.js";
+import { startCronJobs } from "./cron job/index.js";
 // 2. Bungkus Express 'web' lu pakai HTTP Server
 const httpServer = createServer(web);
 const io = new Server(httpServer, {

@@ -22,7 +22,7 @@ function fullClosedSchedule() {
   }));
 }
 
-describe("POST /api/stores/queues (Create Queue)", () => {
+describe("POST /api/stores/:storeId/queues (Create Queue)", () => {
   let storeOpen;
   let storeClosed;
   let productBasic;
@@ -101,8 +101,9 @@ describe("POST /api/stores/queues (Create Queue)", () => {
       data: {
         store_id: storeOpen.id,
         name: "Topping",
+        created_at: new Date(),
         addons: {
-          create: [{ name: "Keju", price: 3000 }], // Addon: Rp 3.000
+          create: [{ name: "Keju", price: 3000, created_at: new Date() }], // Addon: Rp 3.000
         },
       },
       include: { addons: true },
@@ -166,7 +167,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
     };
 
     const response = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .send(payload);
     expect(response.status).toBe(200);
     expect(response.body.data.queue_number).toBe(1);
@@ -196,7 +197,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
     };
 
     const response = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .set("Cookie", [`guest_id=${dummyGuestId}`])
       .send(payload);
 
@@ -217,7 +218,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
     };
 
     const response = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .send(payload);
 
     expect(response.status).toBe(400);
@@ -233,7 +234,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
 
     // Checkout pertama (Sukses)
     const firstCheckout = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .set("Cookie", [`guest_id=${dummyGuestId}`])
       .send(payload);
 
@@ -241,9 +242,10 @@ describe("POST /api/stores/queues (Create Queue)", () => {
 
     // Checkout kedua dengan guest_id yang SAMA dan antrean pertama belum selesai
     const secondCheckout = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .set("Cookie", [`guest_id=${dummyGuestId}`])
       .send(payload);
+      console.log(secondCheckout.body)
     expect(secondCheckout.status).toBe(400);
     expect(secondCheckout.body.errors).toContain("finish the previous queue");
   });
@@ -255,7 +257,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
     };
 
     const response = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .send(payload);
 
     expect(response.status).toBe(400);
@@ -269,7 +271,7 @@ describe("POST /api/stores/queues (Create Queue)", () => {
     };
 
     const response = await supertest(web)
-      .post("/api/stores/queues")
+      .post(`/api/stores/${payload.public_id}/queues`)
       .send(payload);
 
     // Ditolak oleh Joi Validator (400 Bad Request)

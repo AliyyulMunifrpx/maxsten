@@ -5,7 +5,7 @@ Retrieve all products from a single store belonging to the currently logged-in u
 ## Endpoint
 
 ```
-GET /api/stores/all-products/:publicId
+GET /api/stores/:publicId/products
 
 ```
 
@@ -25,7 +25,7 @@ Cookie-based auth. `userId` from `req.user.id` (middleware) — used to ensure t
 ## Request Example
 
 ```bash
-curl -X GET "https://example.com/api/stores/all-products/550e8400-e29b-41d4-a716-446655440000?page=1" \
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products?page=1" \
   -b "access_token=<token>; refresh_token=<token>"
 
 ```

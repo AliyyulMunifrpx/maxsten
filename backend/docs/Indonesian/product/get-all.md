@@ -5,7 +5,7 @@ Ambil semua produk dari 1 toko milik user yang sedang login, dengan pagination +
 ## Endpoint
 
 ```
-GET /api/stores/all-products/:publicId
+GET /api/stores/:publicId/products
 ```
 
 `:publicId` adalah `public_id` milik toko (bukan `id` internal produk maupun toko).
@@ -24,7 +24,7 @@ Cookie-based auth. `userId` dari `req.user.id` (middleware) — dipakai memastik
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/stores/all-products/f47ac10b-58cc-4372-a567-0e02b2c3d479?page=1" \
+curl -X GET "https://example.com/api/stores/:123e4567-e89b-12d3-a456-426614174000/products?page=1" \
   -b "access_token=<token>; refresh_token=<token>"
 ```
 

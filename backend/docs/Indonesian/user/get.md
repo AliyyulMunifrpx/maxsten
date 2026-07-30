@@ -38,21 +38,10 @@ curl -X GET https://example.com/api/users/me \
 
 ### Error
 
-| Status | Kondisi                                                               | `errors`                               |
-| ------ | --------------------------------------------------------------------- | -------------------------------------- |
-| 401    | Tidak ada `access_token` maupun `refresh_token`                       | `Unauthorized`                         |
-| 401    | `access_token` invalid dan tidak ada `refresh_token` untuk fallback   | `Unauthorized`                         |
-| 401    | `access_token` & `refresh_token` dua-duanya invalid/expired           | `Session Expired. Please login again.` |
-| 401    | Sesi valid di sistem auth, tapi data user tidak ditemukan di database | `User database mismatch`               |
-
-```json
-{
-  "errors": "Session Expired. Please login again."
-}
-```
+| Status | Kondisi                       | `errors`                                                   |
+| ------ | ----------------------------- | ---------------------------------------------------------- |
+| 401    | Tidak login / session expired | `Unauthorized` atau `Session Expired. Please login again.` |
 
 ## Catatan
 
-- Kalau hanya `access_token` yang invalid tapi `refresh_token` masih valid, request tetap berhasil (200) — server otomatis refresh session di belakang layar dan kirim cookie baru lewat `Set-Cookie`.
-- Kalau session di-refresh, cookie `access_token` & `refresh_token` yang lama otomatis diganti — FE tidak perlu re-login maupun action tambahan apa pun.
-- Karena endpoint menggunakan cookie `httpOnly`, setiap request **harus** mengirim credentials.
+- Data ini diambil langsung dari hasil autentikasi (`authMiddleware`), bukan query terpisah — jadi selalu konsisten dengan identitas yang dipakai untuk otorisasi di endpoint lain.

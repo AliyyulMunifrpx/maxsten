@@ -5,10 +5,10 @@ Buyer membatalkan pesanan miliknya sendiri, selama masih berstatus `BELUM_BAYAR`
 ## Endpoint
 
 ```
-PATCH /api/:publicId/queues/:queueId/cancel
+PATCH /api/stores/:storeId/queues/:queueId/cancel
 ```
 
-`:publicId` = `public_id` toko. `:queueId` = ID antrean (angka).
+`:storeId` = `public_id` toko. `:queueId` = ID antrean (angka).
 
 ## Auth
 
@@ -25,7 +25,7 @@ Content-Type: `application/json`
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/8kd93jf82j/queues/42/cancel \
+curl -X PATCH https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues/90/cancel \
   -b "guest_id=123e4567-e89b-12d3-a456-426614174000" \
   -H "Content-Type: application/json" \
   -d '{"reason": "Lama banget"}'
@@ -49,7 +49,7 @@ curl -X PATCH https://example.com/api/8kd93jf82j/queues/42/cancel \
 
 | Status | Kondisi                                                                               | `errors`                                                                               |
 | ------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 400    | Validasi gagal (`publicId`/`queueId` format salah, `reason` lebih dari 100 karakter)  | pesan validasi                                                                         |
+| 400    | Validasi gagal (`storeId`/`queueId` format salah, `reason` lebih dari 100 karakter)   | pesan validasi                                                                         |
 | 400    | Antrean sudah diproses seller (status bukan `BELUM_BAYAR` lagi)                       | `The order has been processed and cannot be canceled`                                  |
 | 400    | Antrean baru saja mulai diproses **tepat saat** request ini berjalan (race condition) | `Oh, someone beat you to it! Your order has just started being processed by the store` |
 | 401    | Cookie `guest_id` tidak ada                                                           | `Unauthorized`                                                                         |

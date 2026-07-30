@@ -4,16 +4,14 @@
 
 1. **GET** `/api/stores/me` — ambil jadwal saat ini (field `operational_hours`) buat prefill form.
 2. User ubah jam/toggle aktif per hari.
-3. **PATCH** `/api/stores/operational-hours` — kirim hari yang mau diubah.
+3. **PATCH** `/api/stores/me/operational-hours` — kirim hari yang mau diubah.
 4. Response balikin jadwal lengkap terbaru — FE sinkron langsung dari response, gak perlu refetch.
 
 ## Endpoint
 
 ```
-PATCH /api/stores/operational-hours
+PATCH /api/stores/me/operational-hours
 ```
-
-> ⚠️ Method-nya `PATCH`, bukan `PUT`. Kalau sebelumnya sempat pakai `PUT` di kode FE, tolong disesuaikan.
 
 ## Auth
 
@@ -54,7 +52,7 @@ Jadwal yang melewati tengah malam (overnight) diperbolehkan, misal `open_time: "
 ## Contoh Request
 
 ```bash
-curl -X PATCH https://example.com/api/stores/operational-hours \
+curl -X PATCH https://example.com/api/stores/me/operational-hours \
   -b "access_token=<token>; refresh_token=<token>" \
   -H "Content-Type: application/json" \
   -d '{"operational_hours":[{"day":0,"open_time":null,"close_time":null,"is_active":false}]}'

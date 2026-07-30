@@ -5,7 +5,7 @@ Ambil ringkasan penjualan, grafik, riwayat transaksi, dan produk terlaris toko u
 ## Endpoint
 
 ```
-GET /api/stores/history
+GET /api/stores/me/history
 ```
 
 ## Auth
@@ -31,7 +31,7 @@ Query parameters, semuanya opsional:
 ## Contoh Request
 
 ```bash
-curl -G https://example.com/api/stores/history \
+curl -G https://example.com/api/stores/me/history \
   -b "access_token=<token>; refresh_token=<token>" \
   -d month=7 -d year=2026 -d status=SELESAI -d page=1 -d limit=10
 ```

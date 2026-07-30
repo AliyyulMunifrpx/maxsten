@@ -19,13 +19,10 @@ userRouter.use(authMiddleware);
 // 👤 USER API
 // ==========================================
 userRouter.get("/api/users/me", userController.getUser);
-userRouter.patch("/api/users/update", userController.updateUser);
-userRouter.delete("/api/users/logout", authMiddleware, userController.logout);
-userRouter.delete(
-  "/api/users/delete",
-  authMiddleware,
-  userController.deleteUser,
-);
+userRouter.patch("/api/users/me", userController.updateUser); // Hapus /update
+userRouter.delete("/api/users/logout", userController.logout); // Hapus authMiddleware redudan
+userRouter.delete("/api/users/me", userController.deleteUser); // Hapus /delete & authMiddleware
+
 // ==========================================
 // 🏪 STORE API
 // ==========================================
@@ -36,32 +33,33 @@ userRouter.post(
   uploadLogo.single("logo"),
   storeController.create,
 );
-userRouter.patch("/api/delete-store", storeController.deleteStore);
-userRouter.patch("/api/stores", storeController.updateStoreProfile);
+userRouter.patch("/api/stores/me", storeController.updateStoreProfile);
+userRouter.delete("/api/stores/me", storeController.deleteStore); // Ubah PATCH /delete-store jadi DELETE
 
 userRouter.patch(
-  "/api/stores/logo",
+  "/api/stores/me/logo",
   uploadLogo.single("logo"),
   storeController.updateLogo,
 );
-userRouter.patch("/api/stores/:storeId/status", storeController.openCloseStore); // Catatan: pertimbangkan ubah ke /api/stores/:storeId/status agar seragam
-userRouter.get("/api/stores/history", storeController.getHistory);
+userRouter.patch("/api/stores/:storeId/status", storeController.openCloseStore);
+userRouter.get("/api/stores/me/history", storeController.getHistory); // Tambahkan /me/
 
 // Operational Hours
 userRouter.patch(
-  "/api/stores/operational-hours",
+  "/api/stores/me/operational-hours",
   storeController.updateOperationalHours,
 );
-userRouter.get("/api/postal-code", storeController.postalCode);
+userRouter.get("/api/stores/postal-codes", storeController.postalCode); // Masukkan ke dalam stores
+
 // ==========================================
 // 📦 PRODUCT API
 // ==========================================
-userRouter.get("/api/stores/product/:productId", productController.getProduct);
 userRouter.post(
   "/api/stores/products",
   uploadLogo.single("image"),
   productController.createProduct,
 );
+userRouter.get("/api/stores/products/:productId", productController.getProduct); // product jadi products
 userRouter.patch(
   "/api/stores/products/:productId",
   productController.updateProductInfo,
@@ -75,32 +73,39 @@ userRouter.patch(
   "/api/stores/products/:productId/availability",
   productController.updateProductAvailability,
 );
-userRouter.get(
-  "/api/stores/all-products/:publicId",
-  productController.getAllProducts,
-);
-userRouter.patch(
-  "/api/stores/product/delete/:productId",
+userRouter.delete(
+  "/api/stores/products/:productId",
   productController.deleteProduct,
-);
+); // Gunakan DELETE, hilangkan /delete/
+
+// Akses publik/koleksi (bisa dipisah routernya kalau tidak butuh auth, tapi sementara tetap di sini)
+userRouter.get(
+  "/api/stores/:publicId/products",
+  productController.getAllProducts,
+); // Lebih bersih dari /all-products/
+
 // ==========================================
 // 🧩 ADDONS API
 // ==========================================
-userRouter.get("/api/stores/get-addon-groups", addonController.getAddonGroups);
 userRouter.post("/api/stores/addon-groups", addonController.createAddonGroup);
-userRouter.get("/api/addon-group/:addonGroupId", addonController.getAddonGroup);
+userRouter.get("/api/stores/addon-groups", addonController.getAddonGroups); // Hilangkan /get-
+userRouter.get(
+  "/api/stores/addon-groups/:addonGroupId",
+  addonController.getAddonGroup,
+); // Masukkan ke dalam /stores/
 userRouter.patch(
-  "/api/addon-group/edit/:addonGroupId",
+  "/api/stores/addon-groups/:addonGroupId",
   addonController.editAddonGroup,
-);
-userRouter.patch(
-  "/api/delete-addon-group/:addonGroupId",
+); // Hilangkan /edit/
+userRouter.delete(
+  "/api/stores/addon-groups/:addonGroupId",
   addonController.deleteAddonGroup,
-);
+); // Gunakan DELETE
+
 // ==========================================
-// 📋 SELLER
+// 📋 SELLER / QUEUES
 // ==========================================
-userRouter.get("/api/stores/queues/:storeId", sellerController.getAllQueue);
+userRouter.get("/api/stores/:storeId/queues", sellerController.getAllQueue); // Rapikan urutan param
 userRouter.patch(
   "/api/stores/queues/:queueId",
   sellerController.editQueueStatus,
@@ -109,25 +114,27 @@ userRouter.patch(
 // ==========================================
 // 📋 DASHBOARD
 // ==========================================
-userRouter.get("/api/stores/dashboard", dashboardController.getDashboard);
+userRouter.get("/api/stores/dashboard", dashboardController.getDashboard); // (Sudah sempurna sesuai spesifikasi)
+
 // ==========================================
 // 📋 REASON
 // ==========================================
 userRouter.post(
-  "/api/seller/create-cancel-reasons",
+  "/api/seller/cancel-reasons",
   reasonController.createCancelReason,
-);
+); // Hilangkan /create-
 userRouter.get("/api/seller/cancel-reasons", reasonController.getCancelReasons);
 userRouter.patch(
-  "/api/seller/update-reason",
+  "/api/seller/cancel-reasons/:reasonId",
   reasonController.updateCancelReason,
-);
-userRouter.patch(
-  "/api/delete-template/:templateId",
+); // Gunakan parameter ID & hilangkan /update-
+userRouter.delete(
+  "/api/seller/cancel-reasons/:reasonId",
   reasonController.deleteReasonTemplate,
-);
+); // Gunakan parameter ID & method DELETE
+
 // ==========================================
-// 📋 AI
+// 🤖 AI
 // ==========================================
-userRouter.post("/api/ai-report-generator", aiController.reportGenerator);
+userRouter.post("/api/ai/reports", aiController.reportGenerator); // Jadikan kata benda jamak
 export { userRouter };

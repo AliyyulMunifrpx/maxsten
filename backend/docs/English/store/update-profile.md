@@ -4,17 +4,15 @@
 
 1. **GET** `/api/stores/me` — retrieve the current store data to prefill the edit form.
 2. The user changes the fields to be edited.
-3. **PATCH** `/api/stores` — send the updated fields.
+3. **PATCH** `/api/stores/me` — send the updated fields.
 4. The response returns the **latest complete store data** (the exact same shape as `GET /api/stores/me`, including the recalculated `is_open`).
 
 ## Endpoint
 
 ```
-PATCH /api/stores
+PATCH /api/stores/me
 
 ```
-
-> ⚠️ The path is `/api/stores` (not `/api/stores/me`). If you previously called `/api/stores/me` for updates, please adjust it — `/api/stores/me` is exclusively for `GET`.
 
 ## Auth
 
@@ -46,7 +44,7 @@ Fields that are not sent will keep their old values (partial update).
 ## Request Example
 
 ```bash
-curl -X PATCH https://example.com/api/stores \
+curl -X PATCH https://example.com/api/stores/me \
   -b "access_token=<token>; refresh_token=<token>" \
   -H "Content-Type: application/json" \
   -d '{"name": "Toko Sumber Rejeki Baru", "payment_timeout": 20}'

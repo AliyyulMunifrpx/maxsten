@@ -5,7 +5,7 @@ Ambil detail lengkap dari satu produk secara spesifik. Endpoint ini memuat infor
 ## Endpoint
 
 ```
-GET /api/:storeId/:productId/details
+GET /api/stores/:storeId/products/:productId
 
 ```
 
@@ -26,7 +26,7 @@ Tidak perlu otentikasi (Public Endpoint). Bisa diakses oleh pembeli tanpa harus 
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/550e8400-e29b-41d4-a716-446655440000/details"
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products/123e4567-e89b-12d3-a456-426614174000"
 
 ```
 

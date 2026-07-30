@@ -4,8 +4,8 @@ Membuat antrean baru berdasarkan barang yang dipilih dari katalog. Endpoint ini 
 
 ## Endpoint
 
-```
-POST /api/stores/queues
+```text
+POST /api/stores/:storeId/queues
 
 ```
 
@@ -15,16 +15,21 @@ Otomatis via Cookie. Sistem akan membaca cookie `guest_id`. Jika belum ada, sist
 
 ## Request
 
+**URL Parameters:**
+
+| Parameter | Tipe          | Required | Keterangan                                       |
+| --------- | ------------- | -------- | ------------------------------------------------ |
+| `storeId` | string (UUID) | ✅       | `public_id` milik toko tempat pembeli mengantre. |
+
 **Headers:**
 Pastikan mengirimkan `Content-Type: application/json` dan menerima _credentials_ (cookie) jika dipanggil dari FE (`withCredentials: true`).
 
 **Body (JSON):**
 
-| Field       | Tipe             | Required | Keterangan                                             |
-| ----------- | ---------------- | -------- | ------------------------------------------------------ |
-| `public_id` | string (UUID)    | ✅       | `public_id` milik toko.                                |
-| `note`      | string           | ❌       | Catatan opsional dari pembeli (maksimal 255 karakter). |
-| `items`     | array of objects | ✅       | Minimal 1 produk yang dibeli.                          |
+| Field   | Tipe             | Required | Keterangan                                             |
+| ------- | ---------------- | -------- | ------------------------------------------------------ |
+| `note`  | string           | ❌       | Catatan opsional dari pembeli (maksimal 255 karakter). |
+| `items` | array of objects | ✅       | Minimal 1 produk yang dibeli.                          |
 
 **Struktur Objek di dalam `items`:**
 
@@ -38,10 +43,9 @@ Pastikan mengirimkan `Content-Type: application/json` dan menerima _credentials_
 ## Contoh Request
 
 ```bash
-curl -X POST "https://example.com/api/stores/queues" \
+curl -X POST "https://example.com/api/stores/f47ac10b-58cc-4372-a567-0e02b2c3d479/queues" \
   -H "Content-Type: application/json" \
   -d '{
-    "public_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
     "note": "Jangan pedes ya bang",
     "items": [
       {
@@ -81,7 +85,11 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
         "variant_id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
         "quantity": 2,
         "selected_addons": [
-          { "id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d", "name": "Keju", "price": 3000 }
+          {
+            "id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
+            "name": "Keju",
+            "price": 3000
+          }
         ],
         "product": {
           "name": "Burger Spesial",
@@ -92,7 +100,7 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
           "additional_price": 2000
         }
       }
-    ],  
+    ]
   }
 }
 ```
@@ -112,4 +120,4 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
 ## Catatan Tambahan (Untuk Frontend)
 
 - **Timer Pembayaran:** Gunakan selisih antara `server_now` dan `expired_at` untuk menghitung mundur _countdown_ pembayaran secara presisi, jangan andalkan jam OS lokal pengguna.
-- **Socket.io:** Baca detail di dokumenatasi websocket
+- **Socket.io:** Baca detail di dokumentasi websocket

@@ -5,7 +5,7 @@ Ambil informasi detail toko beserta daftar produknya. Endpoint ini bersifat publ
 ## Endpoint
 
 ```
-GET /api/:storeId/products
+GET /api/stores/:storeId/products
 
 ```
 
@@ -26,7 +26,7 @@ Tidak perlu otentikasi (Public Endpoint). Bisa diakses oleh siapa saja tanpa _co
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/f47ac10b-58cc-4372-a567-0e02b2c3d479/products?page=1&keyword=Ayam Bakar"
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products?page=1&keyword=Ayam Bakar"
 
 ```
 

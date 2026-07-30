@@ -8,7 +8,7 @@ const DELETED_STORE_PUBLIC_ID = "999e4567-e89b-12d3-a456-426614174999";
 const GUEST_ID = "11111111-2222-3333-4444-555555555555";
 const HACKER_GUEST_ID = "99999999-8888-7777-6666-555555555555";
 
-describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
+describe("PATCH /api/stores/:storeId/queues/:queueId/cancel", () => {
   let activeQueueId;
   let processedQueueId;
   let hostageQueueId; // Antrean di toko yang udah dihapus
@@ -108,9 +108,10 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
     const payload = { reason: "Lama banget bang" };
 
     const response = await supertest(web)
-      .patch(`/api/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`)
+      .patch(`/api/stores/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`)
       .set("Cookie", [`guest_id=${GUEST_ID}`])
       .send(payload);
+      console.log(response.body)
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe(activeQueueId);
     expect(response.body.data.status).toBe("DIBATALKAN");
@@ -127,7 +128,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
   test("[SUCCESS] should be able to cancel order EVEN IF the store is soft-deleted", async () => {
     // Skenario Pembeli Disandera: Toko dihapus, tapi antrean nyangkut. Harus bisa dibatalkan.
     const response = await supertest(web)
-      .patch(`/api/${DELETED_STORE_PUBLIC_ID}/queues/${hostageQueueId}/cancel`)
+      .patch(`/api/stores/${DELETED_STORE_PUBLIC_ID}/queues/${hostageQueueId}/cancel`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     expect(response.status).toBe(200);
@@ -136,7 +137,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
 
   test("[ERROR] should reject cancellation if order is already processed", async () => {
     const response = await supertest(web)
-      .patch(`/api/${STORE_PUBLIC_ID}/queues/${processedQueueId}/cancel`)
+      .patch(`/api/stores/${STORE_PUBLIC_ID}/queues/${processedQueueId}/cancel`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     expect(response.status).toBe(400);
@@ -145,7 +146,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
 
   test("[ERROR] should return 404 if HACKER tries to cancel someone else's order", async () => {
     const response = await supertest(web)
-      .patch(`/api/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`)
+      .patch(`/api/stores/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`)
       .set("Cookie", [`guest_id=${HACKER_GUEST_ID}`]); // Hacker masuk pakai cookienya sendiri
 
     // Langsung tembak 404 karena IDOR Guard Clause lu nyari: id antrean + guest_id hacker
@@ -157,7 +158,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
 
   test("[ERROR] should return 401 Unauthorized if cookie is missing", async () => {
     const response = await supertest(web).patch(
-      `/api/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`,
+      `/api/stores/${STORE_PUBLIC_ID}/queues/${activeQueueId}/cancel`,
     );
 
     expect(response.status).toBe(401);
@@ -165,7 +166,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
 
   test("[ERROR] should return 400 Bad Request if publicId is NOT a UUID (Joi Validation)", async () => {
     const response = await supertest(web)
-      .patch(`/api/bukan-uuid-123/queues/${activeQueueId}/cancel`)
+      .patch(`/api/stores/bukan uuid valid/queues/${activeQueueId}/cancel`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     expect(response.status).toBe(400);
@@ -173,7 +174,7 @@ describe("PATCH /api/:publicId/queues/:queueId/cancel", () => {
 
   test("[ERROR] should return 400 Bad Request if queueId is NOT a number (Joi Validation)", async () => {
     const response = await supertest(web)
-      .patch(`/api/${STORE_PUBLIC_ID}/queues/bukan-angka/cancel`)
+      .patch(`/api/stores/${STORE_PUBLIC_ID}/queues/bukan angka/cancel`)
       .set("Cookie", [`guest_id=${GUEST_ID}`]);
 
     expect(response.status).toBe(400);

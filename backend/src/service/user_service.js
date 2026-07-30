@@ -14,13 +14,10 @@ import bcrypt from "bcrypt";
 import { v7 as uuid } from "uuid";
 import crypto from "crypto";
 import { redisClient } from "../application/redis.js";
-import { supabase, supabaseAdmin } from "../application/supabase.js";
-
+import { supabase, supabase } from "../application/supabase.js";
 const register = async function (request) {
-  // 1. Validasi input dari user
   const user = validate(registerUserValidation, request);
 
-  // 2. Cek apakah Email udah dipakai di Prisma
   const existingUser = await prisma.user.findFirst({
     where: {
       email: user.email,
@@ -31,7 +28,6 @@ const register = async function (request) {
     throw new ResponseError(400, "That email address already exists");
   }
 
-  // 3. Daftarin ke Supabase
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: user.email,
     password: user.password,
@@ -41,28 +37,36 @@ const register = async function (request) {
     throw new ResponseError(400, authError.message);
   }
 
-  // 4. Simpan ke Prisma dengan supabase_id sebagai Jembatan Beton
-  return await prisma.user.create({
-    data: {
-      supabase_id: authData.user.id, // <--- Wajib masuk!
-      email: user.email,
-      name: user.name,
-      // PASSWORD NGGAK USAH DIMASUKIN KE SINI
-    },
-    select: {
-      email: true,
-      name: true,
-    },
-  });
-};
+  if (!authData?.user || authData.user.identities?.length === 0) {
+    throw new ResponseError(400, "That email address already exists");
+  }
 
+  try {
+    return await prisma.user.create({
+      data: {
+        supabase_id: authData.user.id,
+        email: user.email,
+        name: user.name,
+      },
+      select: {
+        email: true,
+        name: true,
+      },
+    });
+  } catch (e) {
+    try {
+      await supabase.auth.admin.deleteUser(authData.user.id);
+    } catch {}
+
+    if (e.code === "P2002") {
+      throw new ResponseError(400, "That email address already exists");
+    }
+    throw e;
+  }
+};
 const login = async function (request) {
-  // 1. Validasi input
   const loginRequest = validate(loginUserValidation, request);
 
-  // ==========================================
-  // 2. BIARKAN SATPAM SUPABASE YANG BEKERJA
-  // ==========================================
   const { data: authData, error: authError } =
     await supabase.auth.signInWithPassword({
       email: loginRequest.email,
@@ -74,42 +78,53 @@ const login = async function (request) {
     if (authError.message.includes("Email not confirmed")) {
       throw new ResponseError(403, "Email not verified");
     }
-    throw new ResponseError(401, authError.message);
+    if (authError.message.includes("Invalid login credentials")) {
+      throw new ResponseError(401, "Incorrect email or password");
+    }
+    if (authError.message.toLowerCase().includes("banned")) {
+      throw new ResponseError(
+        403,
+        "Account suspended. Please contact support.",
+      );
+    }
+    throw new ResponseError(500, authError.message);
   }
 
   const supabaseId = authData.user.id;
   const supabaseEmail = authData.user.email;
-
-  // ==========================================
-  // 3. AMBIL BIODATA PAKE ID SUPABASE (Bukan Email)
-  // ==========================================
-  let user = await prisma.user.findUnique({
-    where: { supabase_id: supabaseId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-    },
-  });
-
-  if (!user) {
-    throw new ResponseError(404, "User not found");
+  if (!supabaseEmail) {
+    throw new ResponseError(500, "Supabase email missing");
   }
-
-  // ==========================================
-  // 4. FITUR AUTO-HEALING EMAIL
-  // ==========================================
-  if (user.email !== supabaseEmail) {
-    user = await prisma.user.update({
-      where: { supabase_id: supabaseId },
-      data: { email: supabaseEmail },
+  let user;
+  try {
+    user = await prisma.user.upsert({
+      where: {
+        supabase_id: supabaseId,
+      },
+      update: {
+        email: supabaseEmail,
+      },
+      create: {
+        supabase_id: supabaseId,
+        email: supabaseEmail,
+        name: "User",
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
     });
-    console.log(`[AUTO-HEAL] Email synced for ID: ${supabaseId}`);
+  } catch (e) {
+    if (e.code === "P2002") {
+      throw new ResponseError(
+        409,
+        "This email address is already in use by another user. Please contact the admin",
+      );
+    }
+    throw e;
   }
 
-  // ==========================================
-  // 5. KEMBALIKAN TOKEN RESMI DARI SUPABASE
-  // ==========================================
   return {
     email: user.email,
     name: user.name,
@@ -119,74 +134,118 @@ const login = async function (request) {
   };
 };
 const updateUser = async (userId, request) => {
-  // 1. Validasi request dari user
   const req = validate(updateUserProfileValidation, request);
 
-  // 2. Cek eksistensi user di database dulu biar Prisma nggak teriak error P2025
-  const totalUserInDatabase = await prisma.user.count({
-    where: {
-      id: userId,
-    },
-  });
-
-  if (totalUserInDatabase !== 1) {
-    throw new ResponseError(404, "User not found");
+  try {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: { name: req.name },
+      select: { name: true },
+    });
+  } catch (error) {
+    if (error.code === "P2025") {
+      throw new ResponseError(404, "User not found");
+    }
+    throw new ResponseError(500, "Failed to update user profile");
   }
-
-  // 3. Kalau aman, baru hajar update
-  return await prisma.user.update({
-    where: {
-      id: userId,
-    },
-    data: {
-      name: req.name,
-    },
-    select: { name: true },
-  });
 };
+
 const syncEmailWebhook = async (payload) => {
   const { type, record, old_record } = payload;
-
-  // Cek kalau ini action UPDATE dan emailnya beneran berubah
   if (type === "UPDATE" && old_record?.email && record?.email) {
     if (old_record.email !== record.email) {
-      // Kita cari datanya pakai ID Supabase (record.id), lalu timpa pakai email baru
-      await prisma.user.update({
-        where: { supabase_id: record.id },
-        data: { email: record.email },
-      });
-      console.log(`[WEBHOOK] Successfully updated email for ID: ${record.id}`);
+      try {
+        // Gunakan updateMany!
+        // Kalau supabase_id ini belum ada di Prisma, tidak akan terjadi error P2025.
+        // Webhook akan tetap membalas 200 OK dengan tenang ke Supabase.
+        await prisma.user.updateMany({
+          where: { supabase_id: record.id },
+          data: { email: record.email },
+        });
+        console.log(
+          `[WEBHOOK] Successfully updated email for ID: ${record.id}`,
+        );
+      } catch (error) {
+        console.error(
+          `[WEBHOOK] DB Error updating email for ID: ${record.id}`,
+          error,
+        );
+        throw new Error("Database update failed");
+      }
     }
   }
-
   return "OK";
 };
-const logout = async (userId) => {
+const logout = async (accessToken) => {
+  if (!accessToken) {
+    // Kalau token nggak ada (misal udah kehapus di FE), anggep aja udah logout
+    return "OK";
+  }
+
+  // Hancurkan token (sesi) secara absolut di server Supabase
+  const { error } = await supabase.auth.admin.signOut(accessToken);
+
+  if (error) {
+    // Kita cuma nge-log errornya, tapi TIDAK throw error ke Front-End.
+    // Kenapa? Karena kalau throw error, baris kode 'res.clearCookie' di Controller
+    // nggak bakal tereksekusi, dan user malah terjebak nggak bisa logout di browser.
+    console.error(
+      "[SUPABASE LOGOUT ERROR]: Failed to burn the token",
+      error.message,
+    );
+  }
+
   return "OK";
 };
 const deleteUser = async (userId, supabaseId) => {
-  // 1. Pastikan user-nya ada di database kita
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
+  const activeUserQueue = await prisma.queue.findFirst({
+    where: {
+      store: {
+        user_id: userId,
+        is_delete: false,
+      },
+
+      status: {
+        in: ["BELUM_BAYAR", "DIPROSES"], // Sesuaikan dengan enum status lu
+      },
+    },
   });
 
-  if (!user) {
-    throw new ResponseError(404, "User not found");
+  if (activeUserQueue) {
+    throw new ResponseError(
+      409,
+      "You cannot delete your account because you have an active queue",
+    );
   }
 
-  // 2. Hapus dari Supabase Auth (Satpam) pakai Client Dewa
-  const { error } = await supabaseAdmin.auth.admin.deleteUser(supabaseId);
+  try {
+    await prisma.$transaction([
+      prisma.store.updateMany({
+        where: { user_id: userId, is_delete: false },
+        data: { is_delete: true },
+      }),
+      prisma.user.delete({
+        where: { id: userId },
+      }),
+    ]);
+  } catch (prismaError) {
+    if (prismaError.code === "P2025") {
+    } else {
+      console.error("Gagal hapus Prisma:", prismaError);
+      throw new ResponseError(
+        409,
+        "We cannot delete the account because there is still data associated with it",
+      );
+    }
+  }
+  const { error } = await supabase.auth.admin.deleteUser(supabaseId);
 
   if (error) {
-    // Kalau gagal di sini, data di Prisma belum disentuh sama sekali — aman
     console.error("Failed to delete user from Supabase:", error.message);
-    throw new ResponseError(500, "Failed to delete user authentication");
+    await prisma.pendingSupabaseCleanup.create({
+      data: { supabase_id: supabaseId, reason: error.message },
+    });
   }
-
-  // 3. Hapus dari Prisma (Buku HRD)
-  await prisma.user.delete({
-    where: { id: userId },
-  });
 
   return "OK";
 };

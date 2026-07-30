@@ -4,13 +4,13 @@
 
 1. **GET** `/api/stores/me` — retrieve the current `logo_url` for the preview on the edit page.
 2. The user selects a new file (cropped on the FE, similar to the create flow).
-3. **PATCH** `/api/stores/logo` — upload the new file.
+3. **PATCH** `/api/stores/me/logo` — upload the new file.
 4. The response returns the **latest complete store data** (the exact same shape as `GET /api/stores/me`) — the FE can update the preview & other data directly from the response without needing to refetch.
 
 ## Endpoint
 
 ```
-PATCH /api/stores/logo
+PATCH /api/stores/me/logo
 
 ```
 
@@ -29,7 +29,7 @@ Content-Type: `multipart/form-data`
 ## Request Example
 
 ```bash
-curl -X PATCH https://example.com/api/stores/logo \
+curl -X PATCH https://example.com/api/stores/me/logo \
   -b "access_token=<token>; refresh_token=<token>" \
   -F "logo=@/path/to/new-logo.png"
 

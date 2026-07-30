@@ -5,7 +5,7 @@ Ambil daftar antrean aktif hari ini untuk toko, plus status buka/tutup toko saat
 ## Endpoint
 
 ```
-GET /api/stores/queues/:storeId
+GET /api/stores/:storeId/queues
 ```
 
 `:storeId` adalah `public_id` toko.
@@ -24,7 +24,7 @@ Cookie-based auth. `userId` dari `req.user.id` (middleware) — dipakai memastik
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/stores/queues/str_8kd93jf82j?page=1" \
+curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues?page=1" \
   -b "access_token=<token>; refresh_token=<token>"
 ```
 
@@ -86,10 +86,10 @@ curl -X GET "https://example.com/api/stores/queues/str_8kd93jf82j?page=1" \
 
 ## Catatan
 
-- **Hanya antrean berstatus `BELUM_BAYAR` atau `DIPROSES` yang muncul** di sini — antrean yang sudah `SELESAI`/`DIBATALKAN` tidak ditampilkan (untuk itu, pakai `GET /api/stores/history`).
+- **Hanya antrean berstatus `BELUM_BAYAR` atau `DIPROSES` yang muncul** di sini — antrean yang sudah `SELESAI`/`DIBATALKAN` tidak ditampilkan (untuk itu, pakai `GET /api/stores/me/history`).
 - **Tidak ada batasan tanggal** — antrean dari sesi malam kemarin yang masih berlangsung (belum diselesaikan/dibayar) tetap muncul, meskipun sekarang sudah lewat tengah malam. Ini penting untuk toko yang jam operasionalnya menyeberang tengah malam (misal buka 20:00, tutup 04:00) — kasir tetap bisa melihat & menyelesaikan antrean dari sesi sebelumnya tanpa kehilangan datanya begitu tanggal berganti.
 - Pembersihan antrean yang sudah basi/kedaluwarsa (misal `BELUM_BAYAR` yang melewati `expired_at`) dilakukan oleh proses terpisah (cron job, berjalan tiap 1 menit) yang mengubah statusnya jadi `DIBATALKAN` — bukan disembunyikan lewat query di endpoint ini. Karena itu, ada jeda maksimal ±1 menit antara sebuah antrean melewati `expired_at` dan statusnya benar-benar berubah — selama jeda itu, antrean tersebut masih akan muncul di endpoint ini apa adanya.
 - `expired_at` tiap antrean adalah **snapshot** yang dihitung sekali saat antrean dibuat, berdasarkan `payment_timeout` toko yang berlaku _saat itu_ — bukan nilai dinamis yang ikut berubah kalau `payment_timeout` toko diubah setelahnya. Jadi antrean-antrean lama di list ini bisa saja punya durasi tenggat yang berbeda-beda kalau toko pernah mengubah `payment_timeout` di antara waktu pembuatannya.
 - Data diurutkan **FIFO** (`created_at` ascending, yang paling lama dibuat muncul duluan) — cocok buat tampilan antrean kasir yang harus dilayani berurutan.
-- Sama seperti `GET /api/stores/all-products/:publicId`, `nextPage` adalah data prefetch buat halaman setelahnya — pakai pola caching yang sama di FE biar transisi antar halaman instan.
+- Sama seperti `GET /api/stores/:publicId/products`, `nextPage` adalah data prefetch buat halaman setelahnya — pakai pola caching yang sama di FE biar transisi antar halaman instan.
 - **`storeStatus.is_open` tidak memengaruhi apakah antrean ditampilkan.** Antrean tetap muncul penuh meskipun toko sedang tutup (manual atau di luar jadwal) — kasir tetap perlu bisa melihat & menyelesaikan antrean yang sudah masuk sebelumnya, terlepas dari status buka/tutup toko saat ini.

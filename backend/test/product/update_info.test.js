@@ -19,7 +19,6 @@ describe("PATCH /api/stores/products/:productId", () => {
   let variant2;
   let createdGuestIds = [];
 
-
   const cleanup = async () => {
     await prisma.queueDetail.deleteMany({
       where: { queue: { store: { name: STORE_NAME } } },
@@ -81,6 +80,7 @@ describe("PATCH /api/stores/products/:productId", () => {
       data: {
         store_id: store.id,
         name: "Addon Test 1",
+        created_at: new Date(),
       },
     });
 
@@ -88,6 +88,7 @@ describe("PATCH /api/stores/products/:productId", () => {
       data: {
         store_id: store.id,
         name: "Addon Test 2",
+        created_at: new Date(),
       },
     });
 
