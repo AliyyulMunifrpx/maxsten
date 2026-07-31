@@ -13,7 +13,7 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 const email = "aliyyulmunif780@gmail.com";
 const password = "aliyyul";
 
-describe("GET /api/stores/all-products/:publicId", () => {
+describe("GET /api/stores/me/me/all-products/:publicId", () => {
   let cookies;
   let storePublicId;
 
@@ -107,9 +107,8 @@ describe("GET /api/stores/all-products/:publicId", () => {
 
   test("should successfully get all products with pagination metadata (Default Page 1)", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/${storePublicId}/products`)
+      .get(`/api/stores/me/${storePublicId}/products`)
       .set("Cookie", cookies);
-
     expect(result.status).toBe(200);
 
     // Verifikasi struktur root
@@ -142,9 +141,8 @@ describe("GET /api/stores/all-products/:publicId", () => {
   test("should successfully get products for a specific page", async () => {
     // Kita request page 2, padahal data cuma 3 (yang harusnya habis di page 1)
     const result = await supertest(web)
-      .get(`/api/stores/${storePublicId}/products?page=2`)
+      .get(`/api/stores/me/${storePublicId}/products?page=2`)
       .set("Cookie", cookies);
-    console.log(result.body);
     expect(result.status).toBe(200);
     expect(result.body.data.pagination.currentPage).toBe(2);
     expect(result.body.data.currentPage.length).toBe(0); // Harusnya kosong
@@ -153,7 +151,7 @@ describe("GET /api/stores/all-products/:publicId", () => {
 
   test("should reject (400) if publicId is not a valid UUID", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/uuid asal asalan/products`)
+      .get(`/api/stores/me/uuid asal asalan/products`)
       .set("Cookie", cookies);
    
     expect(result.status).toBe(400);
@@ -162,7 +160,7 @@ describe("GET /api/stores/all-products/:publicId", () => {
 
   test("should reject (400) if page parameter is a negative number or zero", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/${storePublicId}/products?page=0`)
+      .get(`/api/stores/me/${storePublicId}/products?page=0`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(400);
@@ -171,7 +169,7 @@ describe("GET /api/stores/all-products/:publicId", () => {
 
   test("should reject (400) if page parameter is not an integer", async () => {
     const result = await supertest(web)
-      .get(`/api/stores/${storePublicId}/products?page=satu`)
+      .get(`/api/stores/me/${storePublicId}/products?page=satu`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(400);
@@ -183,7 +181,7 @@ describe("GET /api/stores/all-products/:publicId", () => {
     const FAKE_VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
 
     const result = await supertest(web)
-      .get(`/api/stores/${FAKE_VALID_UUID}/products`)
+      .get(`/api/stores/me/${FAKE_VALID_UUID}/products`)
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404);

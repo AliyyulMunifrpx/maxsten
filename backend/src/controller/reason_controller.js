@@ -2,11 +2,12 @@ import reasonService from "../service/reason_service.js";
 
 const createCancelReason = async (req, res, next) => {
   try {
-    // Asumsi req.user.id didapat dari middleware auth JWT/Session lu
-    const userId = req.user.id;
-    const result = await reasonService.createCancelReason(userId, req.body);
+    const result = await reasonService.createCancelReason({
+      user_id: req.user.id,
+      ...req.body,
+    });
 
-    res.status(200).json({
+    res.status(201).json({
       data: result,
     });
   } catch (error) {
@@ -15,9 +16,11 @@ const createCancelReason = async (req, res, next) => {
 };
 const updateCancelReason = async (req, res, next) => {
   try {
-    // Asumsi req.user.id didapat dari middleware auth JWT/Session lu
-    const userId = req.user.id;
-    const result = await reasonService.updateCancelReason(userId, req.body);
+    const result = await reasonService.updateCancelReason({
+      user_id: req.user.id,
+      id: req.params.reasonId,
+      ...req.body,
+    });
 
     res.status(200).json({
       data: result,
@@ -29,8 +32,7 @@ const updateCancelReason = async (req, res, next) => {
 
 const getCancelReasons = async (req, res, next) => {
   try {
-    const userId = req.user.id;
-    const result = await reasonService.getCancelReasons(userId);
+    const result = await reasonService.getCancelReasons(req.user.id);
 
     res.status(200).json({
       data: result,
@@ -41,10 +43,10 @@ const getCancelReasons = async (req, res, next) => {
 };
 const deleteReasonTemplate = async (req, res, next) => {
   try {
-    const result = await reasonService.deleteReasonTemplate(
-      req.user.id,
-      req.params.templateId,
-    );
+    const result = await reasonService.deleteReasonTemplate({
+      user_id: req.user.id,
+      id: req.params.reasonId,
+    });
     res.status(200).json({
       data: "OK",
     });

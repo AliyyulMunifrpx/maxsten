@@ -3,6 +3,10 @@ import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import fs from "fs/promises";
+import { unlink } from "fs/promises";
+import path from "path";
+
 // PNG 1x1 transparan, biar gak butuh file fixture beneran di disk
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -12,23 +16,56 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 describe("create store", () => {
   let cookies = [];
   let createdStoreNames = [];
+  let userId; // 🚨 2. DEKLARASIKAN VARIABEL userId DI SINI
 
   beforeEach(async () => {
+    // Login
     const result = await supertest(web).post(`/api/users/login`).send({
       email: "aliyyulmunif780@gmail.com",
       password: "aliyyul",
     });
 
     cookies = result.headers["set-cookie"];
+
+    // 🚨 3. AMBIL userId DARI DATABASE BIAR BISA DIPAKAI DI afterEach
+    const user = await prisma.user.findUnique({
+      where: { email: "aliyyulmunif780@gmail.com" },
+    });
+    userId = user.id;
+
+    // 🚨 4. BERSIHKAN TOKO LAMA (Biar test case race condition & create nggak bentrok)
+    await prisma.store.deleteMany({ where: { user_id: userId } });
+
     createdStoreNames = [];
   }, 20000);
 
   afterEach(async () => {
-    if (createdStoreNames.length > 0) {
-      await prisma.store.deleteMany({
-        where: { name: { in: createdStoreNames } },
-      });
+    // Sisa kode lu yang udah super bener dengan logika substring(1) itu biarin aja!
+    const storesToDelete = await prisma.store.findMany({
+      where: { user_id: userId },
+      select: { logo_url: true },
+    });
+
+    // ... (sisa loop unlink lu)
+
+    for (const store of storesToDelete) {
+      if (store.logo_url) {
+        const cleanPath = store.logo_url.startsWith("/")
+          ? store.logo_url.substring(1)
+          : store.logo_url;
+
+        const filePath = path.join(process.cwd(), "public", cleanPath);
+
+        try {
+          await unlink(filePath);
+        } catch (error) {
+          console.error("❌ Gagal menghapus logo:", error.message);
+        }
+      }
     }
+
+    // 3. Hapus data tokonya dari Database
+    await prisma.store.deleteMany({ where: { user_id: userId } });
   });
 
   // Helper: generate payload + otomatis didaftarin ke daftar cleanup
@@ -65,7 +102,6 @@ describe("create store", () => {
           { day: 6, open_time: "08:00", close_time: "20:00", is_active: true },
         ],
       });
-    console.log(result.body);
     expect(result.status).toBe(201);
     expect(result.body.data.public_id).toBeDefined();
   });
@@ -283,4 +319,45 @@ describe("create store", () => {
 
     expect(successCount).toBe(1);
   }, 20000);
+  test("should delete uploaded logo from disk if creating store fails (prevent zombie files)", async () => {
+    // 1. Kita bikin toko pertama (SUKSES)
+    await supertest(web)
+      .post("/api/stores")
+      .set("Cookie", cookies)
+      .send(baseStorePayload("Warung Pertama"));
+
+    // 2. Hitung jumlah file di folder uploads SEBELUM nembak API
+    const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+    // Bikin foldernya kalau belum ada biar gak error
+    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    const filesBefore = await fs.readdir(UPLOAD_DIR);
+
+    // 3. Tembak toko KEDUA pakai file logo fisik.
+    // Ini PASTI GAGAL (400) karena user udah punya toko.
+    const payload = baseStorePayload("Warung Kedua Bikin Error");
+    const result = await supertest(web)
+      .post("/api/stores")
+      .set("Cookie", cookies)
+      .field("name", payload.name)
+      .field("description", payload.description)
+      .field("timezone", payload.timezone)
+      .field("street_address", payload.street_address)
+      .field("village", payload.village)
+      .field("district", payload.district)
+      .field("city", payload.city)
+      .field("province", payload.province)
+      .field("postal_code", payload.postal_code)
+      .field("latitude", String(payload.latitude))
+      .field("longitude", String(payload.longitude))
+      .attach("logo", FAKE_LOGO_BUFFER, "zombie-logo.png");
+
+    expect(result.status).toBe(400); // Validasi kalau API beneran nolak
+
+    // 4. Hitung jumlah file di folder uploads SETELAH API gagal.
+    // Karena API gagal, file zombie-logo.png harusnya otomatis dihapus sama controller lu.
+    const filesAfter = await fs.readdir(UPLOAD_DIR);
+
+    // Ekspektasi: Jumlah file SEBELUM dan SESUDAH harus sama persis!
+    expect(filesAfter.length).toBe(filesBefore.length);
+  });
 });

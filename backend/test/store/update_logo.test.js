@@ -21,7 +21,9 @@ const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 // Helper: convert logo_url ("/uploads/xxx.png") -> path fisik di disk
 // ("<cwd>/public/uploads/xxx.png").
 function logoUrlToDiskPath(logoUrl) {
-  return path.join(process.cwd(), "public", logoUrl);
+  // Buang '/' di awal string biar path.join gak mabok
+  const cleanPath = logoUrl.startsWith("/") ? logoUrl.substring(1) : logoUrl;
+  return path.join(process.cwd(), "public", cleanPath);
 }
 
 function baseProfilePayload(name) {

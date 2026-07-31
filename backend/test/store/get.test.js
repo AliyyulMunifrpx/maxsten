@@ -103,7 +103,7 @@ describe("get store", () => {
     const result = await supertest(web)
       .get("/api/stores/me")
       .set("Cookie", cookies);
-
+    console.log(result.body)
     expect(result.status).toBe(200);
     expect(result.body.data.public_id).toBeDefined();
     expect(result.body.data.name).toBe("Warung Get 1");

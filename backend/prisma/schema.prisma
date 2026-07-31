@@ -32,7 +32,7 @@ model User {
 }
 
 model PendingSupabaseCleanup {
-  supabase_id          String  @id
+  supabase_id         String  @id
   reason              String  @db.Text
   attempt_count       Int     @default(0)
   needs_manual_review Boolean @default(false)
@@ -121,7 +121,7 @@ model AddonGroup {
   addons             Addon[]
   productAddonGroups ProductAddonGroup[]
   is_delete          Boolean             @default(false)
-  created_at         DateTime
+  created_at         DateTime            @default(now())
 
   @@map("AddonGroup")
 }
@@ -133,7 +133,7 @@ model Addon {
   addon_group_id String
   addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
   is_delete      Boolean    @default(false)
-  created_at     DateTime
+  created_at         DateTime            @default(now())
 
   @@map("Addon")
 }

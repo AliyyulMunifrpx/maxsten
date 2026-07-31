@@ -1,6 +1,7 @@
 import { unlink } from "fs/promises";
 import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
+import fs from "fs/promises";
 import path from "path";
 import {
   createProductValidation,
@@ -200,64 +201,72 @@ const getAllProducts = async (userId, request) => {
   };
 };
 const createProduct = async (request, file) => {
-  // 1. Rapihkan data string dari FormData (Hanya lakukan 1x di sini)
-  if (typeof request.variants === "string") {
-    try {
-      request.variants = JSON.parse(request.variants);
-    } catch (e) {
-      throw new ResponseError(400, "Invalid data format variants");
-    }
-  }
+  // Simpan nama sementara buat jaga-jaga kalau error P2002 terjadi
+  let productName = request.name;
 
-  if (typeof request.addon_group_ids === "string") {
-    try {
-      request.addon_group_ids = JSON.parse(request.addon_group_ids);
-    } catch (e) {
-      throw new ResponseError(
-        400,
-        "The format of the addon_group_ids data is invalid",
-      );
-    }
-  }
-
-  if (typeof request.price === "string") {
-    request.price = Number(request.price);
-  }
-
-  // 2. Validasi dengan Zod
-  const req = validate(createProductValidation, request);
-
-  // 3. Cek apakah toko milik user ini ada
-  const store = await prisma.store.findFirst({
-    where: { user_id: req.userId, is_delete: false },
-    select: { id: true },
-  });
-
-  if (!store) {
-    throw new ResponseError(404, "Store not found");
-  }
-
-  // 4. Validasi Add-on (Satpam Add-on)
-  if (req.addon_group_ids && req.addon_group_ids.length > 0) {
-    const validAddonGroups = await prisma.addonGroup.count({
-      where: {
-        id: { in: req.addon_group_ids },
-        store_id: store.id,
-        is_delete: false,
-      },
-    });
-    if (validAddonGroups !== req.addon_group_ids.length) {
-      throw new ResponseError(
-        400,
-        "Some add-on groups are not valid for this store.",
-      );
-    }
-  }
-
-  const productImagePath = file ? `/uploads/${file.filename}` : null;
-
-  // 5. Eksekusi Create dengan pengaman Unique Index
   try {
+    // ==========================================
+    // SEMUA LOGIKA LU MASUK KE DALAM TRY DI SINI
+    // ==========================================
+
+    // 1. Rapihkan data string dari FormData
+    if (typeof request.variants === "string") {
+      try {
+        request.variants = JSON.parse(request.variants);
+      } catch (e) {
+        throw new ResponseError(400, "Invalid data format variants");
+      }
+    }
+
+    if (typeof request.addon_group_ids === "string") {
+      try {
+        request.addon_group_ids = JSON.parse(request.addon_group_ids);
+      } catch (e) {
+        throw new ResponseError(
+          400,
+          "The format of the addon_group_ids data is invalid",
+        );
+      }
+    }
+
+    if (typeof request.price === "string") {
+      request.price = Number(request.price);
+    }
+
+    // 2. Validasi dengan Zod
+    const req = validate(createProductValidation, request);
+    productName = req.name; // Update nama dari hasil validasi Zod yang bersih
+
+    // 3. Cek apakah toko milik user ini ada
+    const store = await prisma.store.findFirst({
+      where: { user_id: req.userId, is_delete: false },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new ResponseError(404, "Store not found");
+    }
+
+    // 4. Validasi Add-on (Satpam Add-on)
+    if (req.addon_group_ids && req.addon_group_ids.length > 0) {
+      const validAddonGroups = await prisma.addonGroup.count({
+        where: {
+          id: { in: req.addon_group_ids },
+          store_id: store.id,
+          is_delete: false,
+        },
+      });
+      if (validAddonGroups !== req.addon_group_ids.length) {
+        throw new ResponseError(
+          400,
+          "Some add-on groups are not valid for this store.",
+        );
+      }
+    }
+
+    const productImagePath = file ? `/uploads/${file.filename}` : null;
+
+    // 5. Eksekusi Create
     return await prisma.product.create({
       data: {
         name: req.name,
@@ -297,13 +306,24 @@ const createProduct = async (request, file) => {
       },
     });
   } catch (error) {
+    // ==========================================
+    // ZONA PENGHANCURAN FILE GAGAL UPLOAD
+    // ==========================================
+
+    // 1. APAPUN ERRORNYA (Zod, Prisma, 404), HAPUS FILE FISIKNYA!
+    if (file) {
+      await fs.unlink(file.path).catch(() => {});
+    }
+
+    // 2. Tangani error spesifik Prisma
     if (error.code === "P2002") {
-      // PERBAIKAN: Gunakan backtick (`) dan status 400
       throw new ResponseError(
         400,
-        `A product named '${req.name}' already exists in this store`,
+        `A product named '${productName}' already exists in this store`,
       );
     }
+
+    // 3. Lempar sisa errornya ke Error Middleware biar diurus di sana
     throw error;
   }
 };

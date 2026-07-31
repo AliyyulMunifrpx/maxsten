@@ -80,7 +80,7 @@ userRouter.delete(
 
 // Akses publik/koleksi (bisa dipisah routernya kalau tidak butuh auth, tapi sementara tetap di sini)
 userRouter.get(
-  "/api/stores/:publicId/products",
+  "/api/stores/me/:publicId/products",
   productController.getAllProducts,
 ); // Lebih bersih dari /all-products/
 
@@ -88,19 +88,20 @@ userRouter.get(
 // 🧩 ADDONS API
 // ==========================================
 userRouter.post("/api/stores/addon-groups", addonController.createAddonGroup);
-userRouter.get("/api/stores/addon-groups", addonController.getAddonGroups); // Hilangkan /get-
-userRouter.get(
-  "/api/stores/addon-groups/:addonGroupId",
-  addonController.getAddonGroup,
-); // Masukkan ke dalam /stores/
+
 userRouter.patch(
   "/api/stores/addon-groups/:addonGroupId",
   addonController.editAddonGroup,
-); // Hilangkan /edit/
+);
+userRouter.get("/api/stores/addon-groups", addonController.getAddonGroups);
+userRouter.get(
+  "/api/stores/addon-groups/:addonGroupId",
+  addonController.getAddonGroup,
+);
 userRouter.delete(
   "/api/stores/addon-groups/:addonGroupId",
   addonController.deleteAddonGroup,
-); // Gunakan DELETE
+);
 
 // ==========================================
 // 📋 SELLER / QUEUES
@@ -122,16 +123,16 @@ userRouter.get("/api/stores/dashboard", dashboardController.getDashboard); // (S
 userRouter.post(
   "/api/seller/cancel-reasons",
   reasonController.createCancelReason,
-); // Hilangkan /create-
+);
 userRouter.get("/api/seller/cancel-reasons", reasonController.getCancelReasons);
 userRouter.patch(
   "/api/seller/cancel-reasons/:reasonId",
   reasonController.updateCancelReason,
-); // Gunakan parameter ID & hilangkan /update-
+);
 userRouter.delete(
   "/api/seller/cancel-reasons/:reasonId",
   reasonController.deleteReasonTemplate,
-); // Gunakan parameter ID & method DELETE
+);
 
 // ==========================================
 // 🤖 AI

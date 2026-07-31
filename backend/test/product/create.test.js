@@ -4,7 +4,7 @@ import { prisma } from "../../src/application/database.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import path from "path";
 import { unlink } from "fs/promises";
-
+import { unlink, readdir, mkdir } from "fs/promises";
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -49,7 +49,7 @@ describe("create product", () => {
       .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
   });
 
-afterEach(async () => {
+  afterEach(async () => {
     // 1. Ambil data produk yang mau dihapus untuk dapet URL gambarnya
     const productsToDelete = await prisma.product.findMany({
       where: { name: { contains: "test" } },
@@ -68,7 +68,11 @@ afterEach(async () => {
         try {
           // product.image_url bentuknya "/uploads/namafile.png"
           // Kita gabungin pakai process.cwd() biar path-nya absolut nuju ke folder public
-          const filePath = path.join(process.cwd(), "public", product.image_url);
+          const filePath = path.join(
+            process.cwd(),
+            "public",
+            product.image_url,
+          );
           await unlink(filePath);
         } catch (error) {
           // Abaikan kalau file nggak ketemu (ENOENT)
@@ -79,7 +83,7 @@ afterEach(async () => {
     // 4. Hapus file fisik logo toko
     for (const store of storesToDelete) {
       // Sesuaikan 'logo_url' dengan yang lu select di atas
-      if (store.logo_url) { 
+      if (store.logo_url) {
         try {
           const filePath = path.join(process.cwd(), "public", store.logo_url);
           await unlink(filePath);
@@ -222,5 +226,40 @@ afterEach(async () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toContain("Some add-on groups are not valid");
+  });
+  test("should delete uploaded image from disk if creating product fails (prevent zombie files)", async () => {
+    // 1. Kita bikin produk pertama biar namanya ke-register
+    await supertest(web)
+      .post("/api/stores/products")
+      .set("Cookie", cookies)
+      .field("name", "test product zombie")
+      .field("description", "test product minimal")
+      .field("price", "20000");
+
+    // 2. Siapkan folder uploads dan hitung jumlah file SEBELUM nge-hit API yang gagal
+    const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+    await mkdir(UPLOAD_DIR, { recursive: true }); // Jaga-jaga bikin folder kalau belum ada
+    const filesBefore = await readdir(UPLOAD_DIR);
+
+    // 3. Hit API lagi pakai nama yang sama persis (Pasti gagal / 400),
+    // TAPI kali ini kita paksa bawa lampiran file gambar!
+    const result = await supertest(web)
+      .post("/api/stores/products")
+      .set("Cookie", cookies)
+      .field("name", "test product zombie") // Bikin duplicate nama
+      .field("price", "25000")
+      .attach("image", FAKE_LOGO_BUFFER, "zombie-image.png"); // Kasih file gambar
+
+    // Pastikan API benar-benar menolak karena duplicate
+    expect(result.status).toBe(400);
+    expect(result.body.errors).toContain("already exists in this store");
+
+    // 4. Hitung jumlah file di folder uploads SETELAH API gagal
+    const filesAfter = await readdir(UPLOAD_DIR);
+
+    // 5. Kunci Utamanya:
+    // Karena API gagal, controller harusnya otomatis menghapus file 'zombie-image.png'.
+    // Jadi, jumlah file SEBELUM dan SESUDAH harus sama persis!
+    expect(filesAfter.length).toBe(filesBefore.length);
   });
 });

@@ -22,6 +22,7 @@ const create = async (requestBody, file) => {
     where: { user_id: req.userId, is_delete: false },
   });
   if (existingStore > 0) {
+    if (file) await fs.unlink(file.path).catch(() => {});
     throw new ResponseError(400, "You already have a store");
   }
 
@@ -67,6 +68,7 @@ const create = async (requestBody, file) => {
       },
     });
   } catch (error) {
+    if (file) await fs.unlink(file.path).catch(() => {});
     if (error.code === "P2002") {
       throw new ResponseError(400, "You already have a store");
     }
@@ -148,9 +150,6 @@ const updateLogo = async (userId, file) => {
   const oldLogoUrl = store.logo_url;
   const newImagePath = `/uploads/${file.filename}`;
 
-  // 1. Update DB DULUAN. Kalau ini gagal, kita belum nyentuh file lama
-  //    sama sekali - store.logo_url tetap valid, nunjuk ke file yang
-  //    masih beneran ada di disk.
   let updatedStore;
   try {
     updatedStore = await prisma.store.update({
@@ -159,9 +158,7 @@ const updateLogo = async (userId, file) => {
       select: { id: true, name: true, logo_url: true },
     });
   } catch (err) {
-    // DB gagal -> file baru yang barusan diupload jadi gak kepake.
-    // Bersihin biar gak orphan, baru lempar error aslinya ke caller.
-    await fs.unlink(path.join("public", newImagePath)).catch(() => {}); // upload-nya sendiri mungkin juga gagal, gak masalah
+    await fs.unlink(path.join("public", newImagePath)).catch(() => {});
     throw err;
   }
 
@@ -171,12 +168,6 @@ const updateLogo = async (userId, file) => {
     try {
       await fs.unlink(oldPath);
     } catch (err) {
-      // ENOENT = file emang udah gak ada -> aman, gak perlu ribut.
-      // Selain itu (permission denied, file terkunci, dll) -> ini file
-      // beneran nyangkut/orphan di disk. Log yang lebih informatif biar
-      // kebaca di monitoring, bukan cuma console.error generik.
-      // (Perbaikan lebih permanen: catat path yang gagal dihapus ke tabel
-      // "pending_cleanup" dan jalanin cron/job buat retry berkala.)
       if (err.code !== "ENOENT") {
         console.error(
           `[updateLogo] gagal hapus logo lama untuk store ${store.id} di path "${oldPath}": ${err.message}`,
