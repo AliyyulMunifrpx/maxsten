@@ -5,7 +5,7 @@ import swaggerJsdoc from "swagger-jsdoc";
 const optionsID = {
   definition: {
     openapi: "3.0.0",
-    info: { title: "API Kasir Pintar (ID)", version: "1.0.0" },
+    info: { title: "Maxsten API (ID)", version: "1.0.0" },
     servers: [
       {
         url: "http://localhost:3000",
@@ -29,7 +29,7 @@ const optionsID = {
 const optionsEN = {
   definition: {
     openapi: "3.0.0",
-    info: { title: "Kasir Pintar API (EN)", version: "1.0.0" },
+    info: { title: "Maxsten API (EN)", version: "1.0.0" },
     servers: [
       {
         url: "http://localhost:3000",
