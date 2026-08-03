@@ -6,7 +6,7 @@ import { descriptionGeneratorValidation } from "../validation/ai_validation.js";
 
 const AI_REQUEST_TIMEOUT_MS = 30000;
 const AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
-const AI_REFERER = process.env.FRONTEND_URL || "http://localhost:5173";
+const AI_REFERER = process.env.FRONTEND_URL
 
 // Helper bareng: panggil OpenRouter dengan timeout, dipakai kedua fungsi
 // biar gak duplikasi logic fetch + abort + cleanup JSON di 2 tempat.

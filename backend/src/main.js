@@ -14,11 +14,10 @@ import { startCronJobs } from "./cron job/index.js";
 const httpServer = createServer(web);
 const io = new Server(httpServer, {
   cors: {
-    origin: ["http://localhost:5173", "http://192.168.1.6:5173"], // Biar frontend bisa connect tanpa error CORS, ketika production, ini harus diganti alamat frontend biar cuma frontend kita yang bisa make ini
+    origin: process.env.FRONTEND_URL, // Biar frontend bisa connect tanpa error CORS, ketika production, ini harus diganti alamat frontend biar cuma frontend kita yang bisa make ini
     credentials: true, // Biar Cookie bisa dikirim ke backend
   },
 });
-
 
 io.use(socketAuth);
 
