@@ -8,7 +8,7 @@ const optionsID = {
     info: { title: "Maxsten API (ID)", version: "1.0.0" },
     servers: [
       {
-        url: "http://localhost:3000",
+        url: process.env.BACKEND_URL,
         description: "Development Server",
       },
     ],
@@ -32,7 +32,7 @@ const optionsEN = {
     info: { title: "Maxsten API (EN)", version: "1.0.0" },
     servers: [
       {
-        url: "http://localhost:3000",
+        url: process.env.BACKEND_URL,
         description: "Development Server",
       },
     ],
