@@ -6,10 +6,6 @@ import Joi from "joi";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { getDashboardValidation } from "../validation/dashboard_validation.js";
 
-// Helper hitung trend
-// NOTE: disamakan persis dengan history_service.js - termasuk perilaku
-// "mentok 100%" kalau previous = 0 dan current > 0. Ini bukan bug, ini
-// konsisten sama endpoint history.
 const calcTrend = (current, previous) => {
   if (previous === 0 && current === 0) return 0;
   if (previous === 0 && current > 0) return 100;

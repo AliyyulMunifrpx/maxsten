@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: AI Features API
+  description: API untuk fitur kecerdasan buatan (AI) seperti pembuatan laporan performa toko dan generator deskripsi produk.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: AI Features
+    description: Endpoint yang terintegrasi dengan layanan AI pihak ketiga.
+paths:
+  /api/ai/reports:
+    post:
+      tags:
+        - AI Features
+      summary: AI Store Report
+      description: |
+        Menghasilkan ringkasan performa toko dalam 1 bulan tertentu, ditulis dalam bahasa natural oleh AI, lengkap dengan rekomendasi praktis.
+
+        > ⚠️ **PERHATIAN: Response bisa memakan waktu sampai ~30 detik.** 
+        > Endpoint ini memanggil layanan AI pihak ketiga. Klien/FE wajib menampilkan *loading state* yang jelas (sebaiknya sertakan teks indikasi "sedang membuat laporan...").
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiReportRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiReportResponse"
+        "400":
+          description: Bad Request (Bulan/tahun tidak valid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Invalid month/year parameters"
+        "401":
+          description: Unauthorized (Tidak login / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User belum punya toko)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+        "500":
+          description: Internal Server Error (Gagal mendapat respons dari AI / Timeout)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unable to obtain an analysis from the AI at this time"
+
+  /api/ai/descriptions:
+    post:
+      tags:
+        - AI Features
+      summary: AI Product Description Generator
+      description: |
+        Menghasilkan 2 pilihan deskripsi produk otomatis berdasarkan nama produk, masing-masing dengan skor daya tarik.
+
+        > ⚠️ **PERHATIAN: Response bisa memakan waktu sampai ~30 detik.** 
+        > Tampilkan loading state yang jelas saat user men-trigger endpoint ini di form produk.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiDescriptionRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiDescriptionResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User belum punya toko)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+        "500":
+          description: Internal Server Error (AI Timeout / Format respons tidak sesuai)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Failed to generate an automatic product description. Please try again."
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie based authentication (membutuhkan `access_token` dan `refresh_token`).
+
+  schemas:
+    AiReportRequest:
+      type: object
+      properties:
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: Bulan (1-12). Jika tidak dikirim, akan menggunakan bulan berjalan di timezone toko.
+          example: 7
+        year:
+          type: integer
+          description: Tahun. Jika tidak dikirim, menggunakan tahun berjalan di timezone toko.
+          example: 2026
+
+    AiReportResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            ai_report:
+              type: object
+              properties:
+                greeting:
+                  type: string
+                  example: "Halo Kak Budi,"
+                evaluation:
+                  type: string
+                  example: "Performa toko kamu bulan ini cukup solid dengan omzet Rp3.500.000 dari 108 pesanan berhasil. Tingkat pembatalan masih terkendali di 5.3%, dan rata-rata waktu tunggu pelanggan terbilang cepat..."
+                recommendations:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - "Pertimbangkan menambah stok Nasi Goreng Spesial karena jadi produk terlaris bulan ini."
+                    - "Jam 12:00-13:00 adalah waktu tersibuk — pastikan staf cukup di jam tersebut untuk menjaga waktu tunggu tetap singkat."
+
+    AiDescriptionRequest:
+      type: object
+      required:
+        - product_name
+      properties:
+        product_name:
+          type: string
+          description: Nama produk yang deskripsinya ingin di-generate oleh AI.
+          example: "Nasi Goreng Spesial"
+
+    AiDescriptionResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            recommendations:
+              type: array
+              description: Minimal berisi 1 rekomendasi.
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                    description: Teks deskripsi hasil generate AI.
+                    example: "Nasi goreng dengan bumbu rempah pilihan, dilengkapi telur mata sapi dan ayam suwir gurih."
+                  score:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    description: Perkiraan skor daya tarik (1-100).
+                    example: 92
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Pesan error dari server"

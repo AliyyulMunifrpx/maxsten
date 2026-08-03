@@ -1,35 +1,37 @@
-# Edit Add-on Group
+# Edit Addon Group
 
-Update an add-on group's name and replace its entire list of add-ons (full replacement).
+Update the add-on group name along with its list of add-ons as a whole (_full replace_).
 
 ## Endpoint
 
 ```text
 PATCH /api/stores/addon-groups/:addonGroupId
+
 ```
 
 ## Auth
 
-Cookie-based authentication. The `userId` is obtained from `req.user.id` (middleware).
+Cookie-based auth. `userId` is obtained from `req.user.id` (middleware).
 
 ## Request
 
-Content-Type: `application/json`
+**Content-Type:** `application/json`
 
-| Field            | Type          | Required | Description                                                                                     |
-| ---------------- | ------------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `name`           | string        | ✅       | Maximum 100 characters. The value is trimmed and stored in lowercase (same behavior as create). |
-| `addons`         | array<object> | ✅       | At least 1 item. See the full replacement rules below.                                          |
-| `addons[].id`    | string        | ❌       | Include this to update an existing add-on. Omit it to create a new add-on.                      |
-| `addons[].name`  | string        | ✅       | Maximum 100 characters.                                                                         |
-| `addons[].price` | number        | ✅       | Must not be negative.                                                                           |
+| Field            | Type   | Required | Description                                                                                                   |
+| ---------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------- |
+| `name`           | string | ✅       | Maximum 100 characters. Stored entirely in lowercase after being trimmed. Must be unique among active groups. |
+| `addons`         | array  | ✅       | Minimum 1 item. See the _full-replace_ rules below.                                                           |
+| `addons[].id`    | string | ❌       | Include to _update_ an existing add-on. Leave empty to create a new add-on.                                   |
+| `addons[].name`  | string | ✅       | Maximum 100 characters. Must be unique within this group. Stored entirely in lowercase after being trimmed.   |
+| `addons[].price` | number | ✅       | Cannot be negative (can be `0`).                                                                              |
 
-### `addons` Rules (Full Replacement Based on `id`, Similar to Product Variant Updates)
+### `addons` Rules (Full Replace based on `id`)
 
-- An item **with an `id`** that matches an existing add-on in this group will be **updated** (`name`, `price`).
-- An item **without an `id`** is treated as a **new add-on** and will be created automatically.
-- Existing add-ons **not included** in the array will be **soft-deleted** automatically.
-- If any provided `id` does not exist or does not belong to this add-on group, the **entire request is rejected** (`400 Bad Request`), and no changes are saved.
+- **Update:** Items **with an `id**` matching an existing add-on in this group will be updated (`name`, `price`).
+- **Create:** Items **without an `id**` are treated as new add-ons, automatically created.
+- **Delete:** Old add-ons **not included** in this array are automatically deleted (_soft-delete_).
+- **⚠️ Prevent Delete & Recreate:** You are not allowed to send a new add-on (without an `id`) with the exact same name as an old add-on that is being excluded (_deleted_). If you want to update it, use that add-on's `id`. (If violated, the API will return a 400 error).
+- **Invalid ID:** Sending an `id` that does not exist or does not belong to this group will cause the entire request to be rejected (400), with no changes saved.
 
 ## Example Request
 
@@ -38,12 +40,13 @@ curl -X PATCH https://example.com/api/stores/addon-groups/550e8400-e29b-41d4-a71
   -b "access_token=<token>; refresh_token=<token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "Drink Toppings",
+    "name": "Topping Minuman",
     "addons": [
       { "id": "addon-uuid-1", "name": "Boba", "price": 3500 },
       { "name": "Jelly", "price": 2000 }
     ]
   }'
+
 ```
 
 ## Response
@@ -54,7 +57,7 @@ curl -X PATCH https://example.com/api/stores/addon-groups/550e8400-e29b-41d4-a71
 {
   "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "drink toppings",
+    "name": "topping minuman",
     "created_at": "2026-07-01T00:00:00.000Z",
     "addons": [
       {
@@ -67,26 +70,29 @@ curl -X PATCH https://example.com/api/stores/addon-groups/550e8400-e29b-41d4-a71
         "id": "addon-uuid-2",
         "name": "jelly",
         "price": 2000,
-        "created_at": "2026-07-27T10:00:00.000Z"
+        "created_at": "2026-08-03T10:00:00.000Z"
       }
     ]
   }
 }
 ```
 
-### Errors
+### Error
 
-| Status | Condition                                                                                                    | `errors`                                                                                    |
-| ------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| 400    | Validation failed (empty or missing `addons`, negative `price`, etc.)                                        | Joi validation message                                                                      |
-| 400    | One or more `addons[].id` values do not exist or do not belong to this add-on group                          | `Invalid add-on`                                                                            |
-| 401    | Not authenticated or session has expired                                                                     | `Unauthorized`                                                                              |
-| 404    | The authenticated user does not have a store                                                                 | `Store not found`                                                                           |
-| 404    | The add-on group does not exist, has been soft-deleted, or does not belong to the authenticated user's store | `Addon Group not found`                                                                     |
-| 409    | The add-on group is currently used by a product in an active queue (`BELUM_BAYAR` or `DIPROSES`)             | `Cannot edit this add-on group because a product using it is currently in an active queue.` |
-| 409    | Another active add-on group in the same store already uses the requested name                                | `An add-on group with this name already exists`                                             |
+| Status | Condition                                                                                                                                | `errors`                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 400    | Payload validation failed (`addons` empty, `price` negative, etc.).                                                                      | _Joi message_                                                                               |
+| 400    | Duplicate add-on names exist within the `addons` array sent in the same request.                                                         | `Add-on names within a group must be unique`                                                |
+| 400    | One or more `addons[].id` not found or do not belong to this group.                                                                      | `Invalid add-on`                                                                            |
+| 400    | The name of a new add-on (without an ID) clashes with an old add-on trying to be _soft-deleted_ (because it was omitted from the array). | `Add-on name already used by an existing add-on in this group`                              |
+| 401    | Not logged in / session expired.                                                                                                         | `Unauthorized`                                                                              |
+| 404    | User does not have a store.                                                                                                              | `Store not found`                                                                           |
+| 404    | `addonGroupId` not found / already deleted / does not belong to this store.                                                              | `Addon Group not found`                                                                     |
+| 409    | This add-on group is currently being used by a product in an active queue (`BELUM_BAYAR` / `DIPROSES`).                                  | `Cannot edit this add-on group because a product using it is currently in an active queue.` |
+| 409    | The newly added add-on name is already used by another active add-on in this group in the database.                                      | `An add-on with this name already exists in this group`                                     |
+| 409    | The new group name is already used by another active add-on group in the same store.                                                     | `An add-on group with this name already exists`                                             |
 
-## Notes
+## Additional Notes
 
-- **An add-on group cannot be edited while it is being used by a product in any active queue.** Unlike product updates (where only certain fields such as `price` or `variants` are locked), **the entire edit operation is rejected** if even one product using this add-on group is currently in an active queue. The related queue(s) must be completed or canceled before the add-on group can be edited.
-- **Both the group `name` and each `addons[].name` are stored in lowercase**, consistent with `POST /api/stores/addon-groups`. See the Create Add-on Group documentation for details on the frontend display implications.
+- **Active Queue Block:** Add-on groups currently used by products in an active queue **cannot be edited at all**. The entire edit process will be rejected if even 1 user product is currently being processed in a queue (`BELUM_BAYAR` or `DIPROSES`). Complete or cancel the respective queue first.
+- **Casing Format:** Group `name` and `addons[].name` are stored entirely in _lowercase_. If the buyer/seller interface requires nicely capitalized text (e.g., "Topping Minuman"), the Frontend needs to apply _title-case_ independently (e.g., `text-transform: capitalize` in CSS).

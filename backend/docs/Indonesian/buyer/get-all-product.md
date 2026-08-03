@@ -4,7 +4,7 @@ Ambil informasi detail toko beserta daftar produknya. Endpoint ini bersifat publ
 
 ## Endpoint
 
-```
+```text
 GET /api/stores/:storeId/products
 
 ```
@@ -17,16 +17,20 @@ Tidak perlu otentikasi (Public Endpoint). Bisa diakses oleh siapa saja tanpa _co
 
 ## Request
 
-| Param     | Lokasi    | Tipe          | Required | Keterangan                                                               |
-| --------- | --------- | ------------- | -------- | ------------------------------------------------------------------------ |
-| `storeId` | URL param | string (UUID) | ✅       | `public_id` toko                                                         |
-| `page`    | query     | number        | ❌       | Default `1`. 20 produk per halaman                                       |
-| `keyword` | query     | string        | ❌       | Kata kunci pencarian nama produk (mendukung toleransi _typo_ / _fuzzy_). |
+| Param     | Lokasi    | Tipe          | Required | Keterangan                                                                                                                |
+| --------- | --------- | ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `storeId` | URL param | string (UUID) | ✅       | `public_id` toko                                                                                                          |
+| `page`    | query     | number        | ❌       | Default `1`. 20 produk per halaman                                                                                        |
+| `keyword` | query     | string        | ❌       | Kalau diisi, pencarian menggunakan **Fuzzy Search** (toleran salah ketik/typo) pada nama produk — lihat catatan di bawah. |
 
 ## Contoh Request
 
 ```bash
-curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products?page=1&keyword=Ayam Bakar"
+# Tanpa pencarian
+curl "https://example.com/api/stores/str_8kd93jf82j/products?page=1"
+
+# Dengan pencarian
+curl "https://example.com/api/stores/str_8kd93jf82j/products?keyword=ayam%20bakar"
 
 ```
 
@@ -39,8 +43,8 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
   "data": {
     "store": {
       "name": "Warung Makan Enak",
-      "description": "Tempat nongkrong asik",
-      "logo_url": "https://example.com/logo.png",
+      "description": "Testing API Pembeli",
+      "logo_url": "/uploads/logo-123.png",
       "is_open": true,
       "street_address": "Jl. Pembeli 1",
       "village": "Desa",
@@ -53,46 +57,42 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
     },
     "currentPage": [
       {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "id": "prod-uuid-1",
         "name": "Ayam Bakar Madu Spesial",
+        "description": "ayam bakar enak",
         "price": 25000,
-        "image_url": "https://example.com/ayam.jpg",
+        "image_url": null,
         "is_available": true,
-        "total_sold": 15
+        "total_sold": 3
       }
     ],
     "nextPage": [
-      {
-        "id": "550e8400-e29b-41d4-a716-446655440001",
-        "name": "Ayam Goreng Mentega",
-        "price": 22000,
-        "image_url": null,
-        "is_available": false,
-        "total_sold": 8
-      }
+      "...20 produk halaman berikutnya, atau [] kalau sudah habis..."
     ],
     "pagination": {
       "currentPage": 1,
       "limit": 20,
-      "totalRows": 45,
-      "totalPages": 3
+      "totalRows": 22,
+      "totalPages": 2
     }
   }
 }
 ```
 
+Kalau `keyword` diisi tapi tidak ada produk yang cukup mirip/relevan, `currentPage`/`nextPage` akan berupa array kosong `[]`.
+
 ### Error
 
-| Status | Kondisi                                                            | `errors`                  |
-| ------ | ------------------------------------------------------------------ | ------------------------- |
-| 400    | `storeId` bukan format UUID valid, atau `page` bukan angka positif | pesan validasi (dari Joi) |
-| 404    | Toko tidak ditemukan, atau status toko sudah dihapus (`is_delete`) | `Store not found`         |
+| Status | Kondisi                                                            | `errors`          |
+| ------ | ------------------------------------------------------------------ | ----------------- |
+| 400    | `storeId` bukan format UUID valid, atau `page` bukan angka positif | pesan validasi    |
+| 404    | Toko tidak ditemukan / sudah dihapus                               | `Store not found` |
 
 ## Catatan
 
-- **`nextPage` adalah data prefetch buat halaman setelahnya** (kalau minta `page=1`, `nextPage` isinya halaman 2). Tujuannya biar FE bisa langsung tampilkan halaman berikutnya secara instan begitu user klik "Next" atau nge-scroll ke bawah (_Infinite Scroll_) tanpa loading ambil data.
-- Kalau `nextPage` berupa array kosong (`[]`), itu artinya `currentPage` yang diminta sudah halaman terakhir.
-- Properti `is_open` pada toko **dihitung secara real-time** setiap ada _request_, menyesuaikan jadwal operasional toko (`operational_hours`) atau _override_ manual dari sistem.
-- Jika FE mengirimkan query `keyword`, sistem menggunakan _Fuzzy Search_ (Fuse.js) yang memaklumi salah ketik ringan (misal: "Ayan Bkar" tetap akan menemukan "Ayam Bakar").
-- Jika produk memiliki `is_available: false`, FE wajib menampilkan visual bahwa produk tersebut "Stok Habis" dan _disable_ tombol beli.
-- `total_sold` di tiap produk **bukan** kolom database — dihitung real-time tiap _request_, merepresentasikan jumlah total `quantity` dari antrean/transaksi berstatus `SELESAI` untuk produk tersebut.
+- **`store` di response ini adalah versi ringkas**, khusus untuk ditampilkan ke publik — tidak menyertakan `payment_timeout`, `manual_status`, `operational_hours` mentah, atau `id` internal. `is_open` sudah dihitung otomatis (sama logikanya seperti `GET /api/stores/me`), jadi FE tinggal pakai langsung tanpa perlu hitung ulang.
+- **`is_available` disertakan di setiap produk** — FE bisa menandai produk yang sedang habis (`is_available: false`) langsung di katalog, tanpa perlu request tambahan.
+- **Pencarian (`keyword`) menggunakan Fuzzy Search (Toleran Typo)** — pencarian mencocokkan kemiripan teks pada nama produk. Jika ada salah ketik kecil (misal _user_ mengetik "aym bakar" untuk mencari "Ayam Bakar"), sistem masih bisa menemukannya. Jika tingkat kemiripan terlalu rendah, hasilnya kosong (bukan berarti sistem error).
+- **Kalau `keyword` diisi, mekanisme pagination berubah** — sistem akan mengambil seluruh hasil pencocokan dari algoritma _fuzzy_, lalu memotongnya per halaman secara manual di memori (20 item/halaman). `totalRows` akan merepresentasikan jumlah total produk yang _cocok_ dengan kata kunci pencarian.
+- `total_sold` per produk dihitung dari transaksi berstatus `SELESAI` saja — sama seperti endpoint produk lain, transaksi yang dibatalkan tidak ikut dihitung.
+- Sama seperti `GET /api/stores/:publicId/products`, `nextPage` adalah data prefetch untuk memuat halaman berikutnya lebih cepat di FE.

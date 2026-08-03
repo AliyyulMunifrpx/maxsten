@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: Store Dashboard API
+  description: API untuk mengambil ringkasan cepat kondisi toko untuk halaman utama dashboard seller.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Dashboard
+    description: Endpoint analitik dan ringkasan khusus halaman utama dashboard seller
+paths:
+  /api/stores/dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get Store Dashboard
+      description: |
+        Mengambil ringkasan cepat kondisi toko — status buka/tutup, produk & add-on terbaru, antrean yang paling lama menunggu, dan metrik performa hari ini.
+
+        **Catatan:**
+        - `lists` selalu maksimal 5 item (tidak ada pagination karena ini murni ringkasan widget).
+        - `oldest_active_queues` hanya berisi status `BELUM_BAYAR` dan `DIPROSES`, diurutkan dari yang paling lama menunggu (ascending by date).
+        - Semua metrik di objek `today` dibandingkan dengan KEMARIN pada jam dan menit yang sama persis untuk menjaga akurasi tren data (perbandingan _apple-to-apple_).
+        - `aov.trend` dihitung dari nilai murni sebelum pembulatan (untuk mencegah persentase bias).
+        - `peak_hour` dan `hourly_traffic` (24 index/jam) hanya dihitung dari pesanan berstatus `SELESAI` pada hari berjalan.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "401":
+          description: Unauthorized (Tidak login / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User belum punya toko)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie based authentication (membutuhkan `access_token` dan `refresh_token`).
+
+  schemas:
+    DashboardResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            store:
+              $ref: "#/components/schemas/DashboardStore"
+            lists:
+              $ref: "#/components/schemas/DashboardLists"
+            today:
+              $ref: "#/components/schemas/DashboardToday"
+
+    DashboardStore:
+      type: object
+      properties:
+        public_id:
+          type: string
+          description: Public ID dari toko tersebut.
+          example: "8kd93jf82j"
+        name:
+          type: string
+          example: "Warung Sumber Rejeki"
+        description:
+          type: string
+          example: "Toko kelontong harian"
+        logo_url:
+          type: string
+          nullable: true
+          example: "/uploads/logo-123.png"
+        is_open:
+          type: boolean
+          example: true
+
+    DashboardLists:
+      type: object
+      properties:
+        latest_products:
+          type: array
+          description: Maksimal 5 produk terbaru yang ditambahkan ke sistem.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "prod-uuid-1"
+              name:
+                type: string
+                example: "Es Teh"
+              price:
+                type: integer
+                example: 5000
+              image_url:
+                type: string
+                nullable: true
+              is_available:
+                type: boolean
+                example: true
+        latest_addons:
+          type: array
+          description: Maksimal 5 add-on terbaru.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: ID dari add-on (biasanya UUID atau integer berformat string).
+                example: "1"
+              name:
+                type: string
+                example: "Extra Gula"
+              price:
+                type: integer
+                example: 1000
+              addon_group_id:
+                type: string
+                description: Memudahkan FE mengetahui add-on ini ada di dalam grup mana.
+                example: "addon-group-uuid-1"
+        oldest_active_queues:
+          type: array
+          description: Maksimal 5 antrean dengan status BELUM_BAYAR/DIPROSES yang paling lama menunggu penanganan.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 42
+              queue_number:
+                type: integer
+                example: 3
+              status:
+                type: string
+                example: "BELUM_BAYAR"
+              total_price:
+                type: integer
+                example: 15000
+              created_at:
+                type: string
+                format: date-time
+                example: "2026-07-27T10:00:00.000Z"
+
+    DashboardMetric:
+      type: object
+      properties:
+        value:
+          type: number
+          description: Angka real atau nominal dari metrik hari ini.
+          example: 150000
+        trend:
+          type: number
+          description: Persentase pertumbuhan/penurunan dibandingkan kemarin pada jam yang sama (contoh -50.0 atau 12.4).
+          example: 12.4
+
+    DashboardToday:
+      type: object
+      properties:
+        omzet:
+          $ref: "#/components/schemas/DashboardMetric"
+        pesanan_selesai:
+          $ref: "#/components/schemas/DashboardMetric"
+        pesanan_batal:
+          $ref: "#/components/schemas/DashboardMetric"
+        aov:
+          description: Average Order Value (Rata-rata nilai nominal per pesanan).
+          $ref: "#/components/schemas/DashboardMetric"
+        peak_hour:
+          type: string
+          description: Rentang 1 jam dengan jumlah transaksi selesai terbanyak hari ini.
+          example: "12:00 - 13:00"
+        hourly_traffic:
+          type: array
+          description: Array berisi persis 24 index angka integer yang mewakili traffic harian (jam 00:00 sampai 23:00).
+          items:
+            type: integer
+          example:
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              2,
+              3,
+              4,
+              2,
+              3,
+              5,
+              4,
+              2,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+            ]
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Pesan error dari server"

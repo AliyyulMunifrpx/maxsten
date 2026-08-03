@@ -1,27 +1,27 @@
-# Get Store Queues (Live Antrean)
+# Get Store Queues (Live Queue)
 
-Ambil daftar antrean aktif hari ini untuk toko, plus status buka/tutup toko saat ini. Dipakai buat halaman kasir/dashboard live antrean.
+Retrieve the store's active queues along with its current open/closed status. This endpoint is intended for the cashier/live queue dashboard.
 
 ## Endpoint
 
-```
+```text
 GET /api/stores/:storeId/queues
 ```
 
-`:storeId` adalah `public_id` toko.
+`:storeId` is the store's `public_id`.
 
 ## Auth
 
-Cookie-based auth. `userId` dari `req.user.id` (middleware) — dipakai memastikan toko yang diminta memang milik user yang login.
+Cookie-based authentication. `userId` is obtained from `req.user.id` (middleware) and is used to verify that the requested store belongs to the authenticated user.
 
 ## Request
 
-| Param     | Lokasi    | Tipe                      | Required | Keterangan                          |
-| --------- | --------- | ------------------------- | -------- | ----------------------------------- |
-| `storeId` | URL param | string (UUID/`public_id`) | ✅       | —                                   |
-| `page`    | query     | number                    | ❌       | Default `1`. 20 antrean per halaman |
+| Parameter | Location  | Type                      | Required | Description                               |
+| --------- | --------- | ------------------------- | -------- | ----------------------------------------- |
+| `storeId` | URL param | string (UUID/`public_id`) | ✅       | —                                         |
+| `page`    | query     | number                    | ❌       | Default: `1`. Returns 20 queues per page. |
 
-## Contoh Request
+## Example Request
 
 ```bash
 curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/queues?page=1" \
@@ -55,7 +55,7 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
             "selected_addons": null,
             "product": {
               "id": 1,
-              "name": "Kopi",
+              "name": "Coffee",
               "price": 15000,
               "image_url": null
             },
@@ -65,7 +65,7 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
       }
     ],
     "nextPage": [
-      "...20 antrean halaman berikutnya, atau [] kalau sudah habis..."
+      "...20 queues from the next page, or [] if there are no more..."
     ],
     "pagination": {
       "currentPage": 1,
@@ -77,19 +77,19 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
 }
 ```
 
-### Error
+## Error
 
-| Status | Kondisi                                                     | `errors`                                   |
-| ------ | ----------------------------------------------------------- | ------------------------------------------ |
-| 401    | Tidak login / session expired                               | `Unauthorized`                             |
-| 404    | `storeId` tidak ditemukan, atau bukan milik user yang login | `Store not found or you don't have access` |
+| Status | Condition                                                                   | `errors`                                   |
+| ------ | --------------------------------------------------------------------------- | ------------------------------------------ |
+| 401    | Not logged in / session expired                                             | `Unauthorized`                             |
+| 404    | `storeId` not found, or the store does not belong to the authenticated user | `Store not found or you don't have access` |
 
-## Catatan
+## Notes
 
-- **Hanya antrean berstatus `BELUM_BAYAR` atau `DIPROSES` yang muncul** di sini — antrean yang sudah `SELESAI`/`DIBATALKAN` tidak ditampilkan (untuk itu, pakai `GET /api/stores/me/history`).
-- **Tidak ada batasan tanggal** — antrean dari sesi malam kemarin yang masih berlangsung (belum diselesaikan/dibayar) tetap muncul, meskipun sekarang sudah lewat tengah malam. Ini penting untuk toko yang jam operasionalnya menyeberang tengah malam (misal buka 20:00, tutup 04:00) — kasir tetap bisa melihat & menyelesaikan antrean dari sesi sebelumnya tanpa kehilangan datanya begitu tanggal berganti.
-- Pembersihan antrean yang sudah basi/kedaluwarsa (misal `BELUM_BAYAR` yang melewati `expired_at`) dilakukan oleh proses terpisah (cron job, berjalan tiap 1 menit) yang mengubah statusnya jadi `DIBATALKAN` — bukan disembunyikan lewat query di endpoint ini. Karena itu, ada jeda maksimal ±1 menit antara sebuah antrean melewati `expired_at` dan statusnya benar-benar berubah — selama jeda itu, antrean tersebut masih akan muncul di endpoint ini apa adanya.
-- `expired_at` tiap antrean adalah **snapshot** yang dihitung sekali saat antrean dibuat, berdasarkan `payment_timeout` toko yang berlaku _saat itu_ — bukan nilai dinamis yang ikut berubah kalau `payment_timeout` toko diubah setelahnya. Jadi antrean-antrean lama di list ini bisa saja punya durasi tenggat yang berbeda-beda kalau toko pernah mengubah `payment_timeout` di antara waktu pembuatannya.
-- Data diurutkan **FIFO** (`created_at` ascending, yang paling lama dibuat muncul duluan) — cocok buat tampilan antrean kasir yang harus dilayani berurutan.
-- Sama seperti `GET /api/stores/:publicId/products`, `nextPage` adalah data prefetch buat halaman setelahnya — pakai pola caching yang sama di FE biar transisi antar halaman instan.
-- **`storeStatus.is_open` tidak memengaruhi apakah antrean ditampilkan.** Antrean tetap muncul penuh meskipun toko sedang tutup (manual atau di luar jadwal) — kasir tetap perlu bisa melihat & menyelesaikan antrean yang sudah masuk sebelumnya, terlepas dari status buka/tutup toko saat ini.
+- **Only queues with the status `BELUM_BAYAR` or `DIPROSES` are returned.** Completed (`SELESAI`) and cancelled (`DIBATALKAN`) queues are excluded. To retrieve those, use `GET /api/stores/me/history`.
+- **There is no date restriction.** Queues that started the previous night and are still active (not completed or cancelled) will continue to appear, even after midnight. This is important for stores with operating hours that span across midnight (for example, 8:00 PM–4:00 AM), allowing cashiers to continue serving existing queues without interruption.
+- Expired queues (for example, `BELUM_BAYAR` queues that have passed `expired_at`) are cleaned up by a separate background process (cron job running every minute), which changes their status to `DIBATALKAN` rather than hiding them in this endpoint. As a result, there may be a delay of up to approximately one minute between a queue passing `expired_at` and its status actually being updated. During that time, the queue will still appear in this endpoint.
+- Each queue's `expired_at` value is a **snapshot** calculated once when the queue is created, based on the store's `payment_timeout` at that moment. It is **not** updated dynamically if the store later changes its `payment_timeout`. Therefore, older queues may have different payment deadlines from newer ones.
+- Queues are sorted using **FIFO** (`created_at` ascending), so the oldest queue appears first. This ordering is suitable for cashier workflows where customers are served in sequence.
+- Just like `GET /api/stores/:publicId/products`, `nextPage` contains prefetched data for the following page. The frontend can use the same caching strategy to provide instant page transitions.
+- **`storeStatus.is_open` does not affect whether queues are returned.** Active queues remain visible even if the store is currently closed (either manually or outside operating hours), allowing cashiers to continue viewing and processing existing orders regardless of the store's current availability.

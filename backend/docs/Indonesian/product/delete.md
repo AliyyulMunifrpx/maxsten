@@ -8,8 +8,6 @@ Soft-delete produk beserta seluruh variannya.
 DELETE /api/stores/products/:productId
 ```
 
-
-
 `:productId` adalah UUID milik produk.
 
 ## Auth
@@ -41,12 +39,12 @@ curl -X DELETE https://example.com/api/stores/products/550e8400-e29b-41d4-a716-4
 
 ### Error
 
-| Status | Kondisi | `errors` |
-|---|---|---|
-| 400 | `productId` bukan format UUID valid | pesan validasi |
-| 400 | Produk masih punya antrean aktif (status `BELUM_BAYAR` atau `DIPROSES`) | `Cannot delete product with active orders in progress` |
-| 401 | Tidak login / session expired | `Unauthorized` |
-| 404 | `productId` tidak ditemukan, sudah dihapus, atau bukan milik toko user yang login | pesan validasi |
+| Status | Kondisi                                                                           | `errors`                                               |
+| ------ | --------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 400    | `productId` bukan format UUID valid                                               | pesan validasi                                         |
+| 400    | Produk masih punya antrean aktif (status `BELUM_BAYAR` atau `DIPROSES`)           | `Cannot delete product with active orders in progress` |
+| 401    | Tidak login / session expired                                                     | `Unauthorized`                                         |
+| 404    | `productId` tidak ditemukan, sudah dihapus, atau bukan milik toko user yang login | `Product not found or not owned by you`                |
 
 ## Catatan
 

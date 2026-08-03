@@ -1,0 +1,212 @@
+openapi: 3.0.3
+info:
+  title: AI Features API
+  description: API endpoints for generating AI-powered product descriptions and store performance reports.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: AI Features
+    description: Endpoints integrated with third-party AI services for automation and analytics.
+paths:
+  /api/ai/descriptions:
+    post:
+      tags:
+        - AI Features
+      summary: AI Product Description Generator
+      description: |
+        Generates 2 automatic product description choices based on the product name, each with an appeal score.
+
+        > ⚠️ **WARNING: The response can take up to ~30 seconds.** 
+        > This endpoint calls a third-party AI service. Display a clear loading state, especially since this is likely called in the middle of filling out a product form.
+
+        **Notes:**
+        - This endpoint only generates draft text. The user must explicitly choose and save it themselves.
+        - The `score` (1-100) is an AI estimate of buyer appeal, not a statistically proven conversion rate.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiDescriptionInput"
+      responses:
+        "200":
+          description: OK (Successfully generated descriptions)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiDescriptionResponse"
+        "401":
+          description: Unauthorized (Not logged in / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User does not have a store yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+        "500":
+          description: Internal Server Error (AI timeout, service down, or unexpected format)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Failed to generate an automatic product description. Please try again."
+
+  /api/ai/reports:
+    post:
+      tags:
+        - AI Features
+      summary: AI Store Report
+      description: |
+        Generates a summary of store performance for a specific month, written in natural language by AI, complete with practical recommendations.
+
+        > ⚠️ **WARNING: The response can take up to ~30 seconds.** 
+        > The frontend must display a clear loading state (e.g., "generating report...") rather than a standard instant spinner.
+
+        **Notes:**
+        - It uses the same raw data logic as `GET /api/stores/me/history`.
+        - If there are no transactions for the requested month, the endpoint returns a static template instantly without calling the AI to save costs and time.
+      security:
+        - cookieAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiReportInput"
+      responses:
+        "200":
+          description: OK (Report successfully generated or static template returned)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiReportResponse"
+        "400":
+          description: Bad Request (Invalid month or year)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Invalid month/year parameters"
+        "401":
+          description: Unauthorized (Not logged in / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User does not have a store yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+        "500":
+          description: Internal Server Error (AI timeout, service down, or unexpected format)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unable to obtain an analysis from the AI at this time"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie-based authentication (`access_token` and `refresh_token` required)
+
+  schemas:
+    AiDescriptionInput:
+      type: object
+      required:
+        - product_name
+      properties:
+        product_name:
+          type: string
+          description: The name of the product whose description is to be generated
+          example: "Nasi Goreng Spesial"
+
+    AiDescriptionResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            recommendations:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                properties:
+                  text:
+                    type: string
+                    description: The generated product description text
+                    example: "Nasi goreng dengan bumbu rempah pilihan, dilengkapi telur mata sapi dan ayam suwir gurih."
+                  score:
+                    type: integer
+                    minimum: 1
+                    maximum: 100
+                    description: The estimated appeal score (1-100)
+                    example: 92
+
+    AiReportInput:
+      type: object
+      properties:
+        month:
+          type: integer
+          minimum: 1
+          maximum: 12
+          description: "1–12. Defaults to the current month in the store's timezone if omitted."
+          example: 7
+        year:
+          type: integer
+          description: "Defaults to the current year in the store's timezone if omitted."
+          example: 2026
+
+    AiReportResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            ai_report:
+              type: object
+              properties:
+                greeting:
+                  type: string
+                  example: "Halo Kak Budi,"
+                evaluation:
+                  type: string
+                  example: "Performa toko kamu bulan ini cukup solid dengan omzet Rp3.500.000 dari 108 pesanan berhasil. Tingkat pembatalan masih terkendali di 5.3%, dan rata-rata waktu tunggu pelanggan terbilang cepat..."
+                recommendations:
+                  type: array
+                  items:
+                    type: string
+                  example:
+                    - "Pertimbangkan menambah stok Nasi Goreng Spesial karena jadi produk terlaris bulan ini."
+                    - "Jam 12:00-13:00 adalah waktu tersibuk — pastikan staf cukup di jam tersebut untuk menjaga waktu tunggu tetap singkat."
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

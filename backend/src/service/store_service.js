@@ -145,26 +145,37 @@ const updateLogo = async (userId, file) => {
   const store = await prisma.store.findFirst({
     where: { user_id: userId, is_delete: false },
   });
-  if (!store) throw new ResponseError(404, "Store not found");
+
+  if (!store) {
+    // 🔥 PERBAIKAN 1: Hapus file sampah jika toko tidak ditemukan
+    if (file.path) await fs.unlink(file.path).catch(() => {});
+    throw new ResponseError(404, "Store not found");
+  }
 
   const oldLogoUrl = store.logo_url;
   const newImagePath = `/uploads/${file.filename}`;
 
-  let updatedStore;
   try {
-    updatedStore = await prisma.store.update({
+    await prisma.store.update({
       where: { id: store.id },
       data: { logo_url: newImagePath },
-      select: { id: true, name: true, logo_url: true },
+      select: { id: true }, // Cukup id, karena return akhir ambil dari getStore()
     });
   } catch (err) {
-    await fs.unlink(path.join("public", newImagePath)).catch(() => {});
+    // Hapus file baru jika update database gagal
+    if (file.path) await fs.unlink(file.path).catch(() => {});
     throw err;
   }
 
   // 2. Baru hapus file lama SETELAH DB dikonfirmasi berhasil.
   if (oldLogoUrl) {
-    const oldPath = path.join("public", oldLogoUrl);
+    // 🔥 PERBAIKAN 2: Gunakan process.cwd() agar konsisten dengan endpoint lain
+    // Dan pisahkan '/' agar leading slash tidak menyebabkan masalah pathing
+    const oldPath = path.join(
+      process.cwd(),
+      "public",
+      ...oldLogoUrl.split("/"),
+    );
     try {
       await fs.unlink(oldPath);
     } catch (err) {
@@ -176,9 +187,10 @@ const updateLogo = async (userId, file) => {
     }
   }
 
+  // Menggunakan fungsi getStore yang sudah ada untuk me-return shape data yang komplit
+  // sesuai janji di dokumen (lengkap dengan is_open, operational_hours, dll)
   return getStore(userId);
 };
-
 const updateStoreProfile = async (userId, request) => {
   const req = validate(updateStoreValidation, request);
 
@@ -210,11 +222,11 @@ const getStoreHistory = async (
   userId,
   month,
   year,
-  page = 1,
-  limit = 10,
-  topPage = 1,
-  topLimit = 10,
-  status = "ALL",
+  page,
+  limit,
+  topPage,
+  topLimit,
+  status,
 ) => {
   const ALLOWED_STATUS = ["ALL", "SELESAI", "DIBATALKAN"];
   const MAX_LIMIT = 100;

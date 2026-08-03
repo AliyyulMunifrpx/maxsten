@@ -44,7 +44,7 @@ curl -X DELETE https://example.com/api/users/me \
 | ------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 401    | Not logged in / session expired                                                         | `Unauthorized` or `Session Expired. Please login again.`                              |
 | 409    | The user's store still has active customer queues (status `BELUM_BAYAR` or `DIPROSES`). | `You cannot delete your account because your store still has active customer queues.` |
-| 409    | There are other crucial relational constraints in the database preventing deletion.     | `We cannot delete the account because there is still data associated with it.`        |
+| 409    | There are other crucial relational constraints in the database preventing deletion.     | `We cannot delete the account because there is still data associated with it`        |
 
 ## Notes
 

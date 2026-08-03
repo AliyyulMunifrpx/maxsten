@@ -28,7 +28,7 @@ const createCancelReason = async (request) => {
     return await prisma.cancelReasonTemplate.create({
       data: {
         store_id: store.id,
-        reason: req.reason,
+        reason: req.reason.trim(),
       },
       select: {
         id: true,
@@ -74,7 +74,7 @@ const updateCancelReason = async (request) => {
         id: req.id,
       },
       data: {
-        reason: req.reason,
+        reason: req.reason.trim(),
       },
       select: {
         id: true,

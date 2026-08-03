@@ -1,0 +1,59 @@
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+
+// 1. Opsi buat versi Indonesia
+const optionsID = {
+  definition: {
+    openapi: "3.0.0",
+    info: { title: "API Kasir Pintar (ID)", version: "1.0.0" },
+    servers: [
+      {
+        url: "http://localhost:3000",
+        description: "Development Server",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "access_token", // 👈 Harus sama persis dengan nama cookie lu di res.cookie()
+        },
+      },
+    },
+  },
+  apis: ["./src/docs/yaml/id/*.yaml"], // 👈 Arahin ke folder ID
+};
+
+// 2. Opsi buat versi English
+const optionsEN = {
+  definition: {
+    openapi: "3.0.0",
+    info: { title: "Kasir Pintar API (EN)", version: "1.0.0" },
+    servers: [
+      {
+        url: "http://localhost:3000",
+        description: "Development Server",
+      },
+    ],
+    components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "access_token", // 👈 Harus sama persis dengan nama cookie lu di res.cookie()
+        },
+      },
+    },
+  },
+  apis: ["./src/docs/yaml/en/*.yaml"], // 👈 Arahin ke folder EN
+};
+
+const specsID = swaggerJsdoc(optionsID);
+const specsEN = swaggerJsdoc(optionsEN);
+
+export const setupSwagger = (app) => {
+  // PENTING: Gunakan swaggerUi.serveFiles biar CSS/JS nya nggak bentrok kalau dipasang di 2 route
+  app.use("/docs/id", swaggerUi.serveFiles(specsID), swaggerUi.setup(specsID));
+  app.use("/docs/en", swaggerUi.serveFiles(specsEN), swaggerUi.setup(specsEN));
+};

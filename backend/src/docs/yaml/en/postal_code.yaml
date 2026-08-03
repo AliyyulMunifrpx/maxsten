@@ -1,0 +1,124 @@
+openapi: 3.0.3
+info:
+  title: Postal Code Lookup API
+  description: A proxy for postal code search to a third-party service (carikodepos.id) — used for the address auto-fill feature (province/city/district/village) in the create/edit store form.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Postal Codes
+    description: External service proxy for location lookup by postal code.
+paths:
+  /api/stores/postal-codes:
+    get:
+      tags:
+        - Postal Codes
+      summary: Postal Code Lookup
+      description: |
+        A proxy for postal code search to a third-party service (carikodepos.id).
+        
+        **Notes:**
+        - **Pure Proxy:** There is no caching, no postal code format validation, and no custom rate limiting. Every request triggers a new request to the third-party API.
+        - **External Dependency:** The availability of this feature relies entirely on carikodepos.id's uptime. If their service goes down, this endpoint returns a 500 status.
+        - **Missing Validation:** Currently, an empty or missing `postalCode` is not rejected upfront. The request is still forwarded to the external API as `q=undefined` and only fails if rejected by the third party.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: postalCode
+          in: query
+          required: false
+          description: The postal code to search for, can be partial. Technically required for a valid search, but currently lacks Joi validation.
+          schema:
+            type: string
+            example: "56151"
+      responses:
+        '200':
+          description: OK (Returns data directly from the third-party API, maximum of 5 results)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostalCodeResponse'
+        '401':
+          description: Unauthorized (Not logged in / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errors: "Unauthorized"
+        '500':
+          description: Internal Server Error (Third-party API failed or connection timeout)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                ThirdPartyError:
+                  value:
+                    errors: "Failed to retrieve the ZIP code data"
+                ConnectionError:
+                  value:
+                    errors: "Internal Server Error"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie-based authentication (requires `access_token` and `refresh_token`).
+
+  schemas:
+    LocationDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Location ID from the third-party API
+          example: "3308022003"
+        name:
+          type: string
+          description: Location name
+          example: "TONOBOYO"
+
+    PostalCodeData:
+      type: object
+      properties:
+        province:
+          $ref: '#/components/schemas/LocationDetail'
+        city:
+          $ref: '#/components/schemas/LocationDetail'
+        district:
+          $ref: '#/components/schemas/LocationDetail'
+        village:
+          $ref: '#/components/schemas/LocationDetail'
+
+    PostalCodeResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          description: A list of matched locations forwarded directly from carikodepos.id (max 5 items).
+          items:
+            $ref: '#/components/schemas/PostalCodeData'
+          example:
+            - province:
+                id: "33"
+                name: "JAWA TENGAH"
+              city:
+                id: "3308"
+                name: "KAB. MAGELANG"
+              district:
+                id: "330802"
+                name: "BANDONGAN"
+              village:
+                id: "3308022003"
+                name: "TONOBOYO"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

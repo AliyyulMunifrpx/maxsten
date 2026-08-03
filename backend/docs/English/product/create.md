@@ -1,6 +1,6 @@
 # Create Product
 
-Adds a new product to the currently logged-in user's store.
+Add a new product to the store belonging to the currently logged-in user.
 
 ## Endpoint
 
@@ -17,33 +17,29 @@ Cookie-based auth. `userId` from `req.user.id` (middleware).
 
 Content-Type: `multipart/form-data` (because of the `image` upload). Can also be `application/json` if no image is included.
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `name` | string | ✅ | Maximum 100 characters. Must be unique per store. |
-| `price` | number | ✅ | Must be greater than 0. |
-| `description` | string | ❌ | — |
-| `variants` | array<object> | ❌ | See structure below. |
-| `addon_group_ids` | array<string (UUID)> | ❌ | Existing add-on group IDs; must belong to the same store. |
-| `image` | file | ❌ | Field name must be `image` (not `logo`). |
+| Field             | Type                 | Required | Description                                                  |
+| ----------------- | -------------------- | -------- | ------------------------------------------------------------ |
+| `name`            | string               | ✅       | Maximum 100 characters. Must be unique per store             |
+| `price`           | number               | ✅       | Must be greater than 0                                       |
+| `description`     | string               | ❌       | —                                                            |
+| `variants`        | array<object>        | ❌       | See structure below                                          |
+| `addon_group_ids` | array<string (UUID)> | ❌       | IDs of existing add-on groups, must belong to the same store |
+| `image`           | file                 | ❌       | Field name must be `image` (not `logo`)                      |
 
 ### `variants` Structure
 
 ```json
-[
-  { "name": "Pedas", "additional_price": 2000 },
-  { "name": "Sedang" }
-]
-
+[{ "name": "Pedas", "additional_price": 2000 }, { "name": "Sedang" }]
 ```
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `.name` | string | ✅ | Maximum 100 characters. |
-| `.additional_price` | number | ❌ | Defaults to `0` if omitted. Cannot be negative. |
+| Field               | Type   | Required | Description                                      |
+| ------------------- | ------ | -------- | ------------------------------------------------ |
+| `.name`             | string | ✅       | Maximum 100 characters                           |
+| `.additional_price` | number | ❌       | Default is `0` if not filled. Cannot be negative |
 
-Because it is sent via `multipart/form-data`, `variants` and `addon_group_ids` must be sent as **JSON strings**, similar to `operational_hours` in the create store endpoint.
+Since it is sent via `multipart/form-data`, `variants` and `addon_group_ids` are sent as **JSON strings**, similar to `operational_hours` in the create store endpoint.
 
-## Request Example
+## Example Request
 
 ```bash
 curl -X POST https://example.com/api/stores/products \
@@ -59,7 +55,7 @@ curl -X POST https://example.com/api/stores/products \
 
 ## Response
 
-### 201 Created
+### 201 OK
 
 ```json
 {
@@ -89,23 +85,26 @@ curl -X POST https://example.com/api/stores/products \
     ]
   }
 }
-
 ```
 
-### Errors
+### Error
 
-| Status | Condition | `errors` |
-| --- | --- | --- |
-| 400 | `name` or `price` is missing, or invalid format | Joi message, e.g., `"name" is required` |
-| 400 | One of the `addon_group_ids` is not a valid UUID format | `"addon_group_ids[0]" must be a valid GUID` |
-| 400 | `variants` does not match the required structure (e.g., `name` is empty) | Joi message related to the failed index |
-| 400 | `variants`/`addon_group_ids` is sent as a string but is not valid JSON | `Format data variants tidak valid` / `Format data addon_group_ids tidak valid` |
-| 400 | The product name is already used by another product in the same store | `A product named '<name>' already exists in this store` |
-| 400 | Some `addon_group_ids` are not found / do not belong to this store | `Some add-on groups are not valid for this store.` |
-| 401 | Not logged in / session expired | `Unauthorized` |
-| 404 | User does not have a store yet | `Store not found` |
+| Status | Condition                                                               | `errors`                                                                             |
+| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 400    | `name` or `price` not sent, or invalid format                           | Joi message, e.g., `"name" is required`                                              |
+| 400    | One of the `addon_group_ids` is not a valid GUID format                 | `"addon_group_ids[0]" must be a valid GUID`                                          |
+| 400    | `variants` does not match structure (e.g., empty `name`)                | Joi message regarding the failing index                                              |
+| 400    | `variants`/`addon_group_ids` sent as string but not valid JSON          | `Invalid data format variants` / `The format of the addon_group_ids data is invalid` |
+| 400    | Duplicate variant names within the sent request array                   | `Variant names within a product must be unique`                                      |
+| 400    | One or more `addon_group_ids` not found / does not belong to this store | `Some add-on groups are not valid for this store.`                                   |
+| 401    | Not logged in / session expired                                         | `Unauthorized`                                                                       |
+| 404    | User does not have a store yet                                          | `Store not found`                                                                    |
+| 409    | Product name already used by another product in the same store          | `A product named '<nama>' already exists in this store.`                             |
+| 409    | Variant name clashes with another active variant in the database        | `A variant with this name already exists in this product.`                           |
 
 ## Notes
 
-* Product names must be **unique per store** — other stores can have products with the same name, but duplicates within the same store are not allowed.
-* If any of the submitted `addon_group_ids` are invalid (do not exist, deleted, or belong to another store), **the entire request is rejected** — no product will be partially saved without its add-on groups.
+- Product names must be **unique per store** — other stores can have products with the same name, but they cannot be duplicated within the same store.
+- If any of the sent `addon_group_ids` are invalid (non-existent, deleted, or belonging to another store), **the entire request is rejected** — no products are partially saved without their add-on groups.
+- Name Formatting: Similar to add-on groups, product names are stored entirely in **lowercase** after being trimmed. If capitalization is needed in the buyer/seller interface, the Frontend should handle title-casing independently (e.g., using `text-transform: capitalize` in CSS).
+- The lowercase transformation applies not only to the product name but also to the variant names within `variants[].name`.

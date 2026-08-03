@@ -14,4 +14,18 @@ const reportGenerator = async (req, res, next) => {
     next(e);
   }
 };
-export default { reportGenerator };
+const descriptionGenerator = async (req, res, next) => {
+  try {
+    const result = await aiService.descriptionGenerator({
+      user_id: req.user.id,
+      product_name: req.body.product_name,
+    });
+    res.status(200).json({
+      data: result,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+export default { reportGenerator, descriptionGenerator };

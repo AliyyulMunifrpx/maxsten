@@ -38,9 +38,10 @@ curl -X GET https://example.com/api/users/me \
 
 ### Error
 
-| Status | Kondisi                       | `errors`                                                   |
-| ------ | ----------------------------- | ---------------------------------------------------------- |
-| 401    | Tidak login / session expired | `Unauthorized` atau `Session Expired. Please login again.` |
+| Status | Kondisi                                                        | `errors`                                                   |
+| ------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| 401    | Tidak login / session expired                                  | `Unauthorized` atau `Session Expired. Please login again.` |
+| 401    | Akun valid di Auth tapi data di database lokal tidak ditemukan | `User database mismatch`                                   |
 
 ## Catatan
 

@@ -1,0 +1,375 @@
+openapi: 3.0.3
+info:
+  title: User Authentication & Profile API
+  description: API endpoints for managing user registration, authentication (login/logout), and profile management.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Authentication
+    description: Public endpoints for user authentication (Register, Login, Logout)
+  - name: User Profile
+    description: Private endpoints (requiring login) for account and profile management
+paths:
+  /api/users:
+    post:
+      tags:
+        - Authentication
+      summary: Register User
+      description: |
+        Registers a new user account.
+
+        **Important Notes for Frontend:**
+        - Do not redirect the user immediately to the dashboard. Display a "Check your email for confirmation" message, as the user must click the link in the email before they can log in.
+        - To resend the confirmation email, use the Supabase Auth SDK directly: `supabase.auth.resend({ type: "signup", email })`.
+        - The system employs multiple layers of protection against email enumeration and edge-case race conditions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Created (Successfully registered, pending email confirmation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Bad Request (Duplicate email, invalid format, or rejected by auth system)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                EmailExists:
+                  value:
+                    errors: "That email address already exists"
+                ValidationError:
+                  value:
+                    errors: '"password" length must be at least 8 characters long'
+        "500":
+          description: Internal Server Error (Failed to save to local database)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      description: |
+        Authenticates a user using email and password.
+        The session is established using two `httpOnly` cookies (`access_token` and `refresh_token`), so no tokens are returned in the response body.
+
+        **Self-healing:** If the email in the local database differs from the active email in the auth system, it will automatically synchronize upon login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: OK (Login successful)
+          headers:
+            Set-Cookie:
+              description: Returns `access_token` and `refresh_token` cookies with `httpOnly`, `Secure`, and `SameSite=None` attributes.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Bad Request (Invalid email format or empty fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized (Incorrect email or password)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Incorrect email or password"
+        "403":
+          description: Forbidden (Email not verified or account suspended)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                NotVerified:
+                  value:
+                    errors: "Email not verified"
+                Suspended:
+                  value:
+                    errors: "Account suspended. Please contact support."
+        "409":
+          description: Conflict (Email is used by another profile in the database - rare edge case)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "This email address is already in use by another user. Please contact the admin"
+        "500":
+          description: Internal Server Error (Unhandled auth system errors)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/logout:
+    delete:
+      tags:
+        - Authentication
+      summary: Logout
+      description: |
+        Removes the current user's session.
+        This endpoint clears the `access_token` and `refresh_token` cookies from the browser.
+
+        **Note:** This endpoint is designed to always return a `200 OK` response, ensuring the frontend clears the cookies regardless of whether the token was already expired or invalid on the server side.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK (Logout always successful)
+          headers:
+            Set-Cookie:
+              description: Clears the `access_token` and `refresh_token` cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    example: "OK"
+                  message:
+                    type: string
+                    example: "Logout successful"
+
+  /api/users/me:
+    get:
+      tags:
+        - User Profile
+      summary: Get Current User
+      description: |
+        Retrieve the data of the currently logged-in user.
+        If the `access_token` is expired but the `refresh_token` is still valid, the session is silently refreshed and new cookies are attached to the response.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Unauthorized (Token invalid/expired or local database mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                SessionExpired:
+                  value:
+                    errors: "Session Expired. Please login again."
+                Mismatch:
+                  value:
+                    errors: "User database mismatch"
+
+    patch:
+      tags:
+        - User Profile
+      summary: Update User Profile
+      description: |
+        Update the user's profile. Currently, this endpoint only supports updating the display `name`.
+
+        **Frontend Note:**
+        Do NOT use this endpoint to change the Email or Password. Modifying the email/password must be done using the Supabase Auth SDK directly on the client side. The backend will automatically sync email changes via an internal webhook.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: The user's display name
+                  example: "New Name"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: "New Name"
+        "400":
+          description: Bad Request (Validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (User not found - edge case)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "User not found"
+        "500":
+          description: Internal Server Error (Failed to update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Failed to update user profile"
+
+    delete:
+      tags:
+        - User Profile
+      summary: Delete Account
+      description: |
+        **WARNING: PERMANENT DELETION (HARD DELETE).**
+        Permanently deletes the user's account from the database.
+
+        The system will reject the deletion (409) if the user's store still has active customer queues (`BELUM_BAYAR` or `DIPROSES`).
+
+        If successful, the account is removed from Supabase Auth and the local database, and auth cookies are cleared (auto-logout). The associated store is automatically soft-deleted.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK (Account successfully deleted)
+          headers:
+            Set-Cookie:
+              description: Clears authentication cookies.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    example: "OK"
+                  message:
+                    type: string
+                    example: "Account permanently deleted"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict (Deletion rejected due to active queues or relational data constraints)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ActiveQueues:
+                  value:
+                    errors: "You cannot delete your account because your store still has active customer queues."
+                RelationalData:
+                  value:
+                    errors: "We cannot delete the account because there is still data associated with it"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie based authentication (`access_token` and `refresh_token`)
+
+  schemas:
+    RegisterInput:
+      type: object
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+          example: "secret123"
+        name:
+          type: string
+          maxLength: 100
+          example: "User Name"
+
+    LoginInput:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          example: "secret123"
+
+    UserResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            email:
+              type: string
+              example: "user@example.com"
+            name:
+              type: string
+              example: "User Name"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

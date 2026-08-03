@@ -1,21 +1,78 @@
 import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import { validate } from "../validation/validation.js";
+import { descriptionGeneratorValidation } from "../validation/ai_validation.js";
+
+const AI_REQUEST_TIMEOUT_MS = 30000;
+const AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+const AI_REFERER = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// Helper bareng: panggil OpenRouter dengan timeout, dipakai kedua fungsi
+// biar gak duplikasi logic fetch + abort + cleanup JSON di 2 tempat.
+async function callOpenRouter(promptText, systemPrompt) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": AI_REFERER,
+        "X-Title": "Maxsten AI",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: promptText },
+        ],
+      }),
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(
+        `OpenRouter request timed out after ${AI_REQUEST_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Status ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  let aiResponseText = data.choices[0].message.content;
+
+  // Jaga-jaga kalau model tetap ngasih markdown code block walau udah diinstruksiin jangan.
+  aiResponseText = aiResponseText
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  return JSON.parse(aiResponseText);
+}
 
 const reportGenerator = async (user, month, year) => {
   const ownerName = user.name;
 
-  // 1. AMBIL INFO TOKO
   const store = await prisma.store.findFirst({
     where: { user_id: user.id, is_delete: false },
     select: { id: true, name: true, timezone: true },
   });
 
-  if (!store) throw new ResponseError(404, "Toko tidak ditemukan");
+  if (!store) throw new ResponseError(404, "Store not found");
 
   const tz = store.timezone || "Asia/Jakarta";
 
-  // --- 2. SETTING RANGE WAKTU ---
   const nowUtc = new Date();
   const nowZoned = toZonedTime(nowUtc, tz);
   const currentYear = nowZoned.getFullYear();
@@ -23,6 +80,15 @@ const reportGenerator = async (user, month, year) => {
 
   const selectedYear = year ? Number(year) : currentYear;
   const selectedMonth = month ? Number(month) : currentMonth;
+
+  if (
+    !Number.isInteger(selectedMonth) ||
+    selectedMonth < 1 ||
+    selectedMonth > 12 ||
+    !Number.isInteger(selectedYear)
+  ) {
+    throw new ResponseError(400, "Invalid month/year parameters");
+  }
 
   const zonedMonthStart = new Date(
     selectedYear,
@@ -54,7 +120,6 @@ const reportGenerator = async (user, month, year) => {
     created_at: { gte: utcMonthStart, lt: rangeEndUtc },
   };
 
-  // --- 3. QUERY OPTIMAL: Cuma ambil agregasi ---
   const aggSelesai = await prisma.queue.aggregate({
     where: { store_id: store.id, status: "SELESAI", ...dateCondition },
     _sum: { total_price: true },
@@ -71,7 +136,6 @@ const reportGenerator = async (user, month, year) => {
   const totalBatal = aggBatal._count || 0;
   const totalTransactions = totalPesanan + totalBatal;
 
-  // Jika tidak ada transaksi sama sekali, langsung return JSON manual tanpa nembak AI
   if (totalTransactions === 0) {
     return {
       ai_report: {
@@ -93,7 +157,6 @@ const reportGenerator = async (user, month, year) => {
   const averageOrderValue =
     totalPesanan > 0 ? Math.round(totalOmzet / totalPesanan) : 0;
 
-  // --- 4. HITUNG WAKTU TUNGGU & PEAK TRAFFIC ---
   const queueTimes = await prisma.queue.findMany({
     where: { store_id: store.id, status: "SELESAI", ...dateCondition },
     select: { created_at: true, completed_at: true },
@@ -127,7 +190,6 @@ const reportGenerator = async (user, month, year) => {
   const avgWaitTime =
     validWaitCount > 0 ? Math.round(totalWaitTime / validWaitCount) : 0;
   const peakHourIdx = hourlyCounts.indexOf(Math.max(...hourlyCounts));
-
   const peakHour =
     Math.max(...hourlyCounts) > 0
       ? `${String(peakHourIdx).padStart(2, "0")}:00 - ${String((peakHourIdx + 1) % 24).padStart(2, "0")}:00`
@@ -135,7 +197,6 @@ const reportGenerator = async (user, month, year) => {
   const peakDayIdx = dailyCounts.indexOf(Math.max(...dailyCounts));
   const peakDay = Math.max(...dailyCounts) > 0 ? dayNames[peakDayIdx] : "-";
 
-  // --- 5. TOP 3 PRODUK ---
   const topSellingGroups = await prisma.queueDetail.groupBy({
     by: ["product_id"],
     where: {
@@ -160,7 +221,6 @@ const reportGenerator = async (user, month, year) => {
     )
     .join("\n");
 
-  // --- 6. TOP 3 ADDON ---
   const addonDetails = await prisma.queueDetail.findMany({
     where: {
       queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
@@ -194,11 +254,14 @@ const reportGenerator = async (user, month, year) => {
     .map(([name, qty]) => `- ${name}: ${qty} pesanan`)
     .join("\n");
 
-  // --- 7. RAKIT PROMPT UNTUK OPENROUTER ---
+  // Data yang dipakai di prompt (store.name, ownerName) berasal dari input
+  // user sendiri (nama toko/nama akun) - secara teori bisa disusupi teks
+  // yang nyoba "membajak" instruksi prompt. Validasi shape di bawah
+  // (setelah callOpenRouter) adalah lapisan pertahanan utama terhadap ini:
+  // walau prompt-nya "dibajak", response yang gak sesuai shape tetap ditolak.
   const promptText = `
     Kamu adalah konsultan bisnis restoran. Evaluasi performa restoran berdasarkan data berikut.
 
-    
     Data Restoran "${store.name}" (Bulan ${selectedMonth}/${selectedYear}):
     - Omzet: Rp ${totalOmzet.toLocaleString("id-ID")}
     - Pesanan Berhasil: ${totalPesanan}
@@ -226,57 +289,89 @@ const reportGenerator = async (user, month, year) => {
   `;
 
   try {
-    // Kita pakai fetch bawaan Node.js, nggak butuh axios lagi
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "HTTP-Referer": "http://localhost:5173",
-          "X-Title": "UMKM Hub",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "nvidia/nemotron-3-ultra-550b-a55b:free",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Kamu adalah AI konsultan bisnis yang HANYA membalas dengan JSON yang valid.",
-            },
-            {
-              role: "user",
-              content: promptText,
-            },
-          ],
-        }),
-      },
+    const aiData = await callOpenRouter(
+      promptText,
+      "Kamu adalah AI konsultan bisnis yang HANYA membalas dengan JSON yang valid.",
     );
 
-    // Handle kalau OpenRouter ngasih pesan error (misal API key salah / server down)
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Status ${response.status}: ${errorText}`);
+    if (
+      typeof aiData?.greeting !== "string" ||
+      typeof aiData?.evaluation !== "string" ||
+      !Array.isArray(aiData?.recommendations) ||
+      !aiData.recommendations.every((item) => typeof item === "string")
+    ) {
+      throw new Error("AI response did not match the expected shape");
     }
-
-    const data = await response.json();
-    let aiResponseText = data.choices[0].message.content;
-
-    // PEMBERSIH JSON: Jaga-jaga kalau model Tencent membandel ngasih markdown
-    aiResponseText = aiResponseText
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-
-    // Parsing string yang udah bersih jadi objek
-    const aiData = JSON.parse(aiResponseText);
 
     return { ai_report: aiData };
   } catch (error) {
     console.error("OpenRouter Error:", error.message);
-    throw new ResponseError(500, "Gagal mendapatkan analisa dari AI saat ini.");
+    throw new ResponseError(
+      500,
+      "Unable to obtain an analysis from the AI at this time",
+    );
   }
 };
 
-export default { reportGenerator };
+const descriptionGenerator = async (req) => {
+  const request = validate(descriptionGeneratorValidation, req);
+  const store = await prisma.store.findFirst({
+    where: { user_id: request.user_id, is_delete: false },
+    select: { id: true },
+  });
+
+  if (!store) throw new ResponseError(404, "Store not found");
+
+  // Sama seperti reportGenerator, product_name berasal dari input user -
+  // validasi shape di bawah jadi lapisan pertahanan terhadap prompt injection.
+  const promptText = `
+    Kamu adalah Copywriter F&B profesional yang ahli membuat deskripsi menu makanan/minuman.
+    Buatkan 2 pilihan deskripsi yang singkat, menggugah selera, dan informatif untuk produk bernama: "${request.product_name}".
+
+    Syarat:
+    - Gunakan bahasa yang ramah, asik, tapi tetap profesional.
+    - Hindari kata-kata hiperbola/lebay (contoh: "paling enak sedunia").
+    - Berikan skor (1-100) seberapa kuat deskripsi ini bisa menarik pembeli untuk memesan.
+
+    Instruksi Output:
+    Wajib kembalikan HANYA format JSON murni tanpa markdown block. Gunakan struktur persis seperti ini:
+    {
+      "recommendations": [
+        { "text": "Isi deskripsi pilihan pertama di sini...", "score": 95 },
+        { "text": "Isi deskripsi pilihan kedua di sini...", "score": 90 }
+      ]
+    }
+  `;
+
+  try {
+    const aiData = await callOpenRouter(
+      promptText,
+      "Kamu adalah asisten AI yang HANYA merespons dengan JSON murni yang valid.",
+    );
+
+    const isValidShape =
+      Array.isArray(aiData?.recommendations) &&
+      aiData.recommendations.length > 0 &&
+      aiData.recommendations.every(
+        (item) =>
+          typeof item?.text === "string" &&
+          typeof item?.score === "number" &&
+          item.score >= 1 &&
+          item.score <= 100,
+      );
+
+    if (!isValidShape) {
+      throw new Error("AI response did not match the expected shape");
+    }
+
+    return aiData;
+  } catch (error) {
+    console.error("AI Description Error:", error.message);
+    throw new ResponseError(
+      500,
+      "Failed to generate an automatic product description. Please try again.",
+    );
+  }
+};
+
+export default { reportGenerator, descriptionGenerator };

@@ -1,3 +1,202 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma"
+  previewFeatures = ["partialIndexes", "postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
+}
+
+model User {
+  id          String @id @default(uuid())
+  supabase_id String @unique
+  email       String @unique @db.VarChar(150)
+  name        String @db.VarChar(100)
+  store       Store?
+
+  @@map("users")
+}
+
+model PendingSupabaseCleanup {
+  reason              String
+  attempt_count       Int      @default(0)
+  created_at          DateTime @default(now())
+  needs_manual_review Boolean  @default(false)
+  updated_at          DateTime @updatedAt
+  supabase_id         String   @id
+
+  @@map("pending_supabase_cleanup")
+}
+
+model Store {
+  id                    Int                    @id @default(autoincrement())
+  public_id             String                 @unique @default(uuid()) @db.Char(36)
+  name                  String                 @db.VarChar(100)
+  description           String?
+  street_address        String?
+  village               String?
+  district              String?
+  city                  String?
+  province              String?
+  postal_code           String?
+  latitude              Float?
+  longitude             Float?
+  manual_status         String?
+  manual_updated_at     DateTime?
+  logo_url              String?                @db.VarChar(255)
+  user_id               String?                @unique(map: "stores_active_user_id_key", where: raw("(is_delete = false)"))
+  is_delete             Boolean                @default(false)
+  timezone              String                 @default("Asia/Jakarta")
+  payment_timeout       Int                    @default(30)
+  created_at            DateTime               @default(now())
+  addonGroups           AddonGroup[]
+  cancelReasonTemplates CancelReasonTemplate[]
+  operational_hours     StoreOperationalHour[]
+  products              Product[]
+  queues                Queue[]
+  user                  User?                  @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@map("stores")
+}
+
+model StoreOperationalHour {
+  id         String  @id @default(uuid())
+  store_id   Int
+  day        Int
+  open_time  String?
+  close_time String?
+  is_active  Boolean @default(false)
+  store      Store   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([store_id, day])
+}
+
+model Product {
+  id                 String                 @id @default(uuid())
+  name               String                 @db.VarChar(100)
+  price              Int
+  is_available       Boolean                @default(true)
+  store_id           Int
+  image_url          String?                @db.VarChar(255)
+  is_delete          Boolean                @default(false)
+  description        String?
+  created_at         DateTime               @default(now())
+  updated_at         DateTime?
+  embedding          Unsupported("vector")?
+  productAddonGroups ProductAddonGroup[]
+  store              Store                  @relation(fields: [store_id], references: [id])
+  queueDetail        QueueDetail[]
+  variants           Variant[]
+
+  @@unique([store_id, name], where: raw("(is_delete = false)"))
+  @@map("products")
+}
+
+model AddonGroup {
+  id                 String              @id @default(uuid())
+  name               String              @db.VarChar(100)
+  store_id           Int
+  is_delete          Boolean             @default(false)
+  created_at         DateTime            @default(now())
+  addons             Addon[]
+  store              Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  productAddonGroups ProductAddonGroup[]
+
+  @@unique([store_id, name], map: "addon_group_active_unique", where: raw("(is_delete = false)"))
+  @@map("AddonGroup")
+}
+
+model Addon {
+  id             String     @id @default(uuid())
+  name           String     @db.VarChar(100)
+  price          Int
+  addon_group_id String
+  is_delete      Boolean    @default(false)
+  created_at     DateTime   @default(now())
+  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+
+  @@unique([addon_group_id, name], map: "addon_active_unique", where: raw("(is_delete = false)"))
+  @@map("Addon")
+}
+
+model ProductAddonGroup {
+  product_id     String
+  addon_group_id String
+  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
+  product        Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@id([product_id, addon_group_id])
+  @@map("ProductAddonGroup")
+}
+
+model Variant {
+  id               String        @id @default(uuid())
+  name             String        @db.VarChar(100)
+  additional_price Int           @default(0)
+  product_id       String
+  is_delete        Boolean       @default(false)
+  queueDetail      QueueDetail[]
+  product          Product       @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, name], map: "variant_name_active_unique", where: raw("(is_delete = false)"))
+  @@map("variants")
+}
+
+model Guest {
+  id         String   @id @db.Char(36)
+  created_at DateTime @default(now())
+  queues     Queue[]
+}
+
+model Queue {
+  id                  Int           @id @default(autoincrement())
+  queue_number        Int
+  total_price         Int           @default(0)
+  status              QueueStatus   @default(BELUM_BAYAR)
+  created_at          DateTime      @default(now())
+  completed_at        DateTime?
+  note                String?
+  expired_at          DateTime
+  store_id            Int
+  guest_id            String        @db.Char(36)
+  cancelled_by        CancelledBy?
+  cancellation_reason String?
+  queueDetails        QueueDetail[]
+  guest               Guest         @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+  store               Store         @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@index([status, expired_at])
+  @@map("queues")
+}
+
+model QueueDetail {
+  id              String   @id @default(uuid())
+  queue_id        Int
+  product_id      String
+  quantity        Int
+  selected_addons Json?
+  variant_id      String?
+  product         Product  @relation(fields: [product_id], references: [id])
+  queue           Queue    @relation(fields: [queue_id], references: [id])
+  variant         Variant? @relation(fields: [variant_id], references: [id])
+
+  @@map("queue_details")
+}
+
+model CancelReasonTemplate {
+  id         String   @id @default(uuid())
+  store_id   Int
+  reason     String   @db.VarChar(255)
+  is_delete  Boolean  @default(false)
+  created_at DateTime @default(now())
+  store      Store    @relation(fields: [store_id], references: [id])
+
+  @@unique([store_id, reason], map: "cancel_reason_active_unique", where: raw("(is_delete = false)"))
+}
+
 enum QueueStatus {
   BELUM_BAYAR
   DIPROSES
@@ -9,213 +208,4 @@ enum CancelledBy {
   SYSTEM
   SELLER
   BUYER
-}
-
-generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/prisma"
-}
-
-datasource db {
-  provider = "postgresql"
-}
-
-model User {
-  id          String @id @default(uuid())
-  supabase_id String @unique
-  email       String @unique @db.VarChar(150) // Jembatan penghubung ke Supabase Auth
-  name        String @db.VarChar(100)
-
-  store Store[]
-
-  @@map("users")
-}
-
-model PendingSupabaseCleanup {
-  supabase_id         String  @id
-  reason              String  @db.Text
-  attempt_count       Int     @default(0)
-  needs_manual_review Boolean @default(false)
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@map("pending_supabase_cleanup")
-}
-
-model Store {
-  id        Int    @id @default(autoincrement())
-  public_id String @unique @default(uuid()) @db.Char(36)
-
-  name                  String                 @db.VarChar(100)
-  description           String?                @db.Text
-  street_address        String?                @db.Text // Ketikan manual: nama jalan, nomor, patokan, RT/RW
-  village               String? // Desa / Kelurahan (dari dropdown API)
-  district              String? // Kecamatan (auto-fill API)
-  city                  String? // Kota / Kabupaten (auto-fill API)
-  province              String? // Provinsi (auto-fill API)
-  postal_code           String? // Kodepos 5 digit
-  latitude              Float? // Titik koordinat peta dari Leaflet
-  longitude             Float? // Titik koordinat peta dari Leaflet
-  manual_status         String? // Hanya boleh diisi: "OPEN", "CLOSED", atau null
-  manual_updated_at     DateTime? // Waktu terakhir tombol manual ditekan
-  logo_url              String?                @db.VarChar(255)
-  user_id               String?
-  is_delete             Boolean                @default(false)
-  user                  User?                  @relation(fields: [user_id], references: [id], onDelete: SetNull)
-  timezone              String                 @default("Asia/Jakarta")
-  payment_timeout       Int                    @default(30)
-  products              Product[]
-  queues                Queue[]
-  addonGroups           AddonGroup[]
-  operational_hours     StoreOperationalHour[]
-  created_at            DateTime               @default(now())
-  cancelReasonTemplates CancelReasonTemplate[]
-
-  // NB: aturan "1 toko aktif per user" DIENFORCE MANUAL lewat partial unique
-  // index di migration.sql, BUKAN lewat @@unique di sini (Prisma versi ini
-  // belum support `where` di @@unique). Index di bawah ini cuma buat
-  // performance query filter by user_id, bukan buat enforce uniqueness.
-  @@index([user_id])
-  @@map("stores")
-}
-
-model StoreOperationalHour {
-  id         String  @id @default(uuid())
-  store_id   Int
-  day        Int // 0 = Minggu, 1 = Senin, ..., 6 = Sabtu
-  open_time  String? // Format jam, misal: "08:00"
-  close_time String? // Format jam, misal: "21:00"
-  is_active  Boolean @default(false) // Defaultnya tutup semua sesuai permintaan lu
-
-  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
-
-  // Kombinasi store_id dan day harus unik (1 toko cuma punya 1 jadwal per hari)
-  @@unique([store_id, day])
-}
-
-model Product {
-  id                 String              @id @default(uuid())
-  name               String              @db.VarChar(100)
-  price              Int
-  is_available       Boolean             @default(true)
-  store_id           Int
-  store              Store               @relation(fields: [store_id], references: [id])
-  image_url          String?             @db.VarChar(255)
-  is_delete          Boolean             @default(false)
-  description        String?             @db.Text
-  variants           Variant[]
-  productAddonGroups ProductAddonGroup[]
-  queueDetail        QueueDetail[]
-  created_at         DateTime            @default(now())
-  updated_at         DateTime?
-
-  @@map("products")
-}
-
-model AddonGroup {
-  id                 String              @id @default(uuid())
-  name               String              @db.VarChar(100)
-  store_id           Int
-  store              Store               @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  addons             Addon[]
-  productAddonGroups ProductAddonGroup[]
-  is_delete          Boolean             @default(false)
-  created_at         DateTime            @default(now())
-
-  @@map("AddonGroup")
-}
-
-model Addon {
-  id             String     @id @default(uuid())
-  name           String     @db.VarChar(100)
-  price          Int
-  addon_group_id String
-  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
-  is_delete      Boolean    @default(false)
-  created_at         DateTime            @default(now())
-
-  @@map("Addon")
-}
-
-model ProductAddonGroup {
-  product_id     String
-  addon_group_id String
-
-  product     Product    @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  addon_group AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: Cascade)
-
-  @@id([product_id, addon_group_id])
-  @@map("ProductAddonGroup")
-}
-
-model Variant {
-  id               String @id @default(uuid())
-  name             String @db.VarChar(100)
-  additional_price Int    @default(0)
-
-  product_id String
-  product    Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  is_delete  Boolean @default(false)
-
-  queueDetail QueueDetail[]
-
-  @@map("variants")
-}
-
-model Guest {
-  id String @id @db.Char(36)
-
-  created_at DateTime @default(now())
-
-  queues Queue[]
-}
-
-model Queue {
-  id                  Int           @id @default(autoincrement())
-  queue_number        Int
-  total_price         Int           @default(0)
-  status              QueueStatus   @default(BELUM_BAYAR)
-  created_at          DateTime      @default(now())
-  completed_at        DateTime?
-  note                String?       @db.Text
-  expired_at          DateTime
-  store_id            Int
-  store               Store         @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  guest_id            String        @db.Char(36)
-  guest               Guest         @relation(fields: [guest_id], references: [id], onDelete: Cascade)
-  cancelled_by        CancelledBy?
-  cancellation_reason String?       @db.Text
-  queueDetails        QueueDetail[]
-
-  @@index([status, expired_at])
-  @@map("queues")
-}
-
-model QueueDetail {
-  id String @id @default(uuid())
-
-  queue_id Int
-
-  product_id      String
-  quantity        Int
-  selected_addons Json?
-
-  variant_id String?
-  variant    Variant? @relation(fields: [variant_id], references: [id])
-
-  queue   Queue   @relation(fields: [queue_id], references: [id])
-  product Product @relation(fields: [product_id], references: [id])
-
-  @@map("queue_details")
-}
-
-model CancelReasonTemplate {
-  id         String   @id @default(uuid())
-  store_id   Int
-  reason     String   @db.VarChar(255)
-  is_delete  Boolean  @default(false)
-  created_at DateTime @default(now())
-
-  store Store @relation(fields: [store_id], references: [id])
 }

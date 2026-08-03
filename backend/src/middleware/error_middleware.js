@@ -5,7 +5,9 @@ const errorMiddleware = (error, req, res, next) => {
   if (!error) {
     return next();
   }
-
+  console.log(error);
+  console.log("code:", error.code);
+  console.log("field:", error.field);
   // Handle Custom Error (400, 401, 403, 404, dll)
   if (error instanceof ResponseError) {
     return res.status(error.status).json({

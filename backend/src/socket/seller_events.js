@@ -7,6 +7,7 @@ export function registerSellerEvents(socket) {
       const store = await prisma.store.findFirst({
         where: {
           user_id: socket.user.id,
+          is_delete: false,
         },
       });
 

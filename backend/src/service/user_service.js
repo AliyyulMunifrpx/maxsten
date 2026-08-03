@@ -1,12 +1,9 @@
 import { prisma } from "../application/database.js";
 import nodemailer from "nodemailer";
 import {
-  forgotPasswordValidation,
   loginUserValidation,
   registerUserValidation,
   updateUserProfileValidation,
-  updateUserValidation,
-  verifyOtpvalidation,
 } from "../validation/user_validation.js";
 import { validate } from "../validation/validation.js";
 import { ResponseError } from "../error/response_error.js";
@@ -14,7 +11,9 @@ import bcrypt from "bcrypt";
 import { v7 as uuid } from "uuid";
 import crypto from "crypto";
 import { redisClient } from "../application/redis.js";
-import { supabase, supabase } from "../application/supabase.js";
+import { supabase } from "../application/supabase.js";
+import path from "path";
+import { unlink } from "fs/promises";
 const register = async function (request) {
   const user = validate(registerUserValidation, request);
 
@@ -198,15 +197,15 @@ const logout = async (accessToken) => {
   return "OK";
 };
 const deleteUser = async (userId, supabaseId) => {
+  // 1. Cek Antrean Aktif
   const activeUserQueue = await prisma.queue.findFirst({
     where: {
       store: {
         user_id: userId,
         is_delete: false,
       },
-
       status: {
-        in: ["BELUM_BAYAR", "DIPROSES"], // Sesuaikan dengan enum status lu
+        in: ["BELUM_BAYAR", "DIPROSES"],
       },
     },
   });
@@ -214,9 +213,19 @@ const deleteUser = async (userId, supabaseId) => {
   if (activeUserQueue) {
     throw new ResponseError(
       409,
-      "You cannot delete your account because you have an active queue",
+      "You cannot delete your account because your store still has active customer queues.",
     );
   }
+
+  const store = await prisma.store.findFirst({
+    where: {
+      user_id: userId,
+      is_delete: false,
+    },
+    select: {
+      logo_url: true,
+    },
+  });
 
   try {
     await prisma.$transaction([
@@ -238,13 +247,25 @@ const deleteUser = async (userId, supabaseId) => {
       );
     }
   }
-  const { error } = await supabase.auth.admin.deleteUser(supabaseId);
 
+  const { error } = await supabase.auth.admin.deleteUser(supabaseId);
   if (error) {
     console.error("Failed to delete user from Supabase:", error.message);
     await prisma.pendingSupabaseCleanup.create({
       data: { supabase_id: supabaseId, reason: error.message },
     });
+  }
+
+  if (store && store.logo_url) {
+    try {
+      const filePath = path.join(process.cwd(), "public", store.logo_url);
+      await unlink(filePath);
+    } catch (fileError) {
+      console.error(
+        "File logo gagal dihapus dari hardisk (abaikan):",
+        fileError.message,
+      );
+    }
   }
 
   return "OK";

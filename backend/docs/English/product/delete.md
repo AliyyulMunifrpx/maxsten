@@ -1,15 +1,15 @@
 # Delete Product
 
-Soft-delete a product along with all of its associated variants.
+Soft-delete a product along with all of its variants.
 
 ## Endpoint
 
-```http
+```
 DELETE /api/stores/products/:productId
 
 ```
 
-`:productId` is the product's UUID.
+`:productId` is the UUID of the product.
 
 ## Auth
 
@@ -17,9 +17,9 @@ Cookie-based auth. `userId` from `req.user.id` (middleware) — used to ensure t
 
 ## Request
 
-No body required — only `productId` in the URL and valid auth cookies.
+No body — just the `productId` in the URL and a valid auth cookie.
 
-## Request Example
+## Example Request
 
 ```bash
 curl -X DELETE https://example.com/api/stores/products/550e8400-e29b-41d4-a716-446655440000 \
@@ -39,18 +39,18 @@ curl -X DELETE https://example.com/api/stores/products/550e8400-e29b-41d4-a716-4
 
 > Just like `DELETE /api/delete-store`, `data` here is simply the string `"OK"`, not a product object.
 
-### Errors
+### Error
 
-| Status | Condition                                                                                | `errors`                                               |
-| ------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| 400    | `productId` is not a valid UUID format                                                   | validation message                                     |
-| 400    | Product still has active orders in progress (status `BELUM_BAYAR` or `DIPROSES`)         | `Cannot delete product with active orders in progress` |
-| 401    | Not logged in / session expired                                                          | `Unauthorized`                                         |
-| 404    | `productId` not found, already deleted, or does not belong to the logged-in user's store | validation message                                     |
+| Status | Condition                                                                          | `errors`                                               |
+| ------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 400    | `productId` is not a valid UUID format                                             | Validation message                                     |
+| 400    | Product still has active orders in progress (`BELUM_BAYAR` or `DIPROSES`)          | `Cannot delete product with active orders in progress` |
+| 401    | Not logged in / session expired                                                    | `Unauthorized`                                         |
+| 404    | `productId` not found, already deleted, or not owned by the logged-in user's store | `Product not found or not owned by you`                |
 
 ## Notes
 
-- **Cannot delete a product with active orders in progress** — similar to the rule in product info updates, but here it applies completely (rather than just freezing specific fields, the entire request is rejected). Ensure there are no active orders containing this product before attempting deletion.
-- Product variants are automatically soft-deleted along with the product — there is no need to call a separate endpoint to clean up its variants.
-- If the product has an image, the file is also deleted from the server. If this file deletion fails for any reason, the product is still successfully deleted (file deletion failure will not abort the product deletion).
-- Past transaction histories referencing this product (`SELESAI`/`DIBATALKAN`) remain unaffected — the deleted product will still appear as-is in older order histories and won't be deleted or hidden from them.
+- **Cannot delete products that still have active orders** — similar to the product info update rule, but here it applies completely (rather than just freezing certain fields, the request is fully rejected). Ensure there are no ongoing orders containing this product before attempting deletion.
+- Product variants are automatically soft-deleted along with the product — no need to call a separate endpoint to clean up their variants.
+- If the product has an image, the file is also deleted from the server. If this file deletion fails for any reason, the product is still successfully deleted (file deletion failure does not cancel the product deletion).
+- Past transaction histories that already used this product (`SELESAI`/`DIBATALKAN`) are not affected — deleted products will still appear as-is in old order histories and will not be deleted or hidden from them.

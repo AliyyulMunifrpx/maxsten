@@ -137,5 +137,6 @@ userRouter.delete(
 // ==========================================
 // 🤖 AI
 // ==========================================
-userRouter.post("/api/ai/reports", aiController.reportGenerator); // Jadikan kata benda jamak
+userRouter.post("/api/ai/reports", aiController.reportGenerator); 
+userRouter.post("/api/ai/descriptions", aiController.descriptionGenerator);
 export { userRouter };

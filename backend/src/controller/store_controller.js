@@ -33,7 +33,7 @@ const openCloseStore = async (req, res, next) => {
       userId: req.user.id,
       manual_status: req.body.manual_status,
     });
-    res.json({
+    res.status(200).json({
       data: result,
     });
   } catch (e) {
@@ -68,7 +68,7 @@ const getHistory = async (req, res, next) => {
     const topLimit = parseInt(req.query.topLimit) || 10;
 
     // Status dari query URL (opsional, default ditangani di service)
-    const status = req.query.status;
+    const status = req.query.status || "ALL";
 
     const result = await storeService.getStoreHistory(
       req.user.id,

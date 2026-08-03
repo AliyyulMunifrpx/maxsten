@@ -44,7 +44,7 @@ curl -X DELETE https://example.com/api/users/me \
 | ------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 401    | Tidak login / session expired                                                                       | `Unauthorized` atau `Session Expired. Please login again.`                            |
 | 409    | Toko milik user masih memiliki antrean pelanggan yang aktif (status `BELUM_BAYAR` atau `DIPROSES`). | `You cannot delete your account because your store still has active customer queues.` |
-| 409    | Masih ada relasi data krusial lain di database yang menghalangi penghapusan.                        | `We cannot delete the account because there is still data associated with it.`        |
+| 409    | Masih ada relasi data krusial lain di database yang menghalangi penghapusan.                        | `We cannot delete the account because there is still data associated with it`        |
 
 ## Catatan
 

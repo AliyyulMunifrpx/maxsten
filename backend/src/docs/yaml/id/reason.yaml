@@ -1,0 +1,257 @@
+openapi: 3.0.3
+info:
+  title: Seller Cancel Reasons API
+  description: API for managing cancellation reason templates that sellers can reuse when canceling a queue.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Cancel Reasons
+    description: Management of cancellation reason templates by the seller
+paths:
+  /api/seller/cancel-reasons:
+    post:
+      tags:
+        - Cancel Reasons
+      summary: Create Cancellation Reason Template
+      description: |
+        Create a cancellation reason template that sellers can reuse when canceling a queue (for example, "Out of stock") instead of typing the reason manually each time.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelReasonInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CancelReason"
+        "400":
+          description: Bad Request (reason is missing or exceeds 255 characters)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized (Not authenticated or session has expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (The authenticated user does not have a store)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+        "409":
+          description: Conflict (A template with the same reason already exists)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "A cancellation reason with this text already exists."
+
+    get:
+      tags:
+        - Cancel Reasons
+      summary: List Cancellation Reason Templates
+      description: |
+        Retrieve all cancellation reason templates belonging to the authenticated user's store.
+
+        **Notes:**
+        - This endpoint does not support pagination. All active templates are returned in a single response.
+        - Templates are sorted by **newest first**.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CancelReason"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (User does not have a store)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/seller/cancel-reasons/{reasonId}:
+    patch:
+      tags:
+        - Cancel Reasons
+      summary: Update Cancellation Reason Template
+      description: Update the text of an existing cancellation reason template.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: reasonId
+          in: path
+          required: true
+          description: The UUID of the cancellation reason template.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelReasonInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CancelReason"
+        "400":
+          description: Bad Request (reason is missing or exceeds 255 characters)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Template not found, soft-deleted, or unauthorized)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Reason template not found or you do not have access"
+        "409":
+          description: Conflict (Another active template already uses this text)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "A cancellation reason with this text already exists."
+
+    delete:
+      tags:
+        - Cancel Reasons
+      summary: Delete Cancellation Reason Template
+      description: |
+        Soft-delete a cancellation reason template.
+
+        **Note:** Deleting a template does not affect any existing cancellation history that previously used its text. The `cancellation_reason` stored in past queue records is a plain text snapshot.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: reasonId
+          in: path
+          required: true
+          description: The UUID of the cancellation reason template.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    example: "OK"
+        "400":
+          description: Bad Request (reasonId is not a valid UUID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Template not found, soft-deleted, or unauthorized)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Cancellation reason template not found"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie based authentication
+
+  schemas:
+    CancelReasonInput:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          maxLength: 255
+          description: The text for the cancellation reason. Must be unique among the active cancellation reason templates in the same store.
+          example: "Out of raw ingredients"
+
+    CancelReason:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        reason:
+          type: string
+          example: "Out of raw ingredients"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-27T10:00:00.000Z"
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

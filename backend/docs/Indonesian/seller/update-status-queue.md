@@ -56,7 +56,7 @@ curl -X PATCH https://example.com/api/stores/queues/8b053812-002e-4738-835d-3a1a
     "status": "DIBATALKAN",
     "completed_at": null,
     "cancellation_reason": "Stok habis",
-    "cancelled_by": "SELLER",
+    "cancelled_by": "seller",
     "queueDetails": [
       {
         "id": 100,
@@ -89,4 +89,4 @@ curl -X PATCH https://example.com/api/stores/queues/8b053812-002e-4738-835d-3a1a
 
 ## Catatan
 
-- Update lewat endpoint ini otomatis memicu event Socket.IO `STATUS_UPDATED` — dikirim ke kamar buyer (`ANTREAN_<queueId>`) dan kamar seller (`TOKO_<store_id>`) sekaligus, dengan `triggered_by: "buyer"`. Lihat `socket-io.md`.
+- Update lewat endpoint ini otomatis memicu event Socket.IO `STATUS_UPDATED` — dikirim ke kamar buyer (`ANTREAN_<queueId>`) dan kamar seller (`TOKO_<store_id>`) sekaligus, dengan `triggered_by: "seller"`. Lihat `socket-io.md`.

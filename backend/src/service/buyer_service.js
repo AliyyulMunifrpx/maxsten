@@ -11,6 +11,7 @@ import {
 import { validate } from "../validation/validation.js";
 import { fromZonedTime, toZonedTime, formatInTimeZone } from "date-fns-tz";
 import Fuse from "fuse.js";
+
 const DEFAULT_PAYMENT_TIMEOUT_MINUTES = 30;
 
 const resolvePaymentTimeout = (paymentTimeout) => {
@@ -178,9 +179,11 @@ const createQueue = async (request) => {
   // Kembalikan ke UTC untuk Prisma
   const startOfBusinessDayUtc = fromZonedTime(startOfBusinessDayString, tz);
 
-  // FIX VARIABEL SILUMAN
-  const paymentTimeoutMinutes =
-    store.payment_timeout || DEFAULT_PAYMENT_TIMEOUT_MINUTES; // Kasih hard-fallback 30 menit
+  // ✅ PERBAIKAN LOGIKA PAYMENT TIMEOUT
+  // Gunakan fungsi resolvePaymentTimeout yang sudah kamu buat di atas
+  // Fungsi ini akan mengecek apakah datanya valid, angka, dan lebih dari 0.
+  const paymentTimeoutMinutes = resolvePaymentTimeout(store.payment_timeout);
+
   const expiredAt = new Date(
     nowUtc.getTime() + paymentTimeoutMinutes * 60 * 1000,
   );
@@ -287,11 +290,10 @@ const createQueue = async (request) => {
   };
 };
 const getAllProductDisplay = async (request) => {
-  // 1. Validasi sekarang menerima { public_id, page, keyword }
   const req = validate(getAllProductDisplayValidation, request);
   const pageNum = req.page || 1;
-  const keyword = req.keyword || ""; // Ambil keyword dari request
-  // 2. Cari toko (sudah dengan field address yang baru)
+  const keyword = req.keyword || "";
+
   const store = await prisma.store.findFirst({
     where: {
       public_id: req.public_id,
@@ -319,10 +321,8 @@ const getAllProductDisplay = async (request) => {
     throw new ResponseError(404, "Store not found");
   }
 
-  // 🔥 KALKULASI ON-THE-FLY UNTUK PEMBELI 🔥
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
 
-  // 3. Setup Pagination Offsets
   const limit = 20;
   const skipCurrent = (pageNum - 1) * limit;
   const skipNext = pageNum * limit;
@@ -335,6 +335,7 @@ const getAllProductDisplay = async (request) => {
   const productSelect = {
     id: true,
     name: true,
+    description: true,
     price: true,
     image_url: true,
     is_available: true,
@@ -344,30 +345,25 @@ const getAllProductDisplay = async (request) => {
   let nextPageProducts = [];
   let totalRows = 0;
 
-  // 4. BERCABANG: Kalau ada keyword pakai Fuse.js, kalau tidak pakai DB Pagination
   if (keyword) {
-    // a. Tarik SEMUA produk untuk toko ini ke memori
+    // Fuzzy text search (toleran typo) - bukan lagi semantic/vector search.
     const allProducts = await prisma.product.findMany({
       where: productWhere,
       select: productSelect,
       orderBy: { created_at: "desc" },
     });
 
-    // b. Inisialisasi & Eksekusi Fuse.js
     const fuse = new Fuse(allProducts, {
-      keys: ["name"], // Mencari berdasarkan nama produk
-      threshold: 0.4, // Toleransi typo (0.0 = strict, 1.0 = sangat longgar)
+      keys: ["name"],
+      threshold: 0.4,
     });
 
-    // Hasil search formatnya { item: {id, name, ...}, refIndex: 0 }, jadi kita .map ambil .item-nya aja
     const searchResults = fuse.search(keyword).map((result) => result.item);
 
-    // c. Manual Pagination di memori Node.js (karena hasil Fuse berupa Array)
     totalRows = searchResults.length;
     currentPageProducts = searchResults.slice(skipCurrent, skipCurrent + limit);
     nextPageProducts = searchResults.slice(skipNext, skipNext + limit);
   } else {
-    // Kalau TIDAK ADA keyword, jalankan 3 query paralel super cepat seperti biasa
     const [current, next, total] = await Promise.all([
       prisma.product.findMany({
         where: productWhere,
@@ -393,7 +389,6 @@ const getAllProductDisplay = async (request) => {
     totalRows = total;
   }
 
-  // 5. Kalkulasi Jumlah Terjual (total_sold) - Logika ini tetap aman untuk mode Search atau Non-Search
   const allProductIds = [...currentPageProducts, ...nextPageProducts].map(
     (p) => p.id,
   );
@@ -416,7 +411,6 @@ const getAllProductDisplay = async (request) => {
   const attachSold = (products) =>
     products.map((p) => ({ ...p, total_sold: soldMap.get(p.id) || 0 }));
 
-  // 6. Return Data Baru (Bug `address: true` sudah diperbaiki)
   return {
     store: {
       name: store.name,

@@ -50,9 +50,6 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
     "queueDetails": [
       {
         "id": "detail-uuid-1",
-        "queue_id": 10,
-        "product_id": "prod-uuid-1",
-        "variant_id": "var-uuid-1",
         "quantity": 2,
         "selected_addons": [
           {

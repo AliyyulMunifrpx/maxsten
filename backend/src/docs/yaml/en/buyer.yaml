@@ -1,0 +1,602 @@
+openapi: 3.0.3
+info:
+  title: Buyer API (Catalog & Queues)
+  description: API endpoints for buyers (guests) to retrieve the store catalog, view product details, create queues (checkout), and manage their orders.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Buyer
+    description: Public and guest-authenticated endpoints for buyers
+paths:
+  /api/stores/{storeId}/products:
+    get:
+      tags:
+        - Buyer
+      summary: Get Store Catalog (Buyer)
+      description: |
+        Retrieve detailed store information along with its product list.
+        - **Public Endpoint**: No login required.
+        - **Fuzzy Search**: If `keyword` is provided, the search will be typo-tolerant.
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          description: The `public_id` of the store
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          description: The page number (20 products per page). Default is 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: keyword
+          in: query
+          required: false
+          description: Search keyword for product names (typo-tolerant)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreCatalogResponse"
+        "400":
+          description: Bad Request (storeId is not a valid UUID format, or page is not a positive number)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Store not found / deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/stores/{storeId}/products/{productId}:
+    get:
+      tags:
+        - Buyer
+      summary: Get Product Details (Buyer)
+      description: Retrieve the complete details of a specific product including available variants and add-on options. Public endpoint.
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProductDetail"
+        "400":
+          description: Bad Request (Parameter validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (The product or store does not exist or has been deleted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/stores/{storeId}/queues:
+    post:
+      tags:
+        - Buyer
+      summary: Create Queue (Checkout)
+      description: |
+        Create a new queue based on items selected from the catalog.
+        The system will automatically generate a `guest_id` cookie if the buyer does not have one.
+      security:
+        - guestAuth: []
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQueueRequest"
+      responses:
+        "201":
+          description: Created
+          headers:
+            Set-Cookie:
+              description: Returns the session `guest_id` if this is the buyer's first visit.
+              schema:
+                type: string
+                example: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QueueResponse"
+        "400":
+          description: Bad Request (Store closed, active order exists, out of stock, invalid variant/addon)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Store or product not found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/stores/{storeId}/queues/{queueId}:
+    get:
+      tags:
+        - Buyer
+      summary: Get Queue Details (Buyer)
+      description: |
+        Retrieve the details of a specific buyer's queue.
+        Requires the same `guest_id` cookie used to create the order.
+      security:
+        - guestAuth: []
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: queueId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QueueResponse"
+        "400":
+          description: Bad Request (Parameter format is invalid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized (Missing guest_id cookie)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Queue not found, cross-store violation, or anti-hack protection)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/stores/{storeId}/queues/{queueId}/cancel:
+    patch:
+      tags:
+        - Buyer
+      summary: Cancel Queue (Buyer)
+      description: |
+        Allows a buyer to cancel their own order as long as its status is still `BELUM_BAYAR`.
+      security:
+        - guestAuth: []
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: queueId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 100
+                  description: Optional cancellation reason provided by the buyer.
+                  example: "Taking too long"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 42
+                      status:
+                        type: string
+                        example: "DIBATALKAN"
+                      reason:
+                        type: string
+                        example: "Taking too long"
+        "400":
+          description: Bad Request (Already processed, invalid format, or race condition)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                Processed:
+                  value:
+                    errors: "The order has been processed and cannot be canceled"
+                RaceCondition:
+                  value:
+                    errors: "Oh, someone beat you to it! Your order has just started being processed by the store"
+        "401":
+          description: Unauthorized (Missing guest_id cookie)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not Found (Queue not found or does not belong to the guest_id)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    guestAuth:
+      type: apiKey
+      in: cookie
+      name: guest_id
+      description: Guest session cookie (set automatically during Checkout)
+
+  schemas:
+    StoreCatalogResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            store:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Warung Makan Enak"
+                description:
+                  type: string
+                  example: "Testing API Pembeli"
+                logo_url:
+                  type: string
+                  nullable: true
+                  example: "/uploads/logo-123.png"
+                is_open:
+                  type: boolean
+                  example: true
+                street_address:
+                  type: string
+                  example: "Jl. Pembeli 1"
+                village:
+                  type: string
+                  example: "Desa"
+                district:
+                  type: string
+                  example: "Kecamatan"
+                city:
+                  type: string
+                  example: "Kota"
+                province:
+                  type: string
+                  example: "Provinsi"
+                postal_code:
+                  type: string
+                  example: "12345"
+                latitude:
+                  type: number
+                  example: -7.0
+                longitude:
+                  type: number
+                  example: 110.0
+            currentPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductSummary"
+            nextPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductSummary"
+            pagination:
+              type: object
+              properties:
+                currentPage:
+                  type: integer
+                  example: 1
+                limit:
+                  type: integer
+                  example: 20
+                totalRows:
+                  type: integer
+                  example: 22
+                totalPages:
+                  type: integer
+                  example: 2
+
+    ProductSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "prod-uuid-1"
+        name:
+          type: string
+          example: "Ayam Bakar Madu Spesial"
+        description:
+          type: string
+          example: "ayam bakar enak"
+        price:
+          type: integer
+          example: 25000
+        image_url:
+          type: string
+          nullable: true
+        is_available:
+          type: boolean
+          example: true
+        total_sold:
+          type: integer
+          example: 3
+
+    ProductDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          example: "Brown Sugar Milk Coffee"
+        price:
+          type: integer
+          example: 18000
+        is_available:
+          type: boolean
+          example: true
+        total_sold:
+          type: integer
+          example: 150
+        description:
+          type: string
+          example: "A blend of premium espresso with authentic Indonesian palm sugar."
+        image_url:
+          type: string
+          nullable: true
+          example: "https://example.com/images/kopi-susu.jpg"
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "var-uuid-123"
+              name:
+                type: string
+                example: "Normal Ice"
+              additional_price:
+                type: integer
+                example: 0
+        addon_groups:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "ag-uuid-789"
+              name:
+                type: string
+                example: "Optional Toppings"
+              addons:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: "addon-uuid-001"
+                    name:
+                      type: string
+                      example: "Extra Boba"
+                    price:
+                      type: integer
+                      example: 3000
+
+    CreateQueueRequest:
+      type: object
+      required:
+        - items
+      properties:
+        note:
+          type: string
+          maxLength: 255
+          example: "Don't make it too spicy please"
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - product_id
+              - quantity
+            properties:
+              product_id:
+                type: string
+                format: uuid
+                example: "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d"
+              quantity:
+                type: integer
+                minimum: 1
+                maximum: 100
+                example: 2
+              variant_id:
+                type: string
+                format: uuid
+                example: "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d"
+              selected_addons:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+                example: ["c9a5d102-18f3-4f68-b8d9-81a9424e8a1d", "addon-101"]
+
+    QueueResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 10
+        queue_number:
+          type: integer
+          example: 15
+        guest_id:
+          type: string
+          example: "11111111-2222-3333-4444-555555555555"
+        status:
+          type: string
+          example: "BELUM_BAYAR"
+        note:
+          type: string
+          example: "Don't make it too spicy please"
+        total_price:
+          type: integer
+          example: 45000
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-28T14:00:00.000Z"
+        expired_at:
+          type: string
+          format: date-time
+          example: "2026-07-28T14:30:00.000Z"
+        server_now:
+          type: string
+          format: date-time
+          example: "2026-07-28T14:05:00.000Z"
+        queueDetails:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "detail-uuid-1"
+              product_id:
+                type: string
+                example: "prod-uuid-1"
+              variant_id:
+                type: string
+                nullable: true
+                example: "var-uuid-1"
+              quantity:
+                type: integer
+                example: 2
+              selected_addons:
+                type: array
+                nullable: true
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: "addon-uuid-1"
+                    name:
+                      type: string
+                      example: "Cheese"
+                    price:
+                      type: integer
+                      example: 3000
+              product:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "prod-uuid-1"
+                  name:
+                    type: string
+                    example: "Mie Goreng"
+                  price:
+                    type: integer
+                    example: 15000
+                  image_url:
+                    type: string
+                    nullable: true
+                    example: "https://example.com/mie.jpg"
+                  description:
+                    type: string
+                    nullable: true
+                    example: "East Java style fried noodles"
+                  is_available:
+                    type: boolean
+                    example: true
+              variant:
+                type: object
+                nullable: true
+                properties:
+                  id:
+                    type: string
+                    example: "var-uuid-1"
+                  name:
+                    type: string
+                    example: "Extremely Spicy"
+                  additional_price:
+                    type: integer
+                    example: 2000
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

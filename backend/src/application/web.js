@@ -4,6 +4,7 @@ import { errorMiddleware } from "../middleware/error_middleware.js";
 import { userRouter } from "../route/api.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import { setupSwagger } from "../docs/swagger_setup.js";
 
 export const web = express();
 web.use(
@@ -12,6 +13,7 @@ web.use(
     credentials: true, // INI WAJIB TRUE biar cookie token lu bisa lewat
   }),
 );
+setupSwagger(web);
 web.use(express.json());
 web.use(cookieParser()); // 2. Pasang di sini, SEBELUM router lu
 web.use(publicRouter);

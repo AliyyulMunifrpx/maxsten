@@ -42,7 +42,7 @@ const createQueue = async (req, res, next) => {
       });
     }
 
-    res.status(200).json({
+    res.status(201).json({
       data: response,
     });
   } catch (e) {

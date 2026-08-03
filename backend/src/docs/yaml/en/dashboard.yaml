@@ -1,0 +1,230 @@
+openapi: 3.0.3
+info:
+  title: Store Dashboard API
+  description: API for retrieving a quick summary of store conditions for the seller's main dashboard page.
+  version: 1.0.0
+servers:
+  - url: https://example.com
+    description: Production Server
+tags:
+  - name: Dashboard
+    description: Analytics and summary endpoints for the seller dashboard
+paths:
+  /api/stores/dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get Store Dashboard
+      description: |
+        A quick summary of store conditions for the seller's main dashboard page — open/closed status, latest products & add-ons, oldest waiting queues, and today's metrics.
+
+        **Notes:**
+        - `lists` are always a maximum of 5 items (no pagination).
+        - `oldest_active_queues` only contains `BELUM_BAYAR` (UNPAID) or `DIPROSES` (PROCESSING) statuses, sorted by the longest waiting time.
+        - All metrics in `today` are compared with YESTERDAY at the exact same hour and minute for a fair, apple-to-apple comparison.
+        - `aov.trend` is calculated from the unrounded revenue/order ratio to prevent double-rounding bias.
+        - `peak_hour` and `hourly_traffic` (24 items representing hours) are only calculated from today's `SELESAI` (COMPLETED) transactions.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "401":
+          description: Unauthorized (Not logged in / session expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Unauthorized"
+        "404":
+          description: Not Found (User does not have a store yet)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                errors: "Store not found"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Cookie based authentication (requires `access_token` and `refresh_token`).
+
+  schemas:
+    DashboardResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            store:
+              $ref: "#/components/schemas/DashboardStore"
+            lists:
+              $ref: "#/components/schemas/DashboardLists"
+            today:
+              $ref: "#/components/schemas/DashboardToday"
+
+    DashboardStore:
+      type: object
+      properties:
+        public_id:
+          type: string
+          description: The public identifier for the store.
+          example: "8kd93jf82j"
+        name:
+          type: string
+          example: "Warung Sumber Rejeki"
+        description:
+          type: string
+          nullable: true
+          example: "Daily grocery store"
+        logo_url:
+          type: string
+          nullable: true
+          example: "/uploads/logo-123.png"
+        is_open:
+          type: boolean
+          example: true
+
+    DashboardLists:
+      type: object
+      properties:
+        latest_products:
+          type: array
+          description: Maximum 5 latest products added to the store.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                example: "prod-uuid-1"
+              name:
+                type: string
+                example: "Iced Tea"
+              price:
+                type: integer
+                example: 5000
+              image_url:
+                type: string
+                nullable: true
+              is_available:
+                type: boolean
+                example: true
+        latest_addons:
+          type: array
+          description: Maximum 5 latest add-ons.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                description: Add-on ID.
+                example: 1
+              name:
+                type: string
+                example: "Extra Sugar"
+              price:
+                type: integer
+                example: 1000
+              addon_group_id:
+                type: string
+                description: Helps the frontend identify which group this add-on belongs to.
+                example: "addon-group-uuid-1"
+        oldest_active_queues:
+          type: array
+          description: Maximum 5 oldest active queues (BELUM_BAYAR/DIPROSES) waiting for handling.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 42
+              queue_number:
+                type: integer
+                example: 3
+              status:
+                type: string
+                example: "BELUM_BAYAR"
+              total_price:
+                type: integer
+                example: 15000
+              created_at:
+                type: string
+                format: date-time
+                example: "2026-07-27T10:00:00.000Z"
+
+    DashboardMetric:
+      type: object
+      properties:
+        value:
+          type: number
+          description: The actual value/amount for today's metric.
+          example: 150000
+        trend:
+          type: number
+          description: Percentage trend (growth/decline) compared to yesterday at the exact same hour and minute.
+          example: 12.4
+
+    DashboardToday:
+      type: object
+      properties:
+        omzet:
+          $ref: "#/components/schemas/DashboardMetric"
+        pesanan_selesai:
+          $ref: "#/components/schemas/DashboardMetric"
+        pesanan_batal:
+          $ref: "#/components/schemas/DashboardMetric"
+        aov:
+          description: Average Order Value (AOV).
+          $ref: "#/components/schemas/DashboardMetric"
+        peak_hour:
+          type: string
+          description: The 1-hour window with the highest number of completed transactions today.
+          example: "12:00 - 13:00"
+        hourly_traffic:
+          type: array
+          description: An array of exactly 24 integers representing the number of completed orders for each hour of the day (00:00 to 23:00).
+          items:
+            type: integer
+          example:
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              2,
+              3,
+              4,
+              2,
+              3,
+              5,
+              4,
+              2,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+            ]
+
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: string
+          example: "Error message from the server"

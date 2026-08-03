@@ -61,7 +61,7 @@ curl -X POST "https://example.com/api/stores/f47ac10b-58cc-4372-a567-0e02b2c3d47
 
 ## Response
 
-### 200 OK
+### 201 OK
 
 Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response akan menyertakan header `Set-Cookie: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400`.
 
@@ -69,7 +69,6 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
 {
   "data": {
     "id": "1",
-    "store_id": "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d",
     "queue_number": 5,
     "guest_id": "guest-uuid-abcd",
     "status": "BELUM_BAYAR",
@@ -92,10 +91,15 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
           }
         ],
         "product": {
-          "name": "Burger Spesial",
-          "price": 20000
+          "id": "...",
+          "name": "Burger",
+          "price": 20000,
+          "image_url": "...",
+          "description": "...",
+          "is_available": true
         },
         "variant": {
+          "id": "1b49b362-70c3-44d7-89ad-80130daf0158",
           "name": "Pedas",
           "additional_price": 2000
         }
@@ -107,15 +111,16 @@ Selain membalas dengan JSON, jika ini adalah kunjungan pertama pembeli, Response
 
 ### Error
 
-| Status | Kondisi                                                 | `errors`                                                |
-| ------ | ------------------------------------------------------- | ------------------------------------------------------- |
-| 400    | Toko sedang ditutup otomatis/manual.                    | `Sorry, the store is currently closed`                  |
-| 400    | Masih ada pesanan aktif (belum lunas/diproses).         | `Please finish the previous queue first.`               |
-| 400    | Produk kehabisan stok (`is_available: false`).          | `Sorry, the product {nama} is currently unavailable...` |
-| 400    | Pilihan `variant_id` atau add-on tidak cocok/salah.     | `Invalid variant for product {nama}`                    |
-| 400    | Validasi parameter gagal (kuantitas minus, UUID salah). | (Pesan otomatis dari Joi)                               |
-| 404    | Toko tidak ditemukan / terhapus.                        | `Store not found`                                       |
-| 404    | Produk tidak ditemukan / terhapus.                      | `Some products were not found`                          |
+| Status | Kondisi                                                 | `errors`                                                            |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| 400    | Toko sedang ditutup otomatis/manual.                    | `Sorry, the store is currently closed`                              |
+| 400    | Masih ada pesanan aktif (belum lunas/diproses).         | `Please finish the previous queue first.`                           |
+| 400    | Produk kehabisan stok (`is_available: false`).          | `Sorry, the product {nama} is currently unavailable...`             |
+| 400    | Pilihan `variant_id` tidak cocok/salah.                 | `Invalid variant for product {nama}`                                |
+| 400    | Pilihan `addon` tidak cocok/salah.                      | `The add-on selection is not valid for the product ${product.name}` |
+| 400    | Validasi parameter gagal (kuantitas minus, UUID salah). | (Pesan otomatis dari Joi)                                           |
+| 404    | Toko tidak ditemukan / terhapus.                        | `Store not found`                                                   |
+| 404    | Produk tidak ditemukan / terhapus.                      | `Some products were not found`                                      |
 
 ## Catatan Tambahan (Untuk Frontend)
 

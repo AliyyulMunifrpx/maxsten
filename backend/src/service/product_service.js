@@ -265,12 +265,22 @@ const createProduct = async (request, file) => {
     }
 
     const productImagePath = file ? `/uploads/${file.filename}` : null;
+    const variantNames = (req.variants ?? []).map((v) =>
+      v.name.trim().toLowerCase(),
+    );
 
+    if (variantNames.length !== new Set(variantNames).size) {
+      throw new ResponseError(
+        400,
+        "Variant names within a product must be unique",
+      );
+    }
     // 5. Eksekusi Create
-    return await prisma.product.create({
+    const newProduct = await prisma.product.create({
       data: {
-        name: req.name,
-        description: req.description,
+        name: req.name.trim().toLowerCase(),
+        description:
+          req.description !== undefined ? req.description.trim() : undefined,
         price: req.price,
         image_url: productImagePath,
         store_id: store.id,
@@ -279,7 +289,7 @@ const createProduct = async (request, file) => {
           req.variants.length > 0 && {
             variants: {
               create: req.variants.map((variant) => ({
-                name: variant.name,
+                name: variant.name.trim().toLowerCase(),
                 additional_price: Number(variant.additional_price) || 0,
               })),
             },
@@ -295,16 +305,32 @@ const createProduct = async (request, file) => {
           }),
       },
       include: {
-        variants: true,
+        variants: {
+          where: {
+            is_delete: false,
+          },
+        },
         productAddonGroups: {
+          where: {
+            addon_group: {
+              is_delete: false,
+            },
+          },
           include: {
             addon_group: {
-              include: { addons: true },
+              include: {
+                addons: {
+                  where: {
+                    is_delete: false,
+                  },
+                },
+              },
             },
           },
         },
       },
     });
+    return newProduct;
   } catch (error) {
     // ==========================================
     // ZONA PENGHANCURAN FILE GAGAL UPLOAD
@@ -315,15 +341,24 @@ const createProduct = async (request, file) => {
       await fs.unlink(file.path).catch(() => {});
     }
 
-    // 2. Tangani error spesifik Prisma
     if (error.code === "P2002") {
-      throw new ResponseError(
-        400,
-        `A product named '${productName}' already exists in this store`,
-      );
+      const target = error.meta?.target;
+
+      if (target?.includes("product_name_active_unique")) {
+        throw new ResponseError(
+          409,
+          `A product named '${productName}' already exists in this store.`,
+        );
+      }
+
+      if (target?.includes("variant_name_active_unique")) {
+        throw new ResponseError(
+          409,
+          "A variant with this name already exists in this product.",
+        );
+      }
     }
 
-    // 3. Lempar sisa errornya ke Error Middleware biar diurus di sana
     throw error;
   }
 };
@@ -366,6 +401,14 @@ const updateProductInfo = async (userId, productId, request) => {
         throw new ResponseError(404, "Product not found or not owned by you");
 
       const reqVariants = req.variants || [];
+      const variantNames = reqVariants.map((v) => v.name.trim().toLowerCase());
+
+      if (variantNames.length !== new Set(variantNames).size) {
+        throw new ResponseError(
+          400,
+          "Variant names within a product must be unique",
+        );
+      }
       const existingVariantIds = product.variants.map((v) => v.id);
 
       const invalidVariantIds = reqVariants
@@ -463,28 +506,49 @@ const updateProductInfo = async (userId, productId, request) => {
       return await tx.product.update({
         where: { id: productId },
         data: {
-          name: req.name,
+          name: req.name ? req.name.trim().toLowerCase() : undefined,
           price: req.price,
-          description: req.description,
+          description:
+            req.description !== undefined ? req.description.trim() : undefined,
           updated_at: new Date(),
+
           variants: {
             updateMany: {
-              where: { id: { notIn: retainedVariantIds } },
-              data: { is_delete: true },
+              where: {
+                id: {
+                  notIn: retainedVariantIds,
+                },
+              },
+              data: {
+                is_delete: true,
+              },
             },
+
             update: existingVariantsToUpdate.map((v) => ({
-              where: { id: v.id },
-              data: { name: v.name, additional_price: v.additional_price },
+              where: {
+                id: v.id,
+              },
+              data: {
+                name: v.name.trim().toLowerCase(),
+                additional_price: v.additional_price,
+              },
             })),
+
             create: newVariantsToCreate.map((v) => ({
-              name: v.name,
+              name: v.name.trim().toLowerCase(),
               additional_price: v.additional_price,
             })),
           },
+
           productAddonGroups: {
             ...(addonGroupsToDelete.length > 0 && {
-              deleteMany: { addon_group_id: { in: addonGroupsToDelete } },
+              deleteMany: {
+                addon_group_id: {
+                  in: addonGroupsToDelete,
+                },
+              },
             }),
+
             ...(addonGroupsToCreate.length > 0 && {
               create: addonGroupsToCreate.map((addonGroupId) => ({
                 addon_group_id: addonGroupId,
@@ -492,12 +556,59 @@ const updateProductInfo = async (userId, productId, request) => {
             }),
           },
         },
-        include: { variants: true },
+        include: {
+          variants: {
+            where: {
+              is_delete: false,
+            },
+          },
+
+          productAddonGroups: {
+            where: {
+              addon_group: {
+                is_delete: false,
+              },
+            },
+            include: {
+              addon_group: {
+                select: {
+                  id: true,
+                  name: true,
+                  addons: {
+                    where: {
+                      is_delete: false,
+                    },
+                    select: {
+                      id: true,
+                      name: true,
+                      price: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       });
     });
   } catch (error) {
-    if (error instanceof ResponseError) throw error;
     if (error.code === "P2002") {
+      const target = error.meta?.target;
+
+      if (target?.includes("product_name_active_unique")) {
+        throw new ResponseError(
+          409,
+          "A product with this name already exists in your store.",
+        );
+      }
+
+      if (target?.includes("variant_name_active_unique")) {
+        throw new ResponseError(
+          409,
+          "A variant with this name already exists in this product.",
+        );
+      }
+
       throw new ResponseError(
         409,
         "This change conflicts with another update in progress, please try again.",

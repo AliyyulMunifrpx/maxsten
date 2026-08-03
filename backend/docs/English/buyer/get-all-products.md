@@ -1,31 +1,37 @@
 # Get Store Catalog (Buyer)
 
-Retrieve detailed store information along with its product catalog. This is a **public endpoint** for buyers and includes **pagination**, **next-page prefetching**, and **fuzzy search** for product names.
+Retrieve detailed store information along with its product list. This endpoint is public (for buyers) and comes with built-in pagination, next-page prefetching, and a typo-tolerant product search feature (_Fuzzy Search_).
 
 ## Endpoint
 
-```http
+```text
 GET /api/stores/:storeId/products
+
 ```
 
-`:storeId` refers to the store's `public_id` (not the internal database `id`).
+`:storeId` is the `public_id` of the store (not the internal database `id`).
 
-## Authentication
+## Auth
 
-No authentication is required. This is a **public endpoint** and can be accessed without login cookies.
+No authentication required (Public Endpoint). Can be accessed by anyone without a login cookie.
 
 ## Request
 
-| Parameter | Location | Type          | Required | Description                                                                  |
-| --------- | -------- | ------------- | -------- | ---------------------------------------------------------------------------- |
-| `storeId` | URL Path | string (UUID) | ✅       | The store's `public_id`.                                                     |
-| `page`    | Query    | number        | ❌       | Page number. Defaults to `1`. Each page contains up to 20 products.          |
-| `keyword` | Query    | string        | ❌       | Product name search keyword. Supports typo tolerance using **Fuzzy Search**. |
+| Param     | Location  | Type          | Required | Description                                                                                         |
+| --------- | --------- | ------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `storeId` | URL param | string (UUID) | ✅       | The `public_id` of the store                                                                        |
+| `page`    | query     | number        | ❌       | Default is `1`. 20 products per page                                                                |
+| `keyword` | query     | string        | ❌       | If provided, searches using **Fuzzy Search** (typo-tolerant) on the product name — see notes below. |
 
 ## Example Request
 
 ```bash
-curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000/products?page=1&keyword=Grilled Chicken"
+# Without search
+curl "https://example.com/api/stores/str_8kd93jf82j/products?page=1"
+
+# With search
+curl "https://example.com/api/stores/str_8kd93jf82j/products?keyword=ayam%20bakar"
+
 ```
 
 ## Response
@@ -37,8 +43,8 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
   "data": {
     "store": {
       "name": "Warung Makan Enak",
-      "description": "A cozy place to hang out",
-      "logo_url": "https://example.com/logo.png",
+      "description": "Testing API Pembeli",
+      "logo_url": "/uploads/logo-123.png",
       "is_open": true,
       "street_address": "Jl. Pembeli 1",
       "village": "Desa",
@@ -51,46 +57,42 @@ curl -X GET "https://example.com/api/stores/123e4567-e89b-12d3-a456-426614174000
     },
     "currentPage": [
       {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
-        "name": "Honey Grilled Chicken Special",
+        "id": "prod-uuid-1",
+        "name": "Ayam Bakar Madu Spesial",
+        "description": "ayam bakar enak",
         "price": 25000,
-        "image_url": "https://example.com/ayam.jpg",
+        "image_url": null,
         "is_available": true,
-        "total_sold": 15
+        "total_sold": 3
       }
     ],
     "nextPage": [
-      {
-        "id": "550e8400-e29b-41d4-a716-446655440001",
-        "name": "Butter Fried Chicken",
-        "price": 22000,
-        "image_url": null,
-        "is_available": false,
-        "total_sold": 8
-      }
+      "...next 20 products of the following page, or [] if exhausted..."
     ],
     "pagination": {
       "currentPage": 1,
       "limit": 20,
-      "totalRows": 45,
-      "totalPages": 3
+      "totalRows": 22,
+      "totalPages": 2
     }
   }
 }
 ```
 
-## Error Responses
+If `keyword` is provided but no sufficiently similar or relevant products are found, `currentPage`/`nextPage` will return an empty array `[]`.
 
-| Status | Condition                                                               | `errors`                             |
-| ------ | ----------------------------------------------------------------------- | ------------------------------------ |
-| 400    | `storeId` is not a valid UUID, or `page` is not a positive number.      | Validation error message (from Joi). |
-| 404    | The store does not exist or has been soft-deleted (`is_delete = true`). | `Store not found`                    |
+### Error
+
+| Status | Condition                                                                | `errors`           |
+| ------ | ------------------------------------------------------------------------ | ------------------ |
+| 400    | `storeId` is not a valid UUID format, or `page` is not a positive number | Validation message |
+| 404    | Store not found / deleted                                                | `Store not found`  |
 
 ## Notes
 
-- **`nextPage` contains prefetched data for the following page.** For example, when requesting `page=1`, the `nextPage` field contains the products for page 2. This allows the frontend to instantly display the next page when the user clicks **Next** or scrolls down (infinite scrolling) without waiting for another API request.
-- If `nextPage` is an empty array (`[]`), the requested page is already the last available page.
-- The store's `is_open` status is **calculated in real time** for every request based on its configured `operational_hours` or any manual override applied by the system.
-- When the `keyword` query parameter is provided, the API performs a **Fuzzy Search** (powered by Fuse.js), allowing minor typos. For example, searching for `"Ayan Bkar"` can still match `"Ayam Bakar"`.
-- If a product has `is_available: false`, the frontend should display it as **Out of Stock** and disable the purchase button.
-- The `total_sold` field is **not stored in the database**. It is calculated in real time for each request by summing the `quantity` of all completed (`SELESAI`) orders associated with that product.
+- **The `store` object in this response is concise**, specifically tailored for public display — it excludes `payment_timeout`, `manual_status`, raw `operational_hours`, or internal `id`s. `is_open` is automatically calculated (using the same logic as `GET /api/stores/me`), so the frontend can use it directly without re-calculating.
+- **`is_available` is included for every product** — the frontend can highlight out-of-stock products (`is_available: false`) directly in the catalog without needing extra requests.
+- **Search (`keyword`) uses Fuzzy Search (Typo-Tolerant)** — the search matches text similarity on product names. If there is a minor typo (e.g., typing "aym bakar" to find "Ayam Bakar"), the system can still find it. If the similarity score is too low, the result will be empty (this does not indicate a system error).
+- **If `keyword` is provided, pagination behavior changes** — the system retrieves all matching results from the fuzzy algorithm, then manually chunks them in memory per page (20 items/page). `totalRows` will represent the total number of products that _match_ the search keyword.
+- `total_sold` per product is calculated exclusively from transactions with the `SELESAI` (completed) status — just like other product endpoints, cancelled transactions are not included.
+- Just like `GET /api/stores/:publicId/products`, `nextPage` contains prefetch data to load the next page faster on the frontend.
