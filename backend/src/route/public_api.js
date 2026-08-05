@@ -4,15 +4,15 @@ import buyerController from "../controller/buyer_controller.js";
 import rateLimit from "express-rate-limit";
 
 const publicRouter = express.Router();
-
 const queueLimiter = rateLimit({
-  windowMs: 0, // Waktu: 1 detik (development)
-  max: 1, // Maksimal hit API: 1 kali per IP dalam 1 detik
+  windowMs: 10 * 60 * 1000, // 10 menit
+  max: 1,
   message: {
-    errors: "taking too many actions",
+    errors: "Too many requests. Please try again in 10 minutes.",
   },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-
 // ==========================================
 // 👤 USER & AUTH API
 // ==========================================

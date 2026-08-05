@@ -1,7 +1,6 @@
 import { logger } from "./application/logging.js";
 import { web } from "./application/web.js";
 import { prisma } from "./application/database.js";
-import { redisClient } from "./application/redis.js";
 // 1. Import modul HTTP bawaan Node dan Socket.io
 import { createServer } from "http";
 import { Server } from "socket.io";

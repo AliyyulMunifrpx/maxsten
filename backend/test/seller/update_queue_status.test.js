@@ -1,16 +1,19 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import crypto from "crypto";
 
-const email = "aliyyulmunif780@gmail.com";
-const password = "aliyyul";
-
 describe("PATCH /api/stores/queues/:queueId", () => {
   let cookies;
-  let user;
-  let otherUser;
+  let testEmail = "";
+  let userId = "";
+
+  let otherEmail = "";
+  let otherUserId = "";
+
   let store;
   let otherStore;
   let guest;
@@ -18,77 +21,98 @@ describe("PATCH /api/stores/queues/:queueId", () => {
   let queueDiproses;
   let queueSelesai;
 
+  let createdStoreIds = [];
+  let createdGuestIds = [];
+
   // 1. SETUP MOCK SOCKET.IO
   const mockEmit = vi.fn();
   const mockTo = vi.fn().mockReturnValue({ emit: mockEmit });
   const mockIo = { to: mockTo };
 
-  const cleanup = async () => {
-    await prisma.queueDetail.deleteMany({
-      where: { queue: { store: { name: { contains: "Test Queue" } } } },
-    });
-    await prisma.queue.deleteMany({
-      where: { store: { name: { contains: "Test Queue" } } },
-    });
-    await prisma.guest.deleteMany({
-      where: { id: { contains: "guest-test" } },
-    });
-    await prisma.store.deleteMany({
-      where: { name: { contains: "Test Queue" } },
-    });
-    await prisma.user.deleteMany({
-      where: { email: "other-user@test.com" },
-    });
-  };
-
   beforeEach(async () => {
-    await cleanup();
-
     // SUNTIKKAN MOCK SOCKET.IO KE EXPRESS
     web.set("socketio", mockIo);
 
-    // 1. Login & Get User Utama (Seller)
+    // ==========================================
+    // 1. SETUP USER UTAMA (SELLER)
+    // ==========================================
+    testEmail = `seller_patch_queue_${Date.now()}@gmail.com`;
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Seller" },
+    });
+    if (error)
+      throw new Error(`Supabase Admin Error (Seller): ${error.message}`);
+    userId = authData.user.id;
+
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Seller",
+      },
+    });
+
     const login = await supertest(web)
       .post("/api/users/login")
-      .send({ email, password });
+      .send({ email: testEmail, password: "password123" });
     cookies = login.headers["set-cookie"];
-    user = await prisma.user.findUnique({ where: { email } });
 
-    // 2. Bikin Toko Utama (Milik User)
     store = await prisma.store.create({
       data: {
-        user_id: user.id,
+        user_id: userId,
         name: "Test Queue Store",
         public_id: crypto.randomUUID(),
         timezone: "Asia/Jakarta",
       },
     });
+    createdStoreIds.push(store.public_id);
 
-    // 3. Bikin User Lain (Lengkap dengan supabase_id agar tidak error Prisma)
-    otherUser = await prisma.user.create({
+    // ==========================================
+    // 2. SETUP USER LAIN (KORBAN CROSS-TENANT)
+    // ==========================================
+    otherEmail = `other_patch_queue_${Date.now()}@gmail.com`;
+    const { data: otherAuthData, error: otherError } =
+      await supabase.auth.admin.createUser({
+        email: otherEmail,
+        password: "password123",
+        email_confirm: true,
+        user_metadata: { name: "Tumbal Other" },
+      });
+    if (otherError)
+      throw new Error(`Supabase Admin Error (Other): ${otherError.message}`);
+    otherUserId = otherAuthData.user.id;
+
+    await prisma.user.create({
       data: {
-        email: "other-user@test.com",
-        name: "Other User",
-        supabase_id: crypto.randomUUID(), // FIX: Wajib diisi!
+        id: otherUserId,
+        supabase_id: otherUserId,
+        email: otherEmail,
+        name: "Tumbal Other",
       },
     });
 
-    // 4. Bikin Toko Orang Lain
     otherStore = await prisma.store.create({
       data: {
-        user_id: otherUser.id,
+        user_id: otherUserId,
         name: "Test Queue Other Store",
         public_id: crypto.randomUUID(),
         timezone: "Asia/Jakarta",
       },
     });
+    createdStoreIds.push(otherStore.public_id);
 
-    // 5. Setup Guest palsu langsung ke database untuk mock pemilik antrean
+    // ==========================================
+    // 3. SETUP MASTER DATA ANTREAN
+    // ==========================================
     guest = await prisma.guest.create({
       data: { id: `guest-test-${crypto.randomUUID().slice(0, 20)}` },
     });
+    createdGuestIds.push(guest.id);
 
-    // 6. Seeding Antrean
     queueBelumBayar = await prisma.queue.create({
       data: {
         store_id: store.id,
@@ -125,15 +149,58 @@ describe("PATCH /api/stores/queues/:queueId", () => {
         completed_at: new Date(),
       },
     });
-  });
+  }, 20000);
 
   afterEach(async () => {
     vi.clearAllMocks(); // Wajib direstore biar test lain ga bentrok
-    await cleanup();
-  });
+
+    // --- CLEANUP RELASI TOKO ---
+    if (createdStoreIds.length > 0) {
+      const targetStores = await prisma.store.findMany({
+        where: { public_id: { in: createdStoreIds } },
+        select: { id: true },
+      });
+      const internalIds = targetStores.map((s) => s.id);
+
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: { in: internalIds } } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: { in: internalIds } },
+      });
+      await prisma.store.deleteMany({
+        where: { id: { in: internalIds } },
+      });
+    }
+
+    if (createdGuestIds.length > 0) {
+      await prisma.guest.deleteMany({
+        where: { id: { in: createdGuestIds } },
+      });
+    }
+
+    // --- CLEANUP USER UTAMA (SELLER) ---
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+
+    // --- CLEANUP USER LAIN (OTHER) ---
+    if (otherEmail) {
+      await prisma.user.deleteMany({ where: { email: otherEmail } });
+    }
+    if (otherUserId) {
+      try {
+        await supabase.auth.admin.deleteUser(otherUserId);
+      } catch (err) {}
+    }
+  }, 20000);
 
   // --- 1. TEST SUKSES TRANSISI & MOCK SOCKET ---
-
   test("should success update status from BELUM_BAYAR to DIPROSES and emit socket event", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueBelumBayar.id}`)
@@ -156,7 +223,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
     const namaKamarPembeli = `ANTREAN_${queueBelumBayar.id}`;
     expect(mockTo).toHaveBeenCalledWith(namaKamarPembeli);
     expect(mockEmit).toHaveBeenCalledWith("STATUS_UPDATED", expect.any(Object));
-  });
+  }, 20000);
 
   test("should success update status from DIPROSES to SELESAI and set completed_at", async () => {
     const result = await supertest(web)
@@ -170,7 +237,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
     expect(result.status).toBe(200);
     expect(result.body.data.status).toBe("SELESAI");
     expect(result.body.data.completed_at).not.toBeNull();
-  });
+  }, 20000);
 
   test("should success update status to DIBATALKAN with reason and cancelled_by", async () => {
     const result = await supertest(web)
@@ -186,10 +253,9 @@ describe("PATCH /api/stores/queues/:queueId", () => {
     expect(result.body.data.status).toBe("DIBATALKAN");
     expect(result.body.data.cancellation_reason).toBe("Stok habis bro");
     expect(result.body.data.cancelled_by).toBe("SELLER");
-  });
+  }, 20000);
 
   // --- 2. TEST GAGAL TRANSISI (LOGIKA STATE MACHINE) ---
-
   test("should reject 400 when transition is illegal (SELESAI to DIPROSES)", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueSelesai.id}`)
@@ -200,11 +266,10 @@ describe("PATCH /api/stores/queues/:queueId", () => {
       });
 
     expect(result.status).toBe(400);
-    expect(result.body.errors).toContain("Cannot change the status"); // Sesuai dengan terjemahan error lu
-  });
+    expect(result.body.errors).toContain("Cannot change the status");
+  }, 20000);
 
   // --- 3. TEST KEAMANAN OTORISASI CROSS-TENANT ---
-
   test("should reject 404 when trying to update queue belonging to another store", async () => {
     // Antrean milik toko Budi
     const otherQueue = await prisma.queue.create({
@@ -231,10 +296,9 @@ describe("PATCH /api/stores/queues/:queueId", () => {
     // Wajib gagal (404) karena service ngecek user_id
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Queue not found");
-  });
+  }, 20000);
 
   // --- 4. TEST RACE CONDITION (OPTIMISTIC CONCURRENCY CONTROL) ---
-
   test("should reject 409 Conflict if status changes in the middle of request", async () => {
     // Simulasi klik ganda atau antrean udah diupdate orang lain
     vi.spyOn(prisma.queue, "update").mockRejectedValueOnce({
@@ -251,18 +315,17 @@ describe("PATCH /api/stores/queues/:queueId", () => {
 
     expect(result.status).toBe(409);
     expect(result.body.errors).toBe("The queue status has changed");
-  });
+  }, 20000);
 
   // --- 5. TEST VALIDASI PAYLOAD ---
-
   test("should reject 401 if user is not authenticated", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueBelumBayar.id}`)
       .send({
         storeId: store.public_id,
         status: "DIPROSES",
-      });
+      }); // Sengaja ga diset Cookie auth
 
     expect(result.status).toBe(401);
-  });
+  }, 20000);
 });

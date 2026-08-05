@@ -10,7 +10,6 @@ import { ResponseError } from "../error/response_error.js";
 import bcrypt from "bcrypt";
 import { v7 as uuid } from "uuid";
 import crypto from "crypto";
-import { redisClient } from "../application/redis.js";
 import { supabase } from "../application/supabase.js";
 import path from "path";
 import { unlink } from "fs/promises";

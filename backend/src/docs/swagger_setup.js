@@ -9,7 +9,7 @@ const optionsID = {
     servers: [
       {
         url: process.env.BACKEND_URL,
-        description: "Development Server",
+        description: "Production Server",
       },
     ],
     components: {
@@ -33,7 +33,7 @@ const optionsEN = {
     servers: [
       {
         url: process.env.BACKEND_URL,
-        description: "Development Server",
+        description: "Production Server",
       },
     ],
     components: {

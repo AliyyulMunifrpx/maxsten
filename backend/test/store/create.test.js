@@ -1,6 +1,8 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import fs from "fs/promises";
@@ -16,38 +18,57 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 describe("create store", () => {
   let cookies = [];
   let createdStoreNames = [];
-  let userId; // 🚨 2. DEKLARASIKAN VARIABEL userId DI SINI
+  let testEmail = "";
+  let userId = "";
 
   beforeEach(async () => {
-    // Login
+    // 1. Generate email unik
+    testEmail = `store_create_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: {
+        name: "Tumbal Store Create",
+      },
+    });
+
+    if (error) {
+      throw new Error(`Supabase Admin Error: ${error.message}`);
+    }
+
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId, // Hapus jika Prisma ID pakai auto-generate
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Store Create",
+      },
+    });
+
+    // 4. Login untuk dapatkan tiket masuk (cookie)
     const result = await supertest(web).post(`/api/users/login`).send({
-      email: "aliyyulmunif780@gmail.com",
-      password: "aliyyul",
+      email: testEmail,
+      password: "password123",
     });
 
     cookies = result.headers["set-cookie"];
-
-    // 🚨 3. AMBIL userId DARI DATABASE BIAR BISA DIPAKAI DI afterEach
-    const user = await prisma.user.findUnique({
-      where: { email: "aliyyulmunif780@gmail.com" },
-    });
-    userId = user.id;
-
-    // 🚨 4. BERSIHKAN TOKO LAMA (Biar test case race condition & create nggak bentrok)
-    await prisma.store.deleteMany({ where: { user_id: userId } });
-
     createdStoreNames = [];
   }, 20000);
 
   afterEach(async () => {
-    // Sisa kode lu yang udah super bener dengan logika substring(1) itu biarin aja!
+    // 1. Cari logo_url dari toko milik user tumbal ini
     const storesToDelete = await prisma.store.findMany({
       where: { user_id: userId },
       select: { logo_url: true },
     });
 
-    // ... (sisa loop unlink lu)
-
+    // 2. Hapus file fisik logonya jika ada
     for (const store of storesToDelete) {
       if (store.logo_url) {
         const cleanPath = store.logo_url.startsWith("/")
@@ -59,14 +80,26 @@ describe("create store", () => {
         try {
           await unlink(filePath);
         } catch (error) {
-          console.error("❌ Gagal menghapus logo:", error.message);
+          // Abaikan jika file memang tidak ada
         }
       }
     }
 
-    // 3. Hapus data tokonya dari Database
-    await prisma.store.deleteMany({ where: { user_id: userId } });
-  });
+    // 3. SAPU BERSIH DATA: Hapus User dari Prisma (otomatis cascade menghapus tokonya jika di schema lu diset onDelete: Cascade, tapi kita manual aja biar aman)
+    if (testEmail) {
+      await prisma.store.deleteMany({ where: { user_id: userId } });
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    // 4. Hapus User dari Supabase Auth
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {
+        // best-effort cleanup
+      }
+    }
+  }, 20000);
 
   // Helper: generate payload + otomatis didaftarin ke daftar cleanup
   function baseStorePayload(name) {
@@ -104,7 +137,7 @@ describe("create store", () => {
       });
     expect(result.status).toBe(201);
     expect(result.body.data.public_id).toBeDefined();
-  });
+  }, 20000);
 
   test("should always create exactly 7 operational_hours entries", async () => {
     const result = await supertest(web)
@@ -120,7 +153,7 @@ describe("create store", () => {
     });
 
     expect(store.operational_hours).toHaveLength(7);
-  });
+  }, 20000);
 
   test("should save the operational_hours submitted by the user (currently ignored - known bug)", async () => {
     const result = await supertest(web)
@@ -189,10 +222,8 @@ describe("create store", () => {
     });
 
     expect(store.logo_url).toBeNull();
-  });
+  }, 20000);
 
-  // Catatan: field name "logo" di .attach() ini nebak - sesuain sama
-  // nama field yang dipake di multer config lu (upload.single("...")).
   test("should create store with a logo file and parse operational_hours sent as JSON string (multipart)", async () => {
     const payload = baseStorePayload("Warung Ada Logo");
 
@@ -217,7 +248,7 @@ describe("create store", () => {
         ]),
       )
       .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
-
+console.log(result.body)
     expect(result.status).toBe(201);
 
     const store = await prisma.store.findUnique({
@@ -242,7 +273,7 @@ describe("create store", () => {
 
     expect(second.status).toBe(400);
     expect(second.body.errors).toBe("You already have a store");
-  });
+  }, 20000);
 
   test("should reject creating store if unauthorized (no cookie)", async () => {
     const result = await supertest(web)
@@ -251,7 +282,7 @@ describe("create store", () => {
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("Unauthorized");
-  });
+  }, 20000);
 
   test("should reject creating store with missing required field (name)", async () => {
     const payload = baseStorePayload("Warung Tanpa Nama");
@@ -264,7 +295,7 @@ describe("create store", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject creating store with invalid latitude/longitude type", async () => {
     const payload = baseStorePayload("Warung Koordinat Aneh");
@@ -278,11 +309,8 @@ describe("create store", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
-  // operational_hours dikirim sebagai string tapi bukan JSON valid ->
-  // JSON.parse di controller throw SyntaxError biasa (bukan ResponseError).
-  // Idealnya tetep 400, tapi kemungkinan besar sekarang jatuh ke 500.
   test("should handle malformed operational_hours JSON string without crashing", async () => {
     const payload = baseStorePayload("Warung Jam Rusak");
 
@@ -303,7 +331,7 @@ describe("create store", () => {
       .field("operational_hours", "{ ini bukan json valid");
 
     expect(result.status).not.toBe(200);
-  });
+  }, 20000);
 
   test("should not allow two concurrent requests to both create a store for the same user", async () => {
     const payloadA = baseStorePayload("Warung Race A");
@@ -319,6 +347,7 @@ describe("create store", () => {
 
     expect(successCount).toBe(1);
   }, 20000);
+
   test("should delete uploaded logo from disk if creating store fails (prevent zombie files)", async () => {
     // 1. Kita bikin toko pertama (SUKSES)
     await supertest(web)
@@ -328,12 +357,10 @@ describe("create store", () => {
 
     // 2. Hitung jumlah file di folder uploads SEBELUM nembak API
     const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-    // Bikin foldernya kalau belum ada biar gak error
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
     const filesBefore = await fs.readdir(UPLOAD_DIR);
 
-    // 3. Tembak toko KEDUA pakai file logo fisik.
-    // Ini PASTI GAGAL (400) karena user udah punya toko.
+    // 3. Tembak toko KEDUA pakai file logo fisik. PASTI GAGAL (400)
     const payload = baseStorePayload("Warung Kedua Bikin Error");
     const result = await supertest(web)
       .post("/api/stores")
@@ -351,13 +378,12 @@ describe("create store", () => {
       .field("longitude", String(payload.longitude))
       .attach("logo", FAKE_LOGO_BUFFER, "zombie-logo.png");
 
-    expect(result.status).toBe(400); // Validasi kalau API beneran nolak
+    expect(result.status).toBe(400);
 
     // 4. Hitung jumlah file di folder uploads SETELAH API gagal.
-    // Karena API gagal, file zombie-logo.png harusnya otomatis dihapus sama controller lu.
     const filesAfter = await fs.readdir(UPLOAD_DIR);
 
     // Ekspektasi: Jumlah file SEBELUM dan SESUDAH harus sama persis!
     expect(filesAfter.length).toBe(filesBefore.length);
-  });
+  }, 20000);
 });

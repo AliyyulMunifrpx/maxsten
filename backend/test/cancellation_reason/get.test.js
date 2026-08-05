@@ -1,43 +1,106 @@
 import supertest from "supertest";
-import { beforeEach, afterEach, describe, expect, test } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-import { v4 as uuidv4 } from "uuid";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 
-const LOGIN_EMAIL = "test_get_reasons@gmail.com";
-const LOGIN_PASSWORD = "password123";
 const ENDPOINT = "/api/seller/cancel-reasons";
 
 describe("GET /api/seller/cancel-reasons", () => {
   let cookies = [];
+
+  // User scope file (Dibuat sekali di beforeAll)
+  let testEmail = "";
   let userId = "";
+  let otherEmail = "";
+  let otherUserId = "";
+
+  // Data scope test (Direset di beforeEach)
   let storeId = null;
+  let otherStoreId = null;
 
-  beforeEach(async () => {
-    // 1. Bersihkan database
-    await prisma.cancelReasonTemplate.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "other@gmail.com" } });
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Hit Supabase CUMA 1 KALI untuk semua test
+  // =================================================================
+  beforeAll(async () => {
+    testEmail = `get_reasons_main_${Date.now()}@gmail.com`;
+    otherEmail = `get_reasons_other_${Date.now()}@gmail.com`;
 
-    // 2. Register dan Login
-    await supertest(web).post("/api/users").send({
-      email: LOGIN_EMAIL,
-      name: "User Get Reason",
-      password: LOGIN_PASSWORD,
+    // 1. Setup User Utama via Supabase
+    const { data: authMain } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+    });
+    userId = authMain.user.id;
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Main",
+      },
     });
 
+    // 2. Setup User Lain via Supabase
+    const { data: authOther } = await supabase.auth.admin.createUser({
+      email: otherEmail,
+      password: "password123",
+      email_confirm: true,
+    });
+    otherUserId = authOther.user.id;
+    await prisma.user.create({
+      data: {
+        id: otherUserId,
+        supabase_id: otherUserId,
+        email: otherEmail,
+        name: "Tumbal Other",
+      },
+    });
+
+    // 3. Login SEKALI SAJA untuk dapat Cookie
     const loginResult = await supertest(web).post("/api/users/login").send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+      email: testEmail,
+      password: "password123",
     });
     cookies = loginResult.headers["set-cookie"];
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
+  }, 20000);
 
-    // 3. Buatkan Toko Utama
+  afterAll(async () => {
+    // Bersihkan User di akhir file secara total
+    await prisma.user.deleteMany({
+      where: { id: { in: [userId, otherUserId] } },
+    });
+    try {
+      await supabase.auth.admin.deleteUser(userId);
+    } catch (err) {}
+    try {
+      await supabase.auth.admin.deleteUser(otherUserId);
+    } catch (err) {}
+  }, 20000);
+
+  // =================================================================
+  // ⚡ RESET LOKAL: Database Prisma Cepat Kilat (Tanpa Internet)
+  // =================================================================
+  beforeEach(async () => {
+    // Bersihkan sisa toko/alasan dari test sebelumnya khusus untuk 2 user ini
+    await prisma.cancelReasonTemplate.deleteMany({
+      where: { store: { user_id: { in: [userId, otherUserId] } } },
+    });
+    await prisma.store.deleteMany({
+      where: { user_id: { in: [userId, otherUserId] } },
+    });
+
+    // --- Buatkan Toko Utama ---
     const store = await prisma.store.create({
       data: { user_id: userId, name: "Toko Alasan", timezone: "Asia/Jakarta" },
     });
@@ -47,63 +110,46 @@ describe("GET /api/seller/cancel-reasons", () => {
     const dateOld = new Date(Date.now() - 100000); // Lebih lama
     const dateNew = new Date(); // Paling baru
 
-    // [A] Alasan 1: Dibuat lebih dulu
-    await prisma.cancelReasonTemplate.create({
-      data: {
-        store_id: storeId,
-        reason: "Alasan Lama",
-        created_at: dateOld,
-      },
+    await prisma.cancelReasonTemplate.createMany({
+      data: [
+        { store_id: storeId, reason: "Alasan Lama", created_at: dateOld },
+        { store_id: storeId, reason: "Alasan Baru", created_at: dateNew },
+        {
+          store_id: storeId,
+          reason: "Alasan Dihapus",
+          is_delete: true,
+          created_at: dateNew,
+        },
+      ],
     });
 
-    // [B] Alasan 2: Dibuat paling baru (Harusnya muncul pertama)
-    await prisma.cancelReasonTemplate.create({
-      data: {
-        store_id: storeId,
-        reason: "Alasan Baru",
-        created_at: dateNew,
-      },
-    });
-
-    // [C] Alasan 3: Sudah dihapus (is_delete: true) -> Harusnya TIDAK TAMPIL
-    await prisma.cancelReasonTemplate.create({
-      data: {
-        store_id: storeId,
-        reason: "Alasan Dihapus",
-        is_delete: true,
-        created_at: dateNew,
-      },
-    });
-
-    // [D] Toko & Alasan Milik Orang Lain (Untuk tes IDOR/Keamanan)
-    const otherUser = await prisma.user.create({
-      data: {
-        email: "other@gmail.com",
-        name: "Orang Lain",
-        supabase_id: uuidv4(),
-      },
-    });
+    // --- Buatkan Toko & Alasan Orang Lain ---
     const otherStore = await prisma.store.create({
       data: {
-        user_id: otherUser.id,
+        user_id: otherUserId,
         name: "Toko Lain",
         timezone: "Asia/Jakarta",
       },
     });
+    otherStoreId = otherStore.id;
+
     await prisma.cancelReasonTemplate.create({
       data: {
-        store_id: otherStore.id,
+        store_id: otherStoreId,
         reason: "Alasan Toko Sebelah",
         created_at: dateNew,
       },
     });
-  }, 20000);
+  });
 
   afterEach(async () => {
-    await prisma.cancelReasonTemplate.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "other@gmail.com" } });
+    // Bersihkan record toko & alasan selesai tiap test case
+    await prisma.cancelReasonTemplate.deleteMany({
+      where: { store: { user_id: { in: [userId, otherUserId] } } },
+    });
+    await prisma.store.deleteMany({
+      where: { user_id: { in: [userId, otherUserId] } },
+    });
   });
 
   // ====================== TEST CASES ====================== //

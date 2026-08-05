@@ -1,10 +1,9 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
-const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
-const LOGIN_PASSWORD = "aliyyul";
 
 // Jadwal "buka 24 jam" tiap hari, biar is_open deterministik = true
 // tanpa perlu mock waktu (integration test pakai jam beneran).
@@ -29,40 +28,78 @@ function fullClosedSchedule() {
 
 describe("get store", () => {
   let cookies = [];
-  let userId;
+  let testEmail = "";
+  let userId = "";
   let createdStoreIds = [];
 
   beforeEach(async () => {
-    const result = await supertest(web).post(`/api/users/login`).send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+    // 1. Generate email unik
+    testEmail = `store_get_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: {
+        name: "Tumbal Get Store",
+      },
     });
+
+    if (error) {
+      throw new Error(`Supabase Admin Error: ${error.message}`);
+    }
+
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId, // Hapus jika Prisma ID pakai auto-generate default
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Get Store",
+      },
+    });
+
+    // 4. Login untuk dapatkan tiket masuk (cookie)
+    const result = await supertest(web).post(`/api/users/login`).send({
+      email: testEmail,
+      password: "password123",
+    });
+
     cookies = result.headers["set-cookie"];
 
-    // ASUMSI: model User punya field "email". Sesuaikan kalau beda.
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
-
-    // Bersihin dulu store lama punya user ini biar tiap test start clean
-    // (constraint "1 user 1 store" bikin test ini butuh state kosong).
-    await prisma.store.deleteMany({ where: { user_id: userId } });
-
+    // 5. Reset array id toko.
+    // Gak perlu lagi hapus toko lama, karena user ini 100% baru.
     createdStoreIds = [];
   }, 20000);
 
   afterEach(async () => {
+    // 1. Hapus toko-toko yang dibuat selama test ini berjalan
     if (createdStoreIds.length > 0) {
       await prisma.store.deleteMany({
         where: { public_id: { in: createdStoreIds } },
       });
     }
-  });
+
+    // 2. Hapus User dari tabel Prisma
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    // 3. Hapus User dari Supabase Auth
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {
+        // best-effort cleanup
+      }
+    }
+  }, 20000);
 
   // Helper: langsung insert store + operational_hours via Prisma, supaya
   // manual_status / manual_updated_at / schedule bisa dikontrol penuh
-  // tanpa bergantung ke bug operational_hours yang diabaikan di create endpoint.
   async function createStoreDirect({
     name,
     schedule = fullOpenSchedule(),
@@ -97,29 +134,26 @@ describe("get store", () => {
   test("should get the logged-in user's store with expected fields", async () => {
     await createStoreDirect({ name: "Warung Get 1" });
 
-    // ASUMSI ROUTE: GET /api/stores mengambil store milik user yang login
-    // (mirror dari POST /api/stores). Ganti kalau rute aslinya beda
-    // (misal /api/stores/me).
     const result = await supertest(web)
       .get("/api/stores/me")
       .set("Cookie", cookies);
-    console.log(result.body)
+
     expect(result.status).toBe(200);
     expect(result.body.data.public_id).toBeDefined();
     expect(result.body.data.name).toBe("Warung Get 1");
     expect(typeof result.body.data.is_open).toBe("boolean");
     expect(result.body.data.operational_hours).toHaveLength(7);
-  });
+  }, 20000);
 
   test("should return 404 when the logged-in user has no store", async () => {
-    // Sengaja gak bikin store apapun (sudah dibersihin di beforeEach)
+    // Sengaja gak bikin store apapun
     const result = await supertest(web)
       .get("/api/stores/me")
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should return 401 when unauthorized (no cookie)", async () => {
     await createStoreDirect({ name: "Warung Get 2" });
@@ -128,7 +162,7 @@ describe("get store", () => {
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("Unauthorized");
-  });
+  }, 20000);
 
   test("should reflect is_open=true from schedule when there is no manual override", async () => {
     await createStoreDirect({
@@ -142,7 +176,7 @@ describe("get store", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(true);
-  });
+  }, 20000);
 
   test("should reflect is_open=false from schedule when there is no manual override", async () => {
     await createStoreDirect({
@@ -156,7 +190,7 @@ describe("get store", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(false);
-  });
+  }, 20000);
 
   test("should force is_open=false via manual override even when schedule says open", async () => {
     await createStoreDirect({
@@ -172,7 +206,7 @@ describe("get store", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(false);
-  });
+  }, 20000);
 
   test("should force is_open=true via manual override even when schedule says closed", async () => {
     await createStoreDirect({
@@ -188,7 +222,7 @@ describe("get store", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(true);
-  });
+  }, 20000);
 
   test("should ignore a stale manual override from a previous day and fall back to schedule", async () => {
     const yesterday = new Date();
@@ -208,7 +242,7 @@ describe("get store", () => {
     expect(result.status).toBe(200);
     // Override kemarin sudah basi -> harus balik ke jadwal (buka)
     expect(result.body.data.is_open).toBe(true);
-  });
+  }, 20000);
 
   test("should not return a soft-deleted store (is_delete=true)", async () => {
     await createStoreDirect({ name: "Warung Dihapus" });
@@ -222,5 +256,5 @@ describe("get store", () => {
       .set("Cookie", cookies);
 
     expect(result.status).toBe(404);
-  });
+  }, 20000);
 });

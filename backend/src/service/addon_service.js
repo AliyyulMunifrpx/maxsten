@@ -307,17 +307,23 @@ const editAddonGroups = async (request) => {
     });
   } catch (error) {
     if (error.code === "P2002") {
-      if (error.meta?.target?.includes("addon_active_unique")) {
+      const modelName = error.meta?.modelName;
+
+      if (modelName === "Addon") {
         throw new ResponseError(
           409,
           "An add-on with this name already exists in this group",
         );
       }
 
-      throw new ResponseError(
-        409,
-        "An add-on group with this name already exists",
-      );
+      if (modelName === "AddonGroup") {
+        throw new ResponseError(
+          409,
+          "An add-on group with this name already exists",
+        );
+      }
+
+      throw error; // fallback biar gak ketutupan kalau modelName-nya ternyata beda
     }
     throw error;
   }

@@ -16,33 +16,39 @@ import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import fs from "fs/promises";
 import assertValidOperationalHours from "../utils/valid_operational_hours.js";
 const create = async (requestBody, file) => {
-  const req = validate(createStoreValidation, requestBody);
-
-  const existingStore = await prisma.store.count({
-    where: { user_id: req.userId, is_delete: false },
-  });
-  if (existingStore > 0) {
-    if (file) await fs.unlink(file.path).catch(() => {});
-    throw new ResponseError(400, "You already have a store");
-  }
-
-  const logoPath = file ? `/uploads/${file.filename}` : null;
-
-  // Bikin array jadwal default (7 hari: 0 = Minggu s/d 6 = Sabtu)
-  const defaultOperationalHours = Array.from({ length: 7 }).map((_, index) => ({
-    day: index,
-    open_time: "08:00",
-    close_time: "20:00",
-    is_active: true,
-  }));
-  const operationalHoursData =
-    req.operational_hours && req.operational_hours.length > 0
-      ? req.operational_hours
-      : defaultOperationalHours;
-
-  assertValidOperationalHours(operationalHoursData);
-
   try {
+    const req = validate(createStoreValidation, requestBody);
+
+    const existingStore = await prisma.store.count({
+      where: {
+        user_id: req.userId,
+        is_delete: false,
+      },
+    });
+
+    if (existingStore > 0) {
+      throw new ResponseError(400, "You already have a store");
+    }
+
+    const logoPath = file ? `/uploads/${file.filename}` : null;
+
+    // Default operational hours (Sunday = 0, Saturday = 6)
+    const defaultOperationalHours = Array.from({ length: 7 }).map(
+      (_, index) => ({
+        day: index,
+        open_time: "08:00",
+        close_time: "20:00",
+        is_active: true,
+      }),
+    );
+
+    const operationalHoursData =
+      req.operational_hours && req.operational_hours.length > 0
+        ? req.operational_hours
+        : defaultOperationalHours;
+
+    assertValidOperationalHours(operationalHoursData);
+
     return await prisma.store.create({
       data: {
         user_id: req.userId,
@@ -56,7 +62,6 @@ const create = async (requestBody, file) => {
         postal_code: req.postal_code,
         latitude: req.latitude,
         longitude: req.longitude,
-        is_delete: false,
         logo_url: logoPath,
         timezone: req.timezone,
         operational_hours: {
@@ -68,10 +73,14 @@ const create = async (requestBody, file) => {
       },
     });
   } catch (error) {
-    if (file) await fs.unlink(file.path).catch(() => {});
+    if (file) {
+      await fs.unlink(file.path).catch(() => {});
+    }
+
     if (error.code === "P2002") {
       throw new ResponseError(400, "You already have a store");
     }
+
     throw error;
   }
 };

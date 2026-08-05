@@ -342,16 +342,16 @@ const createProduct = async (request, file) => {
     }
 
     if (error.code === "P2002") {
-      const target = error.meta?.target;
+      const modelName = error.meta?.modelName;
 
-      if (target?.includes("product_name_active_unique")) {
+      if (modelName === "Product") {
         throw new ResponseError(
           409,
           `A product named '${productName}' already exists in this store.`,
         );
       }
 
-      if (target?.includes("variant_name_active_unique")) {
+      if (modelName === "ProductVariant" || modelName === "Variant") {
         throw new ResponseError(
           409,
           "A variant with this name already exists in this product.",

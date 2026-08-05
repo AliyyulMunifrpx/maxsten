@@ -2,11 +2,10 @@ import supertest from "supertest";
 import { randomUUID } from "crypto";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
-
-const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
-const LOGIN_PASSWORD = "aliyyul";
 
 const TZ = "Asia/Jakarta";
 
@@ -23,8 +22,7 @@ function nowZoned() {
   return toZonedTime(new Date(), TZ);
 }
 
-// Build a UTC instant from local (Asia/Jakarta) wall-clock components -
-// mirrors exactly what the service does internally.
+// Build a UTC instant from local (Asia/Jakarta) wall-clock components
 function zonedTime(y, m, d, h = 12, min = 0) {
   return fromZonedTime(new Date(y, m - 1, d, h, min, 0, 0), TZ);
 }
@@ -41,66 +39,105 @@ function endpoint() {
 
 describe("GET /api/stores/dashboard", () => {
   let cookies = [];
-  let userId;
+  let testEmail = "";
+  let userId = "";
   let store;
+
+  // Arrays to track created items for strict cleanup
   let createdStoreIds = [];
   let createdGuestIds = [];
   let createdProductIds = [];
   let createdAddonGroupIds = [];
 
-  async function wipeUserStores() {
-    const staleStores = await prisma.store.findMany({
-      where: { user_id: userId },
-      select: { id: true },
-    });
-    const staleStoreIds = staleStores.map((s) => s.id);
-    if (staleStoreIds.length === 0) return;
-
-    await prisma.queueDetail.deleteMany({
-      where: { queue: { store_id: { in: staleStoreIds } } },
-    });
-    await prisma.queue.deleteMany({
-      where: { store_id: { in: staleStoreIds } },
-    });
-    await prisma.addon.deleteMany({
-      where: { addon_group: { store_id: { in: staleStoreIds } } },
-    });
-    await prisma.addonGroup.deleteMany({
-      where: { store_id: { in: staleStoreIds } },
-    });
-    await prisma.product.deleteMany({
-      where: { store_id: { in: staleStoreIds } },
-    });
-    await prisma.store.deleteMany({ where: { id: { in: staleStoreIds } } });
-  }
-
   beforeEach(async () => {
+    // 1. Generate email unik per test
+    testEmail = `dashboard_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Dashboard" },
+    });
+    if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Dashboard",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
     const result = await supertest(web).post(`/api/users/login`).send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+      email: testEmail,
+      password: "password123",
     });
     cookies = result.headers["set-cookie"];
 
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
-
-    await wipeUserStores();
+    // 5. Reset tracking arrays
     createdStoreIds = [];
     createdGuestIds = [];
     createdProductIds = [];
     createdAddonGroupIds = [];
 
+    // 6. Buat Toko
     store = await createStoreDirect("Warung Dashboard HTTP Test");
   }, 20000);
 
   afterEach(async () => {
-    await wipeUserStores();
+    // --- CLEANUP TERSENTRAL ---
+    // Membersihkan mulai dari child paling bawah agar tidak melanggar Constraint FK
+
+    if (createdStoreIds.length > 0) {
+      const stores = await prisma.store.findMany({
+        where: { public_id: { in: createdStoreIds } },
+        select: { id: true },
+      });
+      const internalIds = stores.map((s) => s.id);
+
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: { in: internalIds } } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: { in: internalIds } },
+      });
+      await prisma.addon.deleteMany({
+        where: { addon_group: { store_id: { in: internalIds } } },
+      });
+      await prisma.addonGroup.deleteMany({
+        where: { store_id: { in: internalIds } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: { in: internalIds } },
+      });
+      await prisma.storeOperationalHour.deleteMany({
+        where: { store_id: { in: internalIds } },
+      });
+      await prisma.store.deleteMany({
+        where: { id: { in: internalIds } },
+      });
+    }
+
     if (createdGuestIds.length > 0) {
       await prisma.guest.deleteMany({ where: { id: { in: createdGuestIds } } });
     }
-  });
+
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+  }, 20000);
 
   async function createStoreDirect(name) {
     const s = await prisma.store.create({
@@ -146,10 +183,6 @@ describe("GET /api/stores/dashboard", () => {
     return product;
   }
 
-  // NOTE: assumes an AddonGroup model with a `store_id` FK, and an Addon
-  // model related via `addon_group_id` (matching the snake_case convention
-  // used elsewhere in this schema, e.g. product_id / guest_id / queue_id).
-  // Double check these field names against schema.prisma if they differ.
   async function createAddonGroupDirect(storeId, name = "Toppings") {
     const group = await prisma.addonGroup.create({
       data: {
@@ -195,9 +228,9 @@ describe("GET /api/stores/dashboard", () => {
   }
 
   test("should return 401 when unauthorized", async () => {
-    const result = await supertest(web).get(endpoint());
+    const result = await supertest(web).get(endpoint()); // Tanpa cookie
     expect(result.status).toBe(401);
-  });
+  }, 20000);
 
   test("should return 404 when the logged-in user has no store", async () => {
     await prisma.store.deleteMany({ where: { user_id: userId } });
@@ -205,7 +238,7 @@ describe("GET /api/stores/dashboard", () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
 
     expect(result.status).toBe(404);
-  });
+  }, 20000);
 
   test("should return 200 with store info and open status", async () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
@@ -215,7 +248,7 @@ describe("GET /api/stores/dashboard", () => {
     expect(result.body.data.store.name).toBe(store.name);
     // Full open schedule (00:00-23:59 every day) -> store should read as open.
     expect(result.body.data.store.is_open).toBe(true);
-  });
+  }, 20000);
 
   test("should return only the latest 5 products, newest first", async () => {
     const base = Date.now() - 60 * 60 * 1000; // 1 hour ago as baseline
@@ -236,7 +269,7 @@ describe("GET /api/stores/dashboard", () => {
     // Newest first: products[6], products[5], ... products[2]
     const expectedIds = [6, 5, 4, 3, 2].map((i) => products[i].id);
     expect(latest.map((p) => p.id)).toEqual(expectedIds);
-  });
+  }, 20000);
 
   test("should return only the latest 5 addons, newest first", async () => {
     const group = await createAddonGroupDirect(store.id);
@@ -257,7 +290,7 @@ describe("GET /api/stores/dashboard", () => {
     expect(latest).toHaveLength(5);
     const expectedIds = [5, 4, 3, 2, 1].map((i) => addons[i].id);
     expect(latest.map((a) => a.id)).toEqual(expectedIds);
-  });
+  }, 20000);
 
   test("should return the 5 oldest active queues, oldest on top, excluding finished/cancelled queues", async () => {
     const base = Date.now() - 60 * 60 * 1000;
@@ -290,7 +323,7 @@ describe("GET /api/stores/dashboard", () => {
     expect(
       oldestActive.every((q) => ["BELUM_BAYAR", "DIPROSES"].includes(q.status)),
     ).toBe(true);
-  });
+  }, 20000);
 
   test("should report peak_hour as '-' and an all-zero hourly_traffic when there are no completed orders today", async () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
@@ -301,7 +334,7 @@ describe("GET /api/stores/dashboard", () => {
     expect(result.body.data.today.hourly_traffic.every((c) => c === 0)).toBe(
       true,
     );
-  });
+  }, 20000);
 
   test("should return hourly_traffic as a 24-length array with counts in the right hour buckets", async () => {
     const busyTime = new Date(Date.now() - 90 * 60 * 1000);
@@ -330,7 +363,7 @@ describe("GET /api/stores/dashboard", () => {
 
     const total = traffic.reduce((a, b) => a + b, 0);
     expect(total).toBe(4); // only the 4 SELESAI orders, not the cancelled one
-  });
+  }, 20000);
 
   test("should report a flat 0% trend on every metric when there is no data today or yesterday", async () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
@@ -341,14 +374,12 @@ describe("GET /api/stores/dashboard", () => {
     expect(today.pesanan_selesai).toEqual({ value: 0, trend: 0 });
     expect(today.pesanan_batal).toEqual({ value: 0, trend: 0 });
     expect(today.aov).toEqual({ value: 0, trend: 0 });
-  });
+  }, 20000);
 
   test("should compute today's metric cards (omzet, pesanan_selesai, pesanan_batal, AOV) against yesterday at the same time", async () => {
     const minutesAgo = (min) => new Date(Date.now() - min * 60 * 1000);
 
     // Today: 2 completed orders (40000 + 60000), 1 cancelled.
-    // "minutes ago" instead of a fixed clock hour so this always lands
-    // safely before `now`, whatever time the test runs.
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 40000,
       createdAt: minutesAgo(40),
@@ -361,12 +392,11 @@ describe("GET /api/stores/dashboard", () => {
       createdAt: minutesAgo(20),
     });
 
-    // Yesterday, just after local midnight -> guaranteed to be before
-    // "now"'s time-of-day, so it must count towards the yesterday window.
+    // Yesterday
     const nz = nowZoned();
     const y = nz.getFullYear();
     const m = nz.getMonth() + 1;
-    const yesterdayD = nz.getDate() - 1; // JS Date rolls this over correctly
+    const yesterdayD = nz.getDate() - 1;
 
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 50000,
@@ -395,7 +425,7 @@ describe("GET /api/stores/dashboard", () => {
 
     expect(today.pesanan_batal.value).toBe(1);
     expect(today.pesanan_batal.trend).toBe(calcTrend(1, 2));
-  });
+  }, 20000);
 
   test("should report a 100% trend when yesterday had zero orders but today has some", async () => {
     await createQueueDirect(store.id, "SELESAI", {
@@ -408,14 +438,9 @@ describe("GET /api/stores/dashboard", () => {
     expect(result.status).toBe(200);
     expect(result.body.data.today.omzet.trend).toBe(100);
     expect(result.body.data.today.pesanan_selesai.trend).toBe(100);
-  });
+  }, 20000);
 
   test("should NOT count yesterday's orders that happened later in the day than 'now' (fair same-time-of-day comparison)", async () => {
-    // If yesterday's window ran through the whole day (00:00 -> 00:00
-    // today) instead of stopping at the same time-of-day as "now", an order
-    // placed at 23:59 yesterday would always be counted even though today's
-    // window only ever runs up to the current wall-clock time. That would
-    // make the comparison unfair.
     const nz = nowZoned();
     const y = nz.getFullYear();
     const m = nz.getMonth() + 1;
@@ -429,10 +454,8 @@ describe("GET /api/stores/dashboard", () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
 
     expect(result.status).toBe(200);
-    // Today has zero orders, and yesterday's late-day order should be
-    // excluded -> trend should be the "both zero" case (0%), not a false
-    // "yesterday had revenue" signal.
+
     expect(result.body.data.today.omzet.value).toBe(0);
     expect(result.body.data.today.omzet.trend).toBe(0);
-  });
+  }, 20000);
 });

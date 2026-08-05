@@ -1,70 +1,56 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { unlink, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 
-const email = "aliyyulmunif780@gmail.com";
-const password = "aliyyul";
-
 describe("DELETE /api/stores/products/:productId", () => {
   let cookies;
-  let user;
+  let testEmail = "";
+  let userId = "";
   let store;
   let product;
   let guest;
   let dummyImagePath;
 
-  const cleanup = async () => {
-    // 1. Bersihkan queue_details & queues
-    await prisma.queueDetail.deleteMany({
-      where: { product: { name: { contains: "Test Delete Product" } } },
-    });
-    await prisma.queue.deleteMany({
-      where: { store: { name: "Warung Delete Test" } },
-    });
-    await prisma.guest.deleteMany({
-      where: { id: { contains: "guest-test" } },
-    });
-
-    // 2. Bersihkan variants & products
-    await prisma.variant.deleteMany({
-      where: { product: { name: { contains: "Test Delete Product" } } },
-    });
-    await prisma.product.deleteMany({
-      where: { name: { contains: "Test Delete Product" } },
-    });
-
-    // 3. Bersihkan store
-    await prisma.store.deleteMany({
-      where: { name: "Warung Delete Test" },
-    });
-
-    // 4. Hapus dummy file gambar jika masih tersisa
-    if (dummyImagePath) {
-      try {
-        await unlink(dummyImagePath);
-      } catch (e) {}
-    }
-  };
-
   beforeEach(async () => {
-    await cleanup();
+    // 1. Generate email unik per test
+    testEmail = `delete_product_${Date.now()}@gmail.com`;
 
-    // 1. Authenticate user
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Delete Product" },
+    });
+    if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Delete Product",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
     const login = await supertest(web)
       .post("/api/users/login")
-      .send({ email, password });
+      .send({ email: testEmail, password: "password123" });
     cookies = login.headers["set-cookie"];
 
-    user = await prisma.user.findUnique({ where: { email } });
-
-    // 2. Seed Store
+    // 5. Seed Store
     store = await prisma.store.create({
       data: {
-        user_id: user.id,
+        user_id: userId,
         name: "Warung Delete Test",
         public_id: crypto.randomUUID(),
         street_address: "Jl. Test No. 1",
@@ -79,15 +65,16 @@ describe("DELETE /api/stores/products/:productId", () => {
       },
     });
 
-    // 3. Create dummy image file for cleanup testing
+    // 6. Create dummy image file for cleanup testing
     const uploadDir = path.join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
+    // Gunakan Date.now() agar file test benar-benar unik antar run paralel
     const filename = `test-delete-${Date.now()}.png`;
     dummyImagePath = path.join(uploadDir, filename);
     await writeFile(dummyImagePath, Buffer.from("dummy image content"));
 
-    // 4. Seed Product & Variants
+    // 7. Seed Product & Variants
     product = await prisma.product.create({
       data: {
         store_id: store.id,
@@ -104,20 +91,59 @@ describe("DELETE /api/stores/products/:productId", () => {
       include: { variants: true },
     });
 
-    // 5. Seed Guest (Diperlukan jika nanti buat Queue)
+    // 8. Seed Guest (Diperlukan untuk Queue)
     guest = await prisma.guest.create({
       data: {
         id: `guest-test-${crypto.randomUUID().slice(0, 24)}`, // Char(36)
       },
     });
-  });
+  }, 20000);
 
   afterEach(async () => {
-    await cleanup();
-  });
+    // --- CLEANUP ABSOLUT BERDASARKAN ID (BUKAN NAMA) ---
+    if (store?.id) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: store.id } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: store.id },
+      });
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: store.id } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: store.id },
+      });
+      await prisma.store.deleteMany({
+        where: { id: store.id },
+      });
+    }
+
+    if (guest?.id) {
+      await prisma.guest.deleteMany({
+        where: { id: guest.id },
+      });
+    }
+
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+
+    // Hapus dummy file gambar jika masih tersisa
+    if (dummyImagePath) {
+      try {
+        await unlink(dummyImagePath);
+      } catch (e) {}
+    }
+  }, 20000);
 
   // --- SKENARIO 1: SUKSES ---
-
   test("should successfully soft delete product, its variants, and remove image file", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/products/${product.id}`)
@@ -140,21 +166,18 @@ describe("DELETE /api/stores/products/:productId", () => {
 
     // 3. Cek file gambar fisik terhapus dari disk
     await expect(unlink(dummyImagePath)).rejects.toThrow();
-  });
+  }, 20000);
 
   // --- SKENARIO 2: ERROR VALIDASI JOI ---
-
   test("should reject (400) if productId is not a valid UUID", async () => {
     const result = await supertest(web)
       .delete("/api/stores/products/bukan-uuid-valid")
       .set("Cookie", cookies);
-    console.log(result.body)
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   // --- SKENARIO 3: ERROR ACTIVE QUEUE ---
-
   test("should reject (400) if product has active queue in progress (DIPROSES)", async () => {
     // Bikin Queue & QueueDetail sesuai schema Prisma terbaru
     const queue = await prisma.queue.create({
@@ -190,10 +213,9 @@ describe("DELETE /api/stores/products/:productId", () => {
       where: { id: product.id },
     });
     expect(dbProduct.is_delete).toBe(false);
-  });
+  }, 20000);
 
   // --- SKENARIO 4: ERROR NOT FOUND / OWNERSHIP ---
-
   test("should reject (404) if product does not exist or belongs to another user", async () => {
     const fakeUuid = crypto.randomUUID();
 
@@ -203,16 +225,15 @@ describe("DELETE /api/stores/products/:productId", () => {
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   // --- SKENARIO 5: ERROR UNAUTHENTICATED ---
-
   test("should reject (401) if user is not logged in", async () => {
     const result = await supertest(web).delete(
       `/api/stores/products/${product.id}`,
-    );
+    ); // Tanpa menyematkan cookie
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 });

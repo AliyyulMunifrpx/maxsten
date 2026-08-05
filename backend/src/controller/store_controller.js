@@ -1,6 +1,5 @@
 import { ResponseError } from "../error/response_error.js";
 import storeService from "../service/store_service.js";
-
 const create = async (req, res, next) => {
   try {
     if (typeof req.body.operational_hours === "string") {
@@ -13,15 +12,11 @@ const create = async (req, res, next) => {
         );
       }
     }
-
     const result = await storeService.create(
-      { ...req.body, userId: req.user.id },
+      { userId: req.user.id, ...req.body },
       req.file,
     );
-
-    res.status(201).json({
-      data: result,
-    });
+    res.status(201).json({ data: result });
   } catch (e) {
     next(e);
   }

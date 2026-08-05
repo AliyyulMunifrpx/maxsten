@@ -1,16 +1,16 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import crypto from "crypto";
 
-const email = "aliyyulmunif780@gmail.com";
-const password = "aliyyul";
-const STORE_NAME = "Warung Nasi Makmur Update Test";
-
 describe("PATCH /api/stores/products/:productId", () => {
   let cookies;
-  let user;
+  let testEmail = "";
+  let userId = "";
+  let storeId = "";
   let store;
   let product;
   let addonGroup1;
@@ -19,50 +19,41 @@ describe("PATCH /api/stores/products/:productId", () => {
   let variant2;
   let createdGuestIds = [];
 
-  const cleanup = async () => {
-    await prisma.queueDetail.deleteMany({
-      where: { queue: { store: { name: STORE_NAME } } },
-    });
-    await prisma.queue.deleteMany({
-      where: { store: { name: STORE_NAME } },
-    });
-    if (createdGuestIds.length > 0) {
-      await prisma.guest.deleteMany({
-        where: { id: { in: createdGuestIds } },
-      });
-    }
-    await prisma.productAddonGroup.deleteMany({
-      where: { product: { store: { name: STORE_NAME } } },
-    });
-    await prisma.variant.deleteMany({
-      where: { product: { store: { name: STORE_NAME } } },
-    });
-    await prisma.product.deleteMany({
-      where: { store: { name: STORE_NAME } },
-    });
-    await prisma.addonGroup.deleteMany({
-      where: { store: { name: STORE_NAME } },
-    });
-    await prisma.store.deleteMany({
-      where: { name: STORE_NAME },
-    });
-  };
-
   beforeEach(async () => {
-    await cleanup();
-    createdGuestIds = [];
+    // 1. Generate email unik per test
+    testEmail = `patch_product_${Date.now()}@gmail.com`;
 
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Patch Product" },
+    });
+    if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Patch Product",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
     const login = await supertest(web)
       .post("/api/users/login")
-      .send({ email, password });
+      .send({ email: testEmail, password: "password123" });
     cookies = login.headers["set-cookie"];
 
-    user = await prisma.user.findUnique({ where: { email } });
-
+    // 5. Setup Store Dinamis
     store = await prisma.store.create({
       data: {
-        user_id: user.id,
-        name: STORE_NAME,
+        user_id: userId,
+        name: "Warung Nasi Makmur Update Test",
         public_id: crypto.randomUUID(),
         street_address: "Jalan Test",
         village: "Test",
@@ -75,10 +66,12 @@ describe("PATCH /api/stores/products/:productId", () => {
         longitude: 106.8,
       },
     });
+    storeId = store.id;
 
+    // 6. Setup AddonGroups
     addonGroup1 = await prisma.addonGroup.create({
       data: {
-        store_id: store.id,
+        store_id: storeId,
         name: "Addon Test 1",
         created_at: new Date(),
       },
@@ -86,15 +79,16 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     addonGroup2 = await prisma.addonGroup.create({
       data: {
-        store_id: store.id,
+        store_id: storeId,
         name: "Addon Test 2",
         created_at: new Date(),
       },
     });
 
+    // 7. Setup Product beserta Variants & ProductAddonGroups
     product = await prisma.product.create({
       data: {
-        store_id: store.id,
+        store_id: storeId,
         name: "Test Update Product",
         description: "Old Description",
         price: 15000,
@@ -113,11 +107,53 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     variant1 = product.variants[0];
     variant2 = product.variants[1];
-  });
+    createdGuestIds = [];
+  }, 20000);
 
   afterEach(async () => {
-    await cleanup();
-  });
+    // --- CLEANUP TERSENTRAL BERDASARKAN ID TOKO ---
+    if (storeId) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: storeId } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: storeId },
+      });
+      await prisma.productAddonGroup.deleteMany({
+        where: { product: { store_id: storeId } },
+      });
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: storeId } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: storeId },
+      });
+      await prisma.addonGroup.deleteMany({
+        where: { store_id: storeId },
+      });
+      await prisma.store.deleteMany({
+        where: { id: storeId },
+      });
+    }
+
+    if (createdGuestIds.length > 0) {
+      await prisma.guest.deleteMany({
+        where: { id: { in: createdGuestIds } },
+      });
+    }
+
+    // Hapus User Prisma
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    // Hapus User Supabase
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+  }, 20000);
 
   // --- SKENARIO SUKSES ---
 
@@ -139,7 +175,7 @@ describe("PATCH /api/stores/products/:productId", () => {
         ],
         addon_group_ids: [addonGroup2.id],
       });
-
+    console.log(result.body)
     expect(result.status).toBe(200);
 
     const dbProduct = await prisma.product.findUnique({
@@ -147,7 +183,7 @@ describe("PATCH /api/stores/products/:productId", () => {
       include: { variants: true, productAddonGroups: true },
     });
 
-    expect(dbProduct.name).toBe("Test Update Product Edited");
+    expect(dbProduct.name).toBe("test update product edited");
     expect(dbProduct.price).toBe(20000);
 
     const activeVariants = dbProduct.variants.filter((v) => !v.is_delete);
@@ -155,14 +191,14 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     expect(activeVariants).toHaveLength(2);
     expect(activeVariants.find((v) => v.id === variant1.id).name).toBe(
-      "Variant Lama 1 Edited",
+      "variant lama 1 edited",
     );
-    expect(activeVariants.find((v) => v.name === "Variant Baru")).toBeDefined();
+    expect(activeVariants.find((v) => v.name === "variant baru")).toBeDefined();
     expect(deletedVariants.find((v) => v.id === variant2.id)).toBeDefined();
 
     expect(dbProduct.productAddonGroups).toHaveLength(1);
     expect(dbProduct.productAddonGroups[0].addon_group_id).toBe(addonGroup2.id);
-  });
+  }, 20000);
 
   // --- SKENARIO ERROR / VALIDASI ---
 
@@ -181,7 +217,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toContain("Some variants are invalid");
-  });
+  }, 20000);
 
   test("should reject (400) if an addon group id is invalid or belongs to another store", async () => {
     const fakeAddonGroupId = crypto.randomUUID();
@@ -196,7 +232,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toContain("Some add-on groups are invalid");
-  });
+  }, 20000);
 
   test("should reject (404) if product does not exist", async () => {
     const result = await supertest(web)
@@ -206,7 +242,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toContain("Product not found");
-  });
+  }, 20000);
 
   // --- SKENARIO ACTIVE QUEUE (ANTREAN SEDANG BERJALAN) ---
 
@@ -219,7 +255,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
       const queue = await prisma.queue.create({
         data: {
-          store_id: store.id,
+          store_id: storeId,
           guest_id: guest.id,
           status: "DIPROSES",
           queue_number: 1,
@@ -235,7 +271,7 @@ describe("PATCH /api/stores/products/:productId", () => {
           quantity: 1,
         },
       });
-    });
+    }, 20000);
 
     test("should successfully update ONLY name and description if active queue exists", async () => {
       const result = await supertest(web)
@@ -265,8 +301,8 @@ describe("PATCH /api/stores/products/:productId", () => {
       const dbProduct = await prisma.product.findUnique({
         where: { id: product.id },
       });
-      expect(dbProduct.name).toBe("Boleh Ganti Nama");
-    });
+      expect(dbProduct.name).toBe("boleh ganti nama");
+    }, 20000);
 
     test("should reject (400) if trying to update PRICE with active queue", async () => {
       const result = await supertest(web)
@@ -291,7 +327,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
       expect(result.status).toBe(400);
       expect(result.body.errors).toContain("active order in progress");
-    });
+    }, 20000);
 
     test("should reject (400) if trying to modify VARIANTS with active queue", async () => {
       const result = await supertest(web)
@@ -311,7 +347,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
       expect(result.status).toBe(400);
       expect(result.body.errors).toContain("active order in progress");
-    });
+    }, 20000);
 
     test("should reject (400) if trying to modify ADDONS with active queue", async () => {
       const result = await supertest(web)
@@ -336,6 +372,6 @@ describe("PATCH /api/stores/products/:productId", () => {
 
       expect(result.status).toBe(400);
       expect(result.body.errors).toContain("active order in progress");
-    });
+    }, 20000);
   });
 });

@@ -1,9 +1,8 @@
 import supertest from "supertest";
-import { web } from "../../src/application/web.js"; // Sesuaikan path
-import { prisma } from "../../src/application/database.js"; // Sesuaikan path
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
-const STORE_PUBLIC_ID = "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d"; // Pakai format UUID beneran
+import { web } from "../../src/application/web.js";
+import { prisma } from "../../src/application/database.js";
+import { beforeAll, afterAll, describe, expect, test } from "vitest";
+import crypto from "crypto";
 
 // Helper jadwal buka 24 jam
 function fullOpenSchedule() {
@@ -18,34 +17,31 @@ function fullOpenSchedule() {
 describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
   let userId;
   let internalStoreId;
+  let storePublicId;
   let specificProductId;
   let guestId;
 
-  beforeEach(async () => {
-    // 1. Bersihkan database (urutan dari tabel anak ke bapak)
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.storeOperationalHour.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
-
-    // 2. Bikin User (Sesuai Schema: Wajib ada supabase_id)
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Setup dilakukan CUMA 1 KALI di awal file
+  //    Tanpa Hit Supabase karena ini Public Endpoint (Tanpa Auth)
+  // =================================================================
+  beforeAll(async () => {
+    // 1. Bikin User murni di DB lokal (Cepat Kilat)
     const user = await prisma.user.create({
       data: {
-        email: "owner_katalog@test.com",
-        supabase_id: "dummy-supabase-uuid-123",
+        email: `katalog_${Date.now()}@test.com`,
+        supabase_id: crypto.randomUUID(), // Dummy ID
         name: "Owner Katalog",
       },
     });
     userId = user.id;
 
-    // 3. Bikin Toko
+    // 2. Bikin Toko (Public ID Dinamis anti-tubruk)
+    storePublicId = crypto.randomUUID();
     const store = await prisma.store.create({
       data: {
         user_id: userId,
-        public_id: STORE_PUBLIC_ID,
+        public_id: storePublicId,
         name: "Warung Makan Enak",
         description: "Testing API Pembeli",
         street_address: "Jl. Pembeli 1",
@@ -63,15 +59,15 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
     });
     internalStoreId = store.id;
 
-    // 4. Bikin Guest untuk Antrean
+    // 3. Bikin Guest untuk Antrean
     const guest = await prisma.guest.create({
       data: {
-        id: "guest-uuid-1234-5678-9012-3456789012", // Harus string UUID 36 char
+        id: crypto.randomUUID(), // Harus string UUID 36 char
       },
     });
     guestId = guest.id;
 
-    // 5. Bikin Produk (Kita bikin 22 produk untuk test paginasi 20 limit)
+    // 4. Bikin Produk (Kita bikin 22 produk untuk test paginasi 20 limit)
     const productData = [];
     for (let i = 1; i <= 21; i++) {
       productData.push({
@@ -94,11 +90,11 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
     await prisma.product.createMany({ data: productData });
 
     const specificProduct = await prisma.product.findFirst({
-      where: { name: "Ayam Bakar Madu Spesial" },
+      where: { name: "Ayam Bakar Madu Spesial", store_id: internalStoreId },
     });
     specificProductId = specificProduct.id;
 
-    // 6. Bikin Antrean (Sesuai schema: queue_number Int, wajib expired_at & guest_id)
+    // 5. Bikin Antrean
     const queueSelesai = await prisma.queue.create({
       data: {
         store_id: internalStoreId,
@@ -110,7 +106,6 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
       },
     });
 
-    // QueueDetail TIDAK ada kolom price di schema lu
     await prisma.queueDetail.create({
       data: {
         queue_id: queueSelesai.id,
@@ -137,22 +132,47 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
         quantity: 5,
       },
     });
-  });
+  }, 20000);
 
-  afterEach(async () => {
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.storeOperationalHour.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
-  });
+  // =================================================================
+  // ⚡ CLEANUP UTAMA: Dilakukan CUMA 1 KALI di akhir Test
+  // =================================================================
+  afterAll(async () => {
+    // Hapus hirarkis BERDASARKAN ID, BUKAN DELETE ALL
+    if (internalStoreId) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: internalStoreId } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.storeOperationalHour.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.store.deleteMany({
+        where: { id: internalStoreId },
+      });
+    }
+
+    if (guestId) {
+      await prisma.guest.deleteMany({ where: { id: guestId } });
+    }
+
+    if (userId) {
+      await prisma.user.deleteMany({ where: { id: userId } });
+    }
+  }, 20000);
+
+  // ====================== TEST CASES ====================== //
 
   test("should get page 1 catalog with 20 items and correct pagination metadata", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products`,
+      `/api/stores/${storePublicId}/products`,
     );
+
     expect(response.status).toBe(200);
     expect(response.body.data.store.name).toBe("Warung Makan Enak");
     expect(response.body.data.store.city).toBe("Kota");
@@ -168,7 +188,7 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
 
   test("should get page 2 catalog", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products?page=2`,
+      `/api/stores/${storePublicId}/products?page=2`,
     );
 
     expect(response.status).toBe(200);
@@ -177,15 +197,18 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
   });
 
   test("should return 404 if store is not found", async () => {
+    // Random UUID yang gak ada di database
+    const fakeStoreId = crypto.randomUUID();
+
     const response = await supertest(web).get(
-      `/api/stores/123e4567-e89b-12d3-a456-426614174000/products`,
+      `/api/stores/${fakeStoreId}/products`,
     );
     expect(response.status).toBe(404);
   });
 
   test("should correctly aggregate total_sold ONLY from SELESAI queues", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products`,
+      `/api/stores/${storePublicId}/products`,
     );
 
     const ayamProduct = response.body.data.currentPage.find(
@@ -199,7 +222,7 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
 
   test("should return exact match using search keyword (Fuse.js logic)", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products?keyword=Ayam Bakar Madu`,
+      `/api/stores/${storePublicId}/products?keyword=Ayam Bakar Madu`,
     );
     expect(response.status).toBe(200);
     expect(response.body.data.currentPage[0].name).toBe(
@@ -209,7 +232,7 @@ describe("GET /api/stores/:storeId/products (Buyer Catalog)", () => {
 
   test("should return fuzzy match (typo tolerance) using search keyword", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products?keyword=Ayan`,
+      `/api/stores/${storePublicId}/products?keyword=Ayan`,
     );
     expect(response.status).toBe(200);
     expect(response.body.data.currentPage[0].name).toBe(

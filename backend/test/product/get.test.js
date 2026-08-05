@@ -1,28 +1,57 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { unlink } from "fs/promises";
 import path from "path";
+
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
 
-const email = "aliyyulmunif780@gmail.com";
-const password = "aliyyul";
-
-describe("create product", () => {
+describe("GET /api/stores/products/:productId", () => {
   let cookies;
-  let productId;
+  let testEmail = "";
+  let userId = "";
+  let storeId = ""; // Internal ID untuk proses cleanup
+  let productId = "";
+
   beforeEach(async () => {
+    // 1. Generate email unik per test
+    testEmail = `get_product_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Get Product" },
+    });
+    if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Get Product",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
     const login = await supertest(web).post("/api/users/login").send({
-      email,
-      password,
+      email: testEmail,
+      password: "password123",
     });
     cookies = login.headers["set-cookie"];
 
-    await supertest(web)
+    // 5. Buat Toko melalui API
+    const storeResponse = await supertest(web)
       .post("/api/stores")
       .set("Cookie", cookies)
       .field("name", "Warung Nasi Makmur")
@@ -45,8 +74,16 @@ describe("create product", () => {
           { day: 0, open_time: "08:00", close_time: "20:00", is_active: true },
         ]),
       )
-      .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
-    const result = await supertest(web)
+      .attach("logo", FAKE_LOGO_BUFFER, `logo-${Date.now()}.png`); // Nama file dinamis
+
+    // Tangkap internal storeId untuk cleanup
+    const storeDb = await prisma.store.findUnique({
+      where: { public_id: storeResponse.body.data.public_id },
+    });
+    storeId = storeDb.id;
+
+    // 6. Buat Product melalui API
+    const productResponse = await supertest(web)
       .post("/api/stores/products")
       .set("Cookie", cookies)
       .field("name", "test product full")
@@ -59,62 +96,71 @@ describe("create product", () => {
           { name: "Sedang", additional_price: 0 },
         ]),
       )
-      .attach("image", FAKE_LOGO_BUFFER, "product.png");
-    productId = result.body.data.id;
-  });
+      .attach("image", FAKE_LOGO_BUFFER, `product-${Date.now()}.png`); // Nama file dinamis
+
+    productId = productResponse.body.data.id;
+  }, 20000);
+
   afterEach(async () => {
-    // 1. Ambil data produk yang mau dihapus untuk dapet URL gambarnya
-    const productsToDelete = await prisma.product.findMany({
-      where: { name: { contains: "test" } },
-      select: { image_url: true },
-    });
+    // --- CLEANUP TERSENTRAL BERDASARKAN ID TOKO ---
+    if (storeId) {
+      // 1. Ambil data produk milik toko ini untuk hapus foto fisik
+      const productsToDelete = await prisma.product.findMany({
+        where: { store_id: storeId },
+        select: { image_url: true },
+      });
 
-    // 2. Ambil data toko untuk dapet URL logonya (Sesuaikan 'logo_url' dengan nama field di schema lu)
-    const storesToDelete = await prisma.store.findMany({
-      where: { name: "Warung Nasi Makmur" },
-      select: { logo_url: true }, // Kalau di schema lu namanya 'image_url' atau 'logo', ganti di sini ya
-    });
-
-    // 3. Hapus file fisik gambar produk
-    for (const product of productsToDelete) {
-      if (product.image_url) {
-        try {
-          // product.image_url bentuknya "/uploads/namafile.png"
-          // Kita gabungin pakai process.cwd() biar path-nya absolut nuju ke folder public
-          const filePath = path.join(
-            process.cwd(),
-            "public",
-            product.image_url,
-          );
-          await unlink(filePath);
-        } catch (error) {
-          // Abaikan kalau file nggak ketemu (ENOENT)
+      for (const product of productsToDelete) {
+        if (product.image_url) {
+          try {
+            const cleanPath = product.image_url.startsWith("/")
+              ? product.image_url.substring(1)
+              : product.image_url;
+            await unlink(path.join(process.cwd(), "public", cleanPath));
+          } catch (error) {}
         }
       }
-    }
 
-    // 4. Hapus file fisik logo toko
-    for (const store of storesToDelete) {
-      // Sesuaikan 'logo_url' dengan yang lu select di atas
-      if (store.logo_url) {
+      // 2. Ambil data toko ini untuk hapus logo fisik
+      const storeToDelete = await prisma.store.findUnique({
+        where: { id: storeId },
+        select: { logo_url: true },
+      });
+
+      if (storeToDelete?.logo_url) {
         try {
-          const filePath = path.join(process.cwd(), "public", store.logo_url);
-          await unlink(filePath);
-        } catch (error) {
-          // Abaikan
-        }
+          const cleanPath = storeToDelete.logo_url.startsWith("/")
+            ? storeToDelete.logo_url.substring(1)
+            : storeToDelete.logo_url;
+          await unlink(path.join(process.cwd(), "public", cleanPath));
+        } catch (error) {}
       }
+
+      // 3. Eksekusi hapus data dari database (Relasi Varian akan terhapus jika onDelete Cascade, tapi kita buat aman)
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: storeId } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: storeId },
+      });
+      await prisma.storeOperationalHour.deleteMany({
+        where: { store_id: storeId },
+      });
+      await prisma.store.deleteMany({
+        where: { id: storeId },
+      });
     }
 
-    // 5. Baru eksekusi hapus data dari database (Child dulu, baru Parent)
-    await prisma.product.deleteMany({
-      where: { name: { contains: "test" } },
-    });
-
-    await prisma.store.deleteMany({
-      where: { name: "Warung Nasi Makmur" },
-    });
-  });
+    // 4. Hapus User
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+  }, 20000);
 
   test("should successfully get the product with complete data", async () => {
     const result = await supertest(web)
@@ -125,11 +171,12 @@ describe("create product", () => {
     expect(result.body.data.id).toBe(productId);
     expect(result.body.data.name).toBe("test product full");
     expect(result.body.data.price).toBe(20000);
+
     // Pastikan relasi dan default value aggregate ikut terbawa
     expect(result.body.data.variants).toHaveLength(2);
     expect(result.body.data.total_sold).toBe(0); // Karena belum ada pesanan SELESAI
     expect(result.body.data.image_url).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject if product id format is invalid (Joi Validation)", async () => {
     const result = await supertest(web)
@@ -138,7 +185,7 @@ describe("create product", () => {
 
     expect(result.status).toBe(400); // Bad Request karena gagal validasi
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject if product is not found (or belongs to another store)", async () => {
     // Pakai UUID valid, tapi fiktif/nggak ada di database
@@ -150,5 +197,5 @@ describe("create product", () => {
 
     expect(result.status).toBe(404); // Not Found
     expect(result.body.errors).toContain("Product not found");
-  });
+  }, 20000);
 });

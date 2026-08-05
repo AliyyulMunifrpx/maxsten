@@ -3,21 +3,14 @@ import { randomUUID } from "crypto";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { supabase } from "../../src/application/supabase.js";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-// Pre-existing fixture accounts already set up in the real Supabase test
-// project (same ones used across the other test suites in this repo).
-const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
-const LOGIN_PASSWORD = "aliyyul";
-const LOGIN_NAME = "aliyyul munif";
+let LOGIN_EMAIL = "";
+let LOGIN_PASSWORD = "password123";
+let LOGIN_NAME = "Tumbal Login";
 
-// Dedicated fixture account kept intentionally "yatim piatu" (exists in
-// Supabase Auth, deliberately has no matching Prisma row) so the
-// auto-healing test has something real to heal every run. We delete the
-// Prisma row again in afterEach so this fixture stays orphaned for the
-// next run too.
-const ORPHAN_EMAIL = "aliyyulmunifuy@gmail.com";
-const ORPHAN_PASSWORD = "gemini";
+let ORPHAN_EMAIL = "";
+let ORPHAN_PASSWORD = "password123";
 
 function endpoint() {
   return "/api/users/login";
@@ -32,11 +25,12 @@ function uniqueEmail(prefix) {
   return email;
 }
 
+// Fungsi helper yang sudah sangat bagus dari kodemu sebelumnya
 async function createSupabaseUser(email, password, opts = {}) {
   const { data, error } = await supabase.auth.admin.createUser({
     email,
     password,
-    email_confirm: opts.emailConfirm ?? true,
+    email_confirm: opts.emailConfirm ?? true, // <-- Ini bypass verifikasinya
     user_metadata: opts.metadata ?? {},
   });
   if (error) throw error;
@@ -44,15 +38,35 @@ async function createSupabaseUser(email, password, opts = {}) {
   return data.user;
 }
 
-afterEach(async () => {
-  // Keep the orphan fixture orphaned for the next run.
-  await prisma.user.deleteMany({ where: { email: ORPHAN_EMAIL } });
+beforeEach(async () => {
+  // 1. Buat Akun Normal secara dinamis untuk test login standar
+  LOGIN_EMAIL = uniqueEmail("login-normal");
+  const normalUser = await createSupabaseUser(LOGIN_EMAIL, LOGIN_PASSWORD, {
+    metadata: { name: LOGIN_NAME },
+  });
+  // Inject ke Prisma agar matching
+  await prisma.user.create({
+    data: {
+      id: normalUser.id, // Hapus baris ini kalau pakai UUID/Autoincrement default di schema
+      supabase_id: normalUser.id,
+      email: LOGIN_EMAIL,
+      name: LOGIN_NAME,
+    },
+  });
 
+  // 2. Buat Akun Orphan secara dinamis (Hanya di Supabase, TANPA Prisma)
+  ORPHAN_EMAIL = uniqueEmail("login-orphan");
+  await createSupabaseUser(ORPHAN_EMAIL, ORPHAN_PASSWORD);
+});
+
+afterEach(async () => {
+  // Cleanup Prisma
   for (const email of createdEmails) {
     await prisma.user.deleteMany({ where: { email } });
   }
   createdEmails = [];
 
+  // Cleanup Supabase
   for (const id of createdSupabaseIds) {
     try {
       await supabase.auth.admin.deleteUser(id);
@@ -69,10 +83,11 @@ describe("POST /api/users/login", () => {
       email: LOGIN_EMAIL,
       password: LOGIN_PASSWORD,
     });
+
     expect(result.status).toBe(200);
     expect(result.body.data.email).toBe(LOGIN_EMAIL);
     expect(result.body.data.name).toBe(LOGIN_NAME);
-    expect(result.body.data.access_token).toBeUndefined();
+    expect(result.body.data.access_token).toBeUndefined(); // Asumsi access_token ditaruh di HttpOnly Cookie
     expect(result.body.data.refresh_token).toBeUndefined();
   });
 
@@ -120,21 +135,24 @@ describe("POST /api/users/login", () => {
     expect(result.body.errors).toBe('"password" must be a string');
   });
 
-  test("[auto-healing, was previously 404] should now auto-create the Prisma profile and log in successfully when the Supabase account has no matching row", async () => {
+  test("[auto-healing] should now auto-create the Prisma profile and log in successfully when the Supabase account has no matching row", async () => {
     const result = await supertest(web).post(endpoint()).send({
       email: ORPHAN_EMAIL,
       password: ORPHAN_PASSWORD,
     });
+
     expect(result.status).toBe(200);
     expect(result.body.data.email).toBe(ORPHAN_EMAIL);
     expect(result.body.data.access_token).toBeUndefined();
 
+    // Pastikan fitur auto-healing bekerja dengan mengecek ketersediaan di Prisma
     const healed = await prisma.user.findUnique({
       where: { email: ORPHAN_EMAIL },
     });
     expect(healed).not.toBeNull();
   });
 
+  // 👇 Sisa tes di bawah ini TIDAK PERLU DIUBAH karena sudah menggunakan skema pembuatan dinamis yang hebat!
   test("[auto-healing] should sync Prisma's email to match Supabase's current email", async () => {
     const oldEmail = uniqueEmail("login-stale-old");
     const password = "SuperSecret123!";
@@ -188,6 +206,7 @@ describe("POST /api/users/login", () => {
     const result = await supertest(web)
       .post(endpoint())
       .send({ email: conflictingEmail, password });
+
     expect(result.status).toBe(409);
     expect(result.body.data).toBeUndefined();
     expect(result.body.errors).toBe(
@@ -200,13 +219,14 @@ describe("POST /api/users/login", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Unrelated Existing Profile");
   });
+
   test("should reject login with 403 when the account is banned", async () => {
     const email = uniqueEmail("login-banned");
     const password = "SuperSecret123!";
     const authUser = await createSupabaseUser(email, password);
 
     await supabase.auth.admin.updateUserById(authUser.id, {
-      ban_duration: "876000h", // ~100 tahun, efeknya permanen buat kebutuhan test
+      ban_duration: "876000h", // ~100 tahun
     });
 
     const result = await supertest(web)

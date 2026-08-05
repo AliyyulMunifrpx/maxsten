@@ -1,96 +1,152 @@
 import supertest from "supertest";
-import { beforeEach, afterEach, describe, expect, test } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { v4 as uuidv4 } from "uuid";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 
-const LOGIN_EMAIL = "test_update_reason@gmail.com";
-const LOGIN_PASSWORD = "password123";
 const ENDPOINT_PREFIX = "/api/seller/cancel-reasons";
 
 describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   let cookies = [];
+
+  // User scope file (Dibuat sekali di beforeAll)
+  let testEmail = "";
   let userId = "";
+  let hackerEmail = "";
+  let hackerUserId = "";
+
+  // Data scope test (Direset di beforeEach)
   let storeId = null;
-
+  let hackerStoreId = null;
   let targetReasonId = "";
-  let existingReasonText = "Pelanggan tidak bisa dihubungi";
   let otherUserReasonId = "";
+  let existingReasonText = "Pelanggan tidak bisa dihubungi";
 
-  beforeEach(async () => {
-    // 1. Bersihkan database
-    await prisma.cancelReasonTemplate.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "hacker@gmail.com" } });
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Hit Supabase CUMA 1 KALI untuk semua test
+  // =================================================================
+  beforeAll(async () => {
+    testEmail = `update_reason_main_${Date.now()}@gmail.com`;
+    hackerEmail = `update_reason_hacker_${Date.now()}@gmail.com`;
 
-    // 2. Register dan Login
-    await supertest(web).post("/api/users").send({
-      email: LOGIN_EMAIL,
-      name: "User Update Reason",
-      password: LOGIN_PASSWORD,
+    // 1. Setup User Utama via Supabase
+    const { data: authMain } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+    });
+    userId = authMain.user.id;
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Main",
+      },
     });
 
+    // 2. Setup Hacker via Supabase
+    const { data: authHacker } = await supabase.auth.admin.createUser({
+      email: hackerEmail,
+      password: "password123",
+      email_confirm: true,
+    });
+    hackerUserId = authHacker.user.id;
+    await prisma.user.create({
+      data: {
+        id: hackerUserId,
+        supabase_id: hackerUserId,
+        email: hackerEmail,
+        name: "Tumbal Hacker",
+      },
+    });
+
+    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+      email: testEmail,
+      password: "password123",
     });
     cookies = loginResult.headers["set-cookie"];
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
+  }, 20000);
 
-    // 3. Buatkan Toko Aktif
+  afterAll(async () => {
+    // Bersihkan User di akhir file secara total (Prisma & Supabase)
+    await prisma.user.deleteMany({
+      where: { id: { in: [userId, hackerUserId] } },
+    });
+    try {
+      await supabase.auth.admin.deleteUser(userId);
+    } catch (err) {}
+    try {
+      await supabase.auth.admin.deleteUser(hackerUserId);
+    } catch (err) {}
+  }, 20000);
+
+  // =================================================================
+  // ⚡ RESET LOKAL: Database Prisma Cepat Kilat (Tanpa Internet)
+  // =================================================================
+  beforeEach(async () => {
+    // 1. Bersihkan sisa data test sebelumnya (Targeted Cleanup)
+    await prisma.cancelReasonTemplate.deleteMany({
+      where: { store: { user_id: { in: [userId, hackerUserId] } } },
+    });
+    await prisma.store.deleteMany({
+      where: { user_id: { in: [userId, hackerUserId] } },
+    });
+
+    // 2. Buatkan Toko Utama
     const store = await prisma.store.create({
       data: { user_id: userId, name: "Toko Alasan", timezone: "Asia/Jakarta" },
     });
     storeId = store.id;
 
-    // 4. Bikin Alasan Target Edit
+    // 3. Buatkan 2 Alasan untuk Toko Utama
     targetReasonId = uuidv4();
-    await prisma.cancelReasonTemplate.create({
-      data: {
-        id: targetReasonId,
-        store_id: storeId,
-        reason: "Stok produk sedang habis", // Ini yang bakal di-edit
-      },
+    await prisma.cancelReasonTemplate.createMany({
+      data: [
+        {
+          id: targetReasonId,
+          store_id: storeId,
+          reason: "Stok produk sedang habis",
+        }, // Ini yang bakal di-edit
+        { store_id: storeId, reason: existingReasonText }, // Untuk ngetes error duplikasi (409)
+      ],
     });
 
-    // 5. Bikin Alasan Kedua (Untuk ngetes error duplikasi nama 409)
-    await prisma.cancelReasonTemplate.create({
-      data: {
-        store_id: storeId,
-        reason: existingReasonText,
-      },
-    });
-
-    // 6. Bikin data hacker buat tes IDOR (Mastiin user ga bisa edit data toko lain)
-    const hacker = await prisma.user.create({
-      data: {
-        email: "hacker@gmail.com",
-        name: "Hacker",
-        supabase_id: uuidv4(),
-      },
-    });
+    // 4. Buatkan Toko & Alasan untuk Hacker (Simulasi IDOR)
     const hackerStore = await prisma.store.create({
       data: {
-        user_id: hacker.id,
+        user_id: hackerUserId,
         name: "Toko Hacker",
         timezone: "Asia/Jakarta",
       },
     });
+    hackerStoreId = hackerStore.id;
+
     const hackerReason = await prisma.cancelReasonTemplate.create({
-      data: { store_id: hackerStore.id, reason: "Alasan Rahasia Hacker" },
+      data: { store_id: hackerStoreId, reason: "Alasan Rahasia Hacker" },
     });
     otherUserReasonId = hackerReason.id;
-  }, 20000);
+  });
 
   afterEach(async () => {
-    await prisma.cancelReasonTemplate.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "hacker@gmail.com" } });
+    // 5. Bersihkan data Toko & Alasan setiap selesai 1 test case
+    await prisma.cancelReasonTemplate.deleteMany({
+      where: { store: { user_id: { in: [userId, hackerUserId] } } },
+    });
+    await prisma.store.deleteMany({
+      where: { user_id: { in: [userId, hackerUserId] } },
+    });
   });
 
   // ====================== TEST CASES ====================== //

@@ -2,10 +2,9 @@ import supertest from "supertest";
 import { randomUUID } from "crypto";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
-const LOGIN_EMAIL = "aliyyulmunif780@gmail.com";
-const LOGIN_PASSWORD = "aliyyul";
 
 function fullOpenSchedule() {
   return Array.from({ length: 7 }, (_, day) => ({
@@ -18,32 +17,58 @@ function fullOpenSchedule() {
 
 describe("open/close store (explicit status)", () => {
   let cookies = [];
-  let userId;
+  let testEmail = "";
+  let userId = "";
   let createdStoreIds = [];
   let createdGuestIds = [];
 
   beforeEach(async () => {
-    const result = await supertest(web).post(`/api/users/login`).send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+    // 1. Generate email unik per test
+    testEmail = `open_close_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: {
+        name: "Tumbal Buka Tutup",
+      },
     });
+
+    if (error) {
+      throw new Error(`Supabase Admin Error: ${error.message}`);
+    }
+
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId, // Hapus jika Prisma ID lu pakai auto-generate UUID/Int
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Buka Tutup",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
+    const result = await supertest(web).post(`/api/users/login`).send({
+      email: testEmail,
+      password: "password123",
+    });
+
     cookies = result.headers["set-cookie"];
 
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
-
-    await prisma.store.deleteMany({ where: { user_id: userId } });
+    // 5. Kosongkan array tracking ID.
+    // Gak butuh delete store lama karena user ini 100% fresh lahir.
     createdStoreIds = [];
     createdGuestIds = [];
   }, 20000);
 
   afterEach(async () => {
+    // 1. Hapus Relasi Toko (Queue lalu Store)
     if (createdStoreIds.length > 0) {
-      // ASUMSI: model Queue punya relasi ke Store. Dihapus manual dulu
-      // (bukan cuma andelin cascade delete) biar aman siapapun konfigurasi
-      // FK-nya di schema.
       await prisma.queue.deleteMany({
         where: { store: { public_id: { in: createdStoreIds } } },
       });
@@ -51,10 +76,26 @@ describe("open/close store (explicit status)", () => {
         where: { public_id: { in: createdStoreIds } },
       });
     }
+
+    // 2. Hapus Guest
     if (createdGuestIds.length > 0) {
       await prisma.guest.deleteMany({ where: { id: { in: createdGuestIds } } });
     }
-  });
+
+    // 3. Hapus User dari Prisma
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    // 4. Hapus User dari Supabase Auth
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {
+        // best-effort cleanup
+      }
+    }
+  }, 20000);
 
   async function createStoreDirect(name) {
     const store = await prisma.store.create({
@@ -79,8 +120,6 @@ describe("open/close store (explicit status)", () => {
     return store;
   }
 
-  // Guest wajib dibuat lebih dulu - Guest.id gak ada @default, jadi harus
-  // di-generate manual (pakai randomUUID, sesuai tipe kolomnya @db.Char(36)).
   async function createGuestDirect() {
     const guest = await prisma.guest.create({
       data: { id: randomUUID() },
@@ -89,9 +128,6 @@ describe("open/close store (explicit status)", () => {
     return guest;
   }
 
-  // Queue butuh queue_number, expired_at (gak ada default), dan guest_id
-  // (wajib, relasi ke Guest). Bikin guest baru tiap kali biar tiap queue
-  // independen satu sama lain.
   let queueCounter = 0;
   async function createQueueDirect(storeId, status) {
     const guest = await createGuestDirect();
@@ -107,7 +143,6 @@ describe("open/close store (explicit status)", () => {
     });
   }
 
-  // Route dikonfirmasi dari userRouter.patch("/api/stores/:storeId/status", ...)
   function endpoint(storeId) {
     return `/api/stores/${storeId}/status`;
   }
@@ -128,7 +163,7 @@ describe("open/close store (explicit status)", () => {
     });
     expect(updated.manual_status).toBe("CLOSED");
     expect(updated.manual_updated_at).not.toBeNull();
-  });
+  }, 20000);
 
   test("should explicitly set the store to OPEN even if the schedule already says open", async () => {
     const store = await createStoreDirect("Warung Set Buka");
@@ -140,7 +175,7 @@ describe("open/close store (explicit status)", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.manual_status).toBe("OPEN");
-  });
+  }, 20000);
 
   test("should return 404 for a store_id that does not belong to the logged-in user", async () => {
     const result = await supertest(web)
@@ -149,17 +184,17 @@ describe("open/close store (explicit status)", () => {
       .send({ manual_status: "OPEN" });
 
     expect(result.status).toBe(404);
-  });
+  }, 20000);
 
   test("should return 401 when unauthorized", async () => {
     const store = await createStoreDirect("Warung Set Tanpa Login");
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .send({ manual_status: "OPEN" });
+      .send({ manual_status: "OPEN" }); // Tanpa cookie auth
 
     expect(result.status).toBe(401);
-  });
+  }, 20000);
 
   test("should reject an invalid manual_status value with a 400", async () => {
     const store = await createStoreDirect("Warung Status Ngaco");
@@ -170,7 +205,7 @@ describe("open/close store (explicit status)", () => {
       .send({ manual_status: "MAYBE" });
 
     expect(result.status).toBe(400);
-  });
+  }, 20000);
 
   test("should reject a missing manual_status field with a 400", async () => {
     const store = await createStoreDirect("Warung Status Kosong");
@@ -181,7 +216,7 @@ describe("open/close store (explicit status)", () => {
       .send({});
 
     expect(result.status).toBe(400);
-  });
+  }, 20000);
 
   test("should be reflected consistently by GET /api/stores afterwards", async () => {
     const store = await createStoreDirect("Warung Konsisten Get");
@@ -192,9 +227,11 @@ describe("open/close store (explicit status)", () => {
       .send({ manual_status: "CLOSED" });
     expect(patch.status).toBe(200);
 
-    const get = await supertest(web).get("/api/stores/me").set("Cookie", cookies);
+    const get = await supertest(web)
+      .get("/api/stores/me")
+      .set("Cookie", cookies);
     expect(get.body.data.is_open).toBe(false);
-  });
+  }, 20000);
 
   test("should not crash when two requests race with different target statuses (last write wins)", async () => {
     const store = await createStoreDirect("Warung Race Status");
@@ -236,7 +273,7 @@ describe("open/close store (explicit status)", () => {
       where: { public_id: store.public_id },
     });
     expect(updated.manual_status).not.toBe("CLOSED");
-  });
+  }, 20000);
 
   test("should reject closing the store when there is an active queue with status DIPROSES", async () => {
     const store = await createStoreDirect("Warung Ada Antrian Diproses");
@@ -248,7 +285,7 @@ describe("open/close store (explicit status)", () => {
       .send({ manual_status: "CLOSED" });
 
     expect(result.status).toBe(400);
-  });
+  }, 20000);
 
   test("should allow closing the store when queues exist but none are active (e.g. SELESAI/DIBATALKAN)", async () => {
     const store = await createStoreDirect("Warung Antrian Udah Selesai");
@@ -262,7 +299,7 @@ describe("open/close store (explicit status)", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.manual_status).toBe("CLOSED");
-  });
+  }, 20000);
 
   test("should allow opening the store even when there is an active queue (guard hanya berlaku buat CLOSED)", async () => {
     const store = await createStoreDirect("Warung Buka Walau Ada Antrian");
@@ -275,27 +312,30 @@ describe("open/close store (explicit status)", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.manual_status).toBe("OPEN");
-  });
+  }, 20000);
 
   test("should allow closing the store once its only active queue is resolved", async () => {
     const store = await createStoreDirect("Warung Antrian Baru Selesai");
     const queue = await createQueueDirect(store.id, "DIPROSES");
 
+    // Tutup saat masih DIPROSES -> Ditolak (400)
     const blocked = await supertest(web)
       .patch(endpoint(store.public_id))
       .set("Cookie", cookies)
       .send({ manual_status: "CLOSED" });
     expect(blocked.status).toBe(400);
 
+    // Kita "selesaikan" pesanannya secara manual via Prisma
     await prisma.queue.update({
       where: { id: queue.id },
       data: { status: "SELESAI" },
     });
 
+    // Tutup ulang pas pesanan udah SELESAI -> Diterima (200)
     const allowed = await supertest(web)
       .patch(endpoint(store.public_id))
       .set("Cookie", cookies)
       .send({ manual_status: "CLOSED" });
     expect(allowed.status).toBe(200);
-  });
+  }, 20000);
 });

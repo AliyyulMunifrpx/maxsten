@@ -1,7 +1,9 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
+import { beforeAll, afterAll, describe, expect, test } from "vitest";
 import { unlink } from "fs/promises";
 import path from "path";
 
@@ -10,22 +12,48 @@ const FAKE_LOGO_BUFFER = Buffer.from(
   "base64",
 );
 
-const email = "aliyyulmunif780@gmail.com";
-const password = "aliyyul";
-
-describe("GET /api/stores/me/me/all-products/:publicId", () => {
+describe("GET /api/stores/me/all-products/:publicId", () => {
   let cookies;
-  let storePublicId;
+  let testEmail = "";
+  let userId = "";
+  let storePublicId = "";
+  let storeInternalId = ""; // Untuk cleanup yang lebih mudah
 
-  beforeEach(async () => {
-    // 1. Login
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Setup dilakukan CUMA 1 KALI di awal file
+  // =================================================================
+  beforeAll(async () => {
+    // 1. Generate email unik per test
+    testEmail = `get_all_products_${Date.now()}@gmail.com`;
+
+    // 2. Bikin akun langsung via Supabase Admin (Bypass email verifikasi)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
+      email: testEmail,
+      password: "password123",
+      email_confirm: true,
+      user_metadata: { name: "Tumbal Get All Products" },
+    });
+    if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Get All Products",
+      },
+    });
+
+    // 4. Login untuk dapat tiket (cookie)
     const login = await supertest(web).post("/api/users/login").send({
-      email,
-      password,
+      email: testEmail,
+      password: "password123",
     });
     cookies = login.headers["set-cookie"];
 
-    // 2. Create Store
+    // 5. Create Store Tumbal via API
     const storeResponse = await supertest(web)
       .post("/api/stores")
       .set("Cookie", cookies)
@@ -40,75 +68,108 @@ describe("GET /api/stores/me/me/all-products/:publicId", () => {
       .field("postal_code", "12910")
       .field("latitude", "-6.2088")
       .field("longitude", "106.8456")
-      .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
+      .attach("logo", FAKE_LOGO_BUFFER, `logo-${Date.now()}.png`);
 
     storePublicId = storeResponse.body.data.public_id;
 
-    // 3. Create Products (Bikin 3 produk buat ngetest bentuk array-nya)
+    // Ambil internal id untuk bantu cleanup nanti
+    const storeDb = await prisma.store.findUnique({
+      where: { public_id: storePublicId },
+    });
+    storeInternalId = storeDb.id;
+
+    // 6. Create Products (Bikin 3 produk buat ngetest bentuk array-nya)
     await supertest(web)
       .post("/api/stores/products")
       .set("Cookie", cookies)
       .field("name", "test product satu")
       .field("price", "15000")
-      .attach("image", FAKE_LOGO_BUFFER, "product1.png");
+      .attach("image", FAKE_LOGO_BUFFER, `product1-${Date.now()}.png`);
 
     await supertest(web)
       .post("/api/stores/products")
       .set("Cookie", cookies)
       .field("name", "test product dua")
       .field("price", "25000")
-      .attach("image", FAKE_LOGO_BUFFER, "product2.png");
+      .attach("image", FAKE_LOGO_BUFFER, `product2-${Date.now()}.png`);
 
     await supertest(web)
       .post("/api/stores/products")
       .set("Cookie", cookies)
       .field("name", "test product tiga")
       .field("price", "10000")
-      .attach("image", FAKE_LOGO_BUFFER, "product3.png");
-  });
+      .attach("image", FAKE_LOGO_BUFFER, `product3-${Date.now()}.png`);
+  }, 20000);
 
-  afterEach(async () => {
-    // Hapus file gambar produk
+  // =================================================================
+  // ⚡ CLEANUP: Dilakukan CUMA 1 KALI setelah semua test selesai
+  // =================================================================
+  afterAll(async () => {
+    // 1. Ambil & Hapus File Gambar Produk
     const productsToDelete = await prisma.product.findMany({
-      where: { name: { contains: "test product" } },
+      where: { store_id: storeInternalId },
       select: { image_url: true },
     });
+
     for (const product of productsToDelete) {
       if (product.image_url) {
         try {
-          await unlink(path.join(process.cwd(), "public", product.image_url));
+          const cleanPath = product.image_url.startsWith("/")
+            ? product.image_url.substring(1)
+            : product.image_url;
+          await unlink(path.join(process.cwd(), "public", cleanPath));
         } catch (error) {}
       }
     }
 
-    // Hapus file logo toko
+    // 2. Ambil & Hapus File Logo Toko
     const storesToDelete = await prisma.store.findMany({
-      where: { name: "Warung Nasi Makmur" },
+      where: { id: storeInternalId },
       select: { logo_url: true },
     });
+
     for (const store of storesToDelete) {
       if (store.logo_url) {
         try {
-          await unlink(path.join(process.cwd(), "public", store.logo_url));
+          const cleanPath = store.logo_url.startsWith("/")
+            ? store.logo_url.substring(1)
+            : store.logo_url;
+          await unlink(path.join(process.cwd(), "public", cleanPath));
         } catch (error) {}
       }
     }
 
-    // Hapus data dari DB (Queue/QueueDetail kalau ada, lalu Product, baru Store)
-    // Hapus QueueDetail dulu kalau lu sempet bikin relasinya manual nanti
-    await prisma.product.deleteMany({
-      where: { name: { contains: "test product" } },
-    });
+    // 3. Hapus Data dari Database (Child -> Parent -> User)
+    if (storeInternalId) {
+      await prisma.product.deleteMany({
+        where: { store_id: storeInternalId },
+      });
+      await prisma.storeOperationalHour.deleteMany({
+        where: { store_id: storeInternalId },
+      });
+      await prisma.store.deleteMany({
+        where: { id: storeInternalId },
+      });
+    }
 
-    await prisma.store.deleteMany({
-      where: { name: "Warung Nasi Makmur" },
-    });
-  });
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+  }, 20000);
+
+  // ====================== TEST CASES ====================== //
 
   test("should successfully get all products with pagination metadata (Default Page 1)", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products`)
       .set("Cookie", cookies);
+
     expect(result.status).toBe(200);
 
     // Verifikasi struktur root
@@ -136,27 +197,28 @@ describe("GET /api/stores/me/me/all-products/:publicId", () => {
     expect(firstProduct).toHaveProperty("name");
     expect(firstProduct).toHaveProperty("price");
     expect(firstProduct).toHaveProperty("total_sold", 0); // Default 0 karena belum ada Queue
-  });
+  }, 20000);
 
   test("should successfully get products for a specific page", async () => {
     // Kita request page 2, padahal data cuma 3 (yang harusnya habis di page 1)
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products?page=2`)
       .set("Cookie", cookies);
+
     expect(result.status).toBe(200);
     expect(result.body.data.pagination.currentPage).toBe(2);
     expect(result.body.data.currentPage.length).toBe(0); // Harusnya kosong
     expect(result.body.data.nextPage.length).toBe(0);
-  });
+  }, 20000);
 
   test("should reject (400) if publicId is not a valid UUID", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/uuid asal asalan/products`)
       .set("Cookie", cookies);
-   
+
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject (400) if page parameter is a negative number or zero", async () => {
     const result = await supertest(web)
@@ -165,7 +227,7 @@ describe("GET /api/stores/me/me/all-products/:publicId", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject (400) if page parameter is not an integer", async () => {
     const result = await supertest(web)
@@ -174,7 +236,7 @@ describe("GET /api/stores/me/me/all-products/:publicId", () => {
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("should reject (404) if store does not exist or belongs to another user", async () => {
     // UUID format valid tapi nggak ada di DB
@@ -186,5 +248,5 @@ describe("GET /api/stores/me/me/all-products/:publicId", () => {
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toContain("Store not found");
-  });
+  }, 20000);
 });

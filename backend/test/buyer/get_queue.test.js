@@ -1,33 +1,38 @@
 import supertest from "supertest";
-import { web } from "../../src/application/web.js"; // Sesuaikan path
-import { prisma } from "../../src/application/database.js"; // Sesuaikan path
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
-const STORE_PUBLIC_ID = "123e4567-e89b-12d3-a456-426614174000";
-const OTHER_STORE_PUBLIC_ID = "999e4567-e89b-12d3-a456-426614174999";
-const GUEST_ID = "11111111-2222-3333-4444-555555555555";
-const HACKER_GUEST_ID = "99999999-8888-7777-6666-555555555555";
+import { web } from "../../src/application/web.js";
+import { prisma } from "../../src/application/database.js";
+import { beforeAll, afterAll, describe, expect, test } from "vitest";
+import crypto from "crypto";
 
 describe("GET /api/stores/:storeId/queues/:queueId", () => {
   let userId;
+  let user2Id;
   let storeId;
   let otherStoreId;
   let queueId;
-  beforeEach(async () => {
-    // 1. Bersihkan database
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.variant.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
 
-    // 2. Setup Data Dasar - BIKIN 2 USER BERBEDA
+  // Variabel Master Data
+  let storePublicId = "";
+  let otherStorePublicId = "";
+  let guestId = "";
+  let hackerGuestId = "";
+
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Setup dilakukan CUMA 1 KALI di awal file
+  //    Tanpa Hit Supabase karena ini Public Endpoint (Tanpa Auth)
+  // =================================================================
+  beforeAll(async () => {
+    // 1. Generate UUID untuk Guest & Store (Dynamic)
+    storePublicId = crypto.randomUUID();
+    otherStorePublicId = crypto.randomUUID();
+    guestId = crypto.randomUUID();
+    hackerGuestId = crypto.randomUUID();
+
+    // 2. Setup Data Dasar - BIKIN 2 USER BERBEDA LANGSUNG DI DATABASE
     const user1 = await prisma.user.create({
       data: {
-        email: "owner1@test.com",
-        supabase_id: "supa-123",
+        email: `queue_owner1_${Date.now()}@test.com`,
+        supabase_id: crypto.randomUUID(),
         name: "Owner Asli",
       },
     });
@@ -35,42 +40,41 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
 
     const user2 = await prisma.user.create({
       data: {
-        email: "owner2@test.com",
-        supabase_id: "supa-456",
+        email: `queue_owner2_${Date.now()}@test.com`,
+        supabase_id: crypto.randomUUID(),
         name: "Owner Toko Lain",
       },
     });
-    const user2Id = user2.id;
+    user2Id = user2.id;
 
-    // Bikin Toko 1 (Milik User 1)
+    // 3. Bikin Toko 1 (Milik User 1)
     const store = await prisma.store.create({
       data: {
         user_id: userId,
-        public_id: STORE_PUBLIC_ID,
+        public_id: storePublicId,
         name: "Toko Asli",
         timezone: "Asia/Jakarta",
       },
     });
     storeId = store.id;
 
-    // Bikin Toko 2 (Milik User 2)
+    // 4. Bikin Toko 2 (Milik User 2)
     const otherStore = await prisma.store.create({
       data: {
         user_id: user2Id,
-        public_id: OTHER_STORE_PUBLIC_ID,
+        public_id: otherStorePublicId,
         name: "Toko Lain",
         timezone: "Asia/Jakarta",
       },
     });
     otherStoreId = otherStore.id;
 
-    // 👇👇👇 INI YANG KETINGGALAN BANG! 👇👇👇
+    // 5. Bikin Guest
+    await prisma.guest.createMany({
+      data: [{ id: guestId }, { id: hackerGuestId }],
+    });
 
-    // Bikin Guest dulu biar database gak marah
-    await prisma.guest.create({ data: { id: GUEST_ID } });
-    await prisma.guest.create({ data: { id: HACKER_GUEST_ID } });
-
-    // Bikin Product dan Variant dulu biar bisa dimasukin ke detail antrean
+    // 6. Bikin Product dan Variant
     const product = await prisma.product.create({
       data: { store_id: storeId, name: "Mie Goreng", price: 15000 },
     });
@@ -83,13 +87,11 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
       },
     });
 
-    // 👆👆👆 SAMPAI SINI 👆👆👆
-
-    // 3. BARU DEH BIKIN ANTREAN (Sekarang pasti aman!)
+    // 7. BIKIN ANTREAN
     const queue = await prisma.queue.create({
       data: {
         store_id: storeId,
-        guest_id: GUEST_ID,
+        guest_id: guestId,
         queue_number: 10,
         status: "BELUM_BAYAR",
         total_price: 20000,
@@ -98,7 +100,7 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
     });
     queueId = queue.id;
 
-    // Masukkan Snapshot persis seperti hasil dari fungsi createQueue lu
+    // Masukkan Snapshot persis seperti hasil dari fungsi createQueue
     await prisma.queueDetail.create({
       data: {
         queue_id: queueId,
@@ -110,27 +112,60 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
         ],
       },
     });
-  });
+  }, 20000);
 
-  afterEach(async () => {
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.variant.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
-  });
+  // =================================================================
+  // ⚡ CLEANUP UTAMA: Dilakukan CUMA 1 KALI di akhir
+  // =================================================================
+  afterAll(async () => {
+    // 1. Karantina pembersihan hanya pada ID Toko yang terlibat
+    const activeStoreIds = [storeId, otherStoreId].filter(Boolean);
+    if (activeStoreIds.length > 0) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: { in: activeStoreIds } } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: { in: activeStoreIds } },
+      });
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: { in: activeStoreIds } } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: { in: activeStoreIds } },
+      });
+      await prisma.store.deleteMany({
+        where: { id: { in: activeStoreIds } },
+      });
+    }
+
+    // 2. Hapus Guest
+    const activeGuestIds = [guestId, hackerGuestId].filter(Boolean);
+    if (activeGuestIds.length > 0) {
+      await prisma.guest.deleteMany({
+        where: { id: { in: activeGuestIds } },
+      });
+    }
+
+    // 3. Hapus User
+    const activeUserIds = [userId, user2Id].filter(Boolean);
+    if (activeUserIds.length > 0) {
+      await prisma.user.deleteMany({
+        where: { id: { in: activeUserIds } },
+      });
+    }
+  }, 20000);
+
+  // ====================== TEST CASES ====================== //
 
   test("[SUCCESS] should return complete queue details with snapshot addons", async () => {
     const response = await supertest(web)
-      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`)
-      .set("Cookie", [`guest_id=${GUEST_ID}`]);
+      .get(`/api/stores/${storePublicId}/queues/${queueId}`)
+      .set("Cookie", [`guest_id=${guestId}`]);
 
     expect(response.status).toBe(200);
     const data = response.body.data;
     expect(data.id).toBe(queueId);
-    expect(data.guest_id).toBe(GUEST_ID);
+    expect(data.guest_id).toBe(guestId);
     expect(data.server_now).toBeDefined(); // Penting untuk timer FE
 
     expect(data.queueDetails).toHaveLength(1);
@@ -146,7 +181,7 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
 
   test("[ERROR] should return 401 Unauthorized if guest cookie is missing", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`,
+      `/api/stores/${storePublicId}/queues/${queueId}`,
     );
 
     expect(response.status).toBe(401);
@@ -154,10 +189,10 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
   });
 
   test("[ERROR] should return 404 if HACKER tries to access someone else's queue", async () => {
-    // Skenario: Hacker login pakai guest_id dia sendiri, tapi nyoba nembak ID antrean orang lain
+    // Skenario: Hacker nyoba nembak ID antrean orang lain menggunakan cookie-nya sendiri
     const response = await supertest(web)
-      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/${queueId}`)
-      .set("Cookie", [`guest_id=${HACKER_GUEST_ID}`]);
+      .get(`/api/stores/${storePublicId}/queues/${queueId}`)
+      .set("Cookie", [`guest_id=${hackerGuestId}`]);
 
     expect(response.status).toBe(404);
     expect(response.body.errors).toContain("No queue found");
@@ -166,17 +201,17 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
   test("[ERROR] should return 404 if accessed via wrong store's public_id", async () => {
     // Skenario: User pakai ID antrean yang bener, tapi nembak public_id toko tetangga
     const response = await supertest(web)
-      .get(`/api/stores/${OTHER_STORE_PUBLIC_ID}/queues/${queueId}`)
-      .set("Cookie", [`guest_id=${GUEST_ID}`]);
-  console.log(response.body)
+      .get(`/api/stores/${otherStorePublicId}/queues/${queueId}`)
+      .set("Cookie", [`guest_id=${guestId}`]);
+
     expect(response.status).toBe(404);
     expect(response.body.errors).toContain("No queue found");
   });
 
   test("[ERROR] should return 400 Bad Request if queueId is not a number", async () => {
     const response = await supertest(web)
-      .get(`/api/stores/${STORE_PUBLIC_ID}/queues/bukan-angka`)
-      .set("Cookie", [`guest_id=${GUEST_ID}`]);
+      .get(`/api/stores/${storePublicId}/queues/bukan-angka`)
+      .set("Cookie", [`guest_id=${guestId}`]);
 
     // Ditolak oleh Joi Validation
     expect(response.status).toBe(400);
@@ -184,8 +219,8 @@ describe("GET /api/stores/:storeId/queues/:queueId", () => {
 
   test("[ERROR] should return 400 Bad Request if publicId is not a valid UUID", async () => {
     const response = await supertest(web)
-      .get(`/api/stores/bukan uuid valid/queues/${queueId}`)
-      .set("Cookie", [`guest_id=${GUEST_ID}`]);
+      .get(`/api/stores/bukan-uuid-valid/queues/${queueId}`)
+      .set("Cookie", [`guest_id=${guestId}`]);
 
     // Ditolak oleh Joi Validation
     expect(response.status).toBe(400);

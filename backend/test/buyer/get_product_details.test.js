@@ -1,46 +1,40 @@
 import supertest from "supertest";
-import { web } from "../../src/application/web.js"; // Sesuaikan dengan path lu
-import { prisma } from "../../src/application/database.js"; // Sesuaikan dengan path lu
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { web } from "../../src/application/web.js";
+import { prisma } from "../../src/application/database.js";
+import { beforeAll, afterAll, describe, expect, test } from "vitest";
+import crypto from "crypto";
 
-const STORE_PUBLIC_ID = "123e4567-e89b-12d3-a456-426614174000";
 const FAKE_UUID = "999e9999-e99b-99d9-a999-999999999999";
 
 describe("GET /api/stores/:storeId/products/:productId (Product Details)", () => {
   let userId;
   let internalStoreId;
+  let storePublicId;
   let validProductId;
   let deletedProductId;
   let guestId;
 
-  beforeEach(async () => {
-    // 1. Bersihkan database (Child ke Parent)
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.productAddonGroup.deleteMany({});
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.variant.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
-
-    // 2. Bikin User Owner
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Setup dilakukan CUMA 1 KALI di awal file
+  //    Tanpa Hit Supabase karena ini Public Endpoint (Tanpa Auth)
+  // =================================================================
+  beforeAll(async () => {
+    // 1. Bikin User murni di DB lokal (Cepat Kilat)
     const user = await prisma.user.create({
       data: {
-        email: "owner_detail@test.com",
-        supabase_id: "dummy-supa-detail-123",
+        email: `owner_detail_${Date.now()}@test.com`,
+        supabase_id: crypto.randomUUID(),
         name: "Owner Detail",
       },
     });
     userId = user.id;
 
-    // 3. Bikin Toko Aktif
+    // 2. Bikin Toko Aktif dengan public_id dinamis
+    storePublicId = crypto.randomUUID();
     const store = await prisma.store.create({
       data: {
         user_id: userId,
-        public_id: STORE_PUBLIC_ID,
+        public_id: storePublicId,
         name: "Warung Kopi",
         timezone: "Asia/Jakarta",
         is_delete: false,
@@ -48,7 +42,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
     });
     internalStoreId = store.id;
 
-    // 4. Bikin Grup Addon & Addon
+    // 3. Bikin Grup Addon & Addon
     const addonGroup = await prisma.addonGroup.create({
       data: {
         store_id: internalStoreId,
@@ -73,7 +67,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
       },
     });
 
-    // 5. Bikin Produk Aktif (dengan Varian & Addon)
+    // 4. Bikin Produk Aktif (dengan Varian & Addon)
     const activeProduct = await prisma.product.create({
       data: {
         store_id: internalStoreId,
@@ -99,7 +93,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
     });
     validProductId = activeProduct.id;
 
-    // 6. Bikin Produk yang sudah di-soft delete
+    // 5. Bikin Produk yang sudah di-soft delete
     const deletedProduct = await prisma.product.create({
       data: {
         store_id: internalStoreId,
@@ -111,9 +105,9 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
     });
     deletedProductId = deletedProduct.id;
 
-    // 7. Siapkan Transaksi Dummy buat ngetes total_sold
+    // 6. Siapkan Transaksi Dummy buat ngetes total_sold
     const guest = await prisma.guest.create({
-      data: { id: "guest-uuid-1234-5678-9012-3456789012" },
+      data: { id: crypto.randomUUID() },
     });
     guestId = guest.id;
 
@@ -154,29 +148,60 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
         quantity: 10,
       },
     });
-  });
+  }, 20000);
 
-  afterEach(async () => {
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.productAddonGroup.deleteMany({});
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.variant.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({});
-  });
+  // =================================================================
+  // ⚡ CLEANUP UTAMA: Dilakukan CUMA 1 KALI di akhir
+  // =================================================================
+  afterAll(async () => {
+    // Menghapus data hanya yang bersinggungan dengan store ID ini (Anti-tubruk)
+    if (internalStoreId) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store_id: internalStoreId } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.productAddonGroup.deleteMany({
+        where: { product: { store_id: internalStoreId } },
+      });
+      await prisma.addon.deleteMany({
+        where: { addon_group: { store_id: internalStoreId } },
+      });
+      await prisma.addonGroup.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: internalStoreId } },
+      });
+      await prisma.product.deleteMany({
+        where: { store_id: internalStoreId },
+      });
+      await prisma.store.deleteMany({
+        where: { id: internalStoreId },
+      });
+    }
+
+    if (guestId) {
+      await prisma.guest.deleteMany({ where: { id: guestId } });
+    }
+
+    if (userId) {
+      await prisma.user.deleteMany({ where: { id: userId } });
+    }
+  }, 20000);
+
+  // ====================== TEST CASES ====================== //
 
   test("should successfully return product details, filter deleted variants/addons, and calculate total_sold exactly", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products/${validProductId}`,
+      `/api/stores/${storePublicId}/products/${validProductId}`,
     );
+
     expect(response.status).toBe(200);
     const data = response.body.data;
 
-    // Cek basic info & perbaikan yang baru lu lakuin
+    // Cek basic info
     expect(data.id).toBe(validProductId);
     expect(data.name).toBe("Kopi Susu Gula Aren");
     expect(data.is_available).toBe(true);
@@ -198,7 +223,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
 
   test("should reject 400 Bad Request if UUID format is invalid", async () => {
     const response = await supertest(web).get(
-      `/api/stores/bukan uuid 123/products/bukan uuid 456`,
+      `/api/stores/bukan-uuid-123/products/bukan-uuid-456`,
     );
 
     // Ditolak Joi validator
@@ -207,7 +232,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
 
   test("should return 404 if product is already soft-deleted (is_delete = true)", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products/${deletedProductId}`,
+      `/api/stores/${storePublicId}/products/${deletedProductId}`,
     );
 
     expect(response.status).toBe(404);
@@ -216,7 +241,7 @@ describe("GET /api/stores/:storeId/products/:productId (Product Details)", () =>
 
   test("should return 404 if product does not exist at all", async () => {
     const response = await supertest(web).get(
-      `/api/stores/${STORE_PUBLIC_ID}/products/${FAKE_UUID}`,
+      `/api/stores/${storePublicId}/products/${FAKE_UUID}`,
     );
 
     expect(response.status).toBe(404);

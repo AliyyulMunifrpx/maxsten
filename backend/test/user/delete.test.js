@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { v4 as uuidv4 } from "uuid";
+// 1. Import supabase admin sesuai permintaan
+import { supabase } from "../../src/application/supabase.js";
 
 describe("delete user", () => {
   let cookies = [];
@@ -10,29 +12,44 @@ describe("delete user", () => {
   let userId = "";
 
   beforeEach(async () => {
-    // 1. Kita bikin email unik setiap kali test jalan (pakai Date.now)
+    // 1. Bikin email unik setiap kali test jalan
     testEmail = `tumbal_${Date.now()}@gmail.com`;
 
-    // 2. Register akun tumbal
-    await supertest(web).post("/api/users").send({
+    // 2. Bikin akun langsung via Supabase Admin (Bypass kirim email & langsung verified)
+    const { data: authData, error } = await supabase.auth.admin.createUser({
       email: testEmail,
-      name: "Tumbal Delete",
       password: "password123",
+      email_confirm: true,
+      user_metadata: {
+        name: "Tumbal Delete",
+      },
     });
 
-    // 3. Login pakai akun tumbal buat dapet karcis (cookie)
+    if (error) {
+      throw new Error(`Supabase Admin Error: ${error.message}`);
+    }
+
+    // Ambil User ID langsung dari response Supabase Auth
+    userId = authData.user.id;
+
+    // 3. Inject data ke Prisma (Memasukkan supabase_id yang diminta)
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId, // Field yang tadi kurang
+        email: testEmail,
+        name: "Tumbal Delete",
+      },
+    });
+
+    // 4. Langsung Login!
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
     cookies = result.headers["set-cookie"];
-
-    // Ambil User ID untuk dipakai di pembuatan Store & Queue
-    const user = await prisma.user.findUnique({ where: { email: testEmail } });
-    userId = user.id;
-  }, 20000); // Timeout 20 detik untuk Register + Login
-
+  }, 20000);
   test("should reject delete if unauthorized (no cookie)", async () => {
     // Eksekusi delete TAPI sengaja nggak bawa cookie
     const result = await supertest(web).delete("/api/users/me");
@@ -46,6 +63,7 @@ describe("delete user", () => {
     const result = await supertest(web)
       .delete("/api/users/me")
       .set("Cookie", cookies);
+    console.log("DELETE ACCOUNT RESULT:", result.body);
 
     // 2. Pastikan respon dari API bener (200 OK)
     expect(result.status).toBe(200);
@@ -131,7 +149,9 @@ describe("delete user", () => {
 
     // 5. Pastikan DITOLAK oleh sistem (409 Conflict)
     expect(result.status).toBe(409);
-    expect(result.body.errors).toContain("You cannot delete your account because you have an active queue");
+    expect(result.body.errors).toContain(
+      "You cannot delete your account because your store still has active customer queues.",
+    );
 
     // 6. PEMBUKTIAN: Pastikan User dan Toko TIDAK terhapus sama sekali (Data aman)
     const userInDb = await prisma.user.findUnique({

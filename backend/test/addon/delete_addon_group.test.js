@@ -1,60 +1,142 @@
 import supertest from "supertest";
-import { beforeEach, afterEach, describe, expect, test } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { v4 as uuidv4 } from "uuid";
-
-const LOGIN_EMAIL = "test_delete_addon@gmail.com";
-const LOGIN_PASSWORD = "password123";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 
 describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   let cookies = [];
-  let userId = "";
-  let storeId = null;
 
+  // User Scope (Dibuat sekali di beforeAll)
+  let testEmail = "";
+  let userId = "";
+  let hackerEmail = "";
+  let hackerUserId = "";
+
+  // Data Scope (Dibuat ulang di beforeEach)
+  let storeId = null;
   let targetGroupId = "";
   let addon1_Id = "";
   let addon2_Id = "";
 
+  let hackerStoreId = null;
   let otherUserGroupId = "";
 
-  beforeEach(async () => {
-    // 1. Bersihkan semua tabel terkait dari child ke parent
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
-    await prisma.guest.deleteMany({});
-    await prisma.productAddonGroup.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "hacker@gmail.com" } });
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Hit Supabase CUMA 1 KALI untuk semua test
+  // =================================================================
+  beforeAll(async () => {
+    testEmail = `delete_addon_${Date.now()}@gmail.com`;
+    hackerEmail = `hacker_addon_${Date.now()}@gmail.com`;
 
-    // 2. Register dan Login
-    await supertest(web).post("/api/users").send({
-      email: LOGIN_EMAIL,
-      name: "User Delete",
-      password: LOGIN_PASSWORD,
+    // 1. Setup User Utama via Supabase
+    const { data: authMain, error: err1 } =
+      await supabase.auth.admin.createUser({
+        email: testEmail,
+        password: "password123",
+        email_confirm: true,
+        user_metadata: { name: "Tumbal Main" },
+      });
+    if (err1) throw new Error(`Supabase Admin Error 1: ${err1.message}`);
+    userId = authMain.user.id;
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Main",
+      },
     });
 
+    // 2. Setup Hacker via Supabase
+    const { data: authHacker, error: err2 } =
+      await supabase.auth.admin.createUser({
+        email: hackerEmail,
+        password: "password123",
+        email_confirm: true,
+        user_metadata: { name: "Tumbal Hacker" },
+      });
+    if (err2) throw new Error(`Supabase Admin Error 2: ${err2.message}`);
+    hackerUserId = authHacker.user.id;
+    await prisma.user.create({
+      data: {
+        id: hackerUserId,
+        supabase_id: hackerUserId,
+        email: hackerEmail,
+        name: "Tumbal Hacker",
+      },
+    });
+
+    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+      email: testEmail,
+      password: "password123",
     });
     cookies = loginResult.headers["set-cookie"];
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
-    });
-    userId = user.id;
+  }, 20000);
 
-    // 3. Buatkan Toko Aktif
+  afterAll(async () => {
+    // Bersihkan User di akhir file secara total (Prisma & Supabase)
+    const userIds = [userId, hackerUserId].filter(Boolean);
+    if (userIds.length > 0) {
+      await prisma.user.deleteMany({
+        where: { id: { in: userIds } },
+      });
+      for (const id of userIds) {
+        try {
+          await supabase.auth.admin.deleteUser(id);
+        } catch (err) {}
+      }
+    }
+  }, 20000);
+
+  // =================================================================
+  // ⚡ RESET LOKAL: Database Prisma Cepat Kilat (Tanpa Internet)
+  // =================================================================
+  beforeEach(async () => {
+    const activeUserIds = [userId, hackerUserId].filter(Boolean);
+
+    // 1. Bersihkan sisa data test sebelumnya (Targeted Cleanup)
+    await prisma.queueDetail.deleteMany({
+      where: { queue: { store: { user_id: { in: activeUserIds } } } },
+    });
+    await prisma.queue.deleteMany({
+      where: { store: { user_id: { in: activeUserIds } } },
+    });
+    await prisma.productAddonGroup.deleteMany({
+      where: { product: { store: { user_id: { in: activeUserIds } } } },
+    });
+    await prisma.product.deleteMany({
+      where: { store: { user_id: { in: activeUserIds } } },
+    });
+    await prisma.addon.deleteMany({
+      where: { addon_group: { store: { user_id: { in: activeUserIds } } } },
+    });
+    await prisma.addonGroup.deleteMany({
+      where: { store: { user_id: { in: activeUserIds } } },
+    });
+    await prisma.store.deleteMany({
+      where: { user_id: { in: activeUserIds } },
+    });
+    await prisma.guest.deleteMany({}); // Guest bebas dihapus semua krn gak punya parent
+
+    // 2. Buatkan Toko Aktif (User Utama)
     const store = await prisma.store.create({
       data: { user_id: userId, name: "Toko Delete", timezone: "Asia/Jakarta" },
     });
     storeId = store.id;
 
-    // 4. Bikin Grup Target Delete
+    // 3. Bikin Grup Target Delete
     targetGroupId = uuidv4();
     addon1_Id = uuidv4();
     addon2_Id = uuidv4();
@@ -84,24 +166,19 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
       },
     });
 
-    // 5. Bikin data hacker untuk tes IDOR (Biar user ga bisa hapus grup toko lain)
-    const hacker = await prisma.user.create({
-      data: {
-        email: "hacker@gmail.com",
-        name: "Hacker",
-        supabase_id: uuidv4(),
-      },
-    });
+    // 4. Bikin Toko & Grup Addon untuk Hacker (Tes IDOR)
     const hackerStore = await prisma.store.create({
       data: {
-        user_id: hacker.id,
+        user_id: hackerUserId,
         name: "Toko Hacker",
         timezone: "Asia/Jakarta",
       },
     });
+    hackerStoreId = hackerStore.id;
+
     const hackerGroup = await prisma.addonGroup.create({
       data: {
-        store_id: hackerStore.id,
+        store_id: hackerStoreId,
         name: "Topping Hacker",
         created_at: new Date(),
       },
@@ -110,17 +187,33 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   }, 20000);
 
   afterEach(async () => {
-    await prisma.queueDetail.deleteMany({});
-    await prisma.queue.deleteMany({});
+    // Bersihkan data Toko & Addon setiap selesai 1 test case
+    const activeUserIds = [userId, hackerUserId].filter(Boolean);
+    if (activeUserIds.length > 0) {
+      await prisma.queueDetail.deleteMany({
+        where: { queue: { store: { user_id: { in: activeUserIds } } } },
+      });
+      await prisma.queue.deleteMany({
+        where: { store: { user_id: { in: activeUserIds } } },
+      });
+      await prisma.productAddonGroup.deleteMany({
+        where: { product: { store: { user_id: { in: activeUserIds } } } },
+      });
+      await prisma.product.deleteMany({
+        where: { store: { user_id: { in: activeUserIds } } },
+      });
+      await prisma.addon.deleteMany({
+        where: { addon_group: { store: { user_id: { in: activeUserIds } } } },
+      });
+      await prisma.addonGroup.deleteMany({
+        where: { store: { user_id: { in: activeUserIds } } },
+      });
+      await prisma.store.deleteMany({
+        where: { user_id: { in: activeUserIds } },
+      });
+    }
     await prisma.guest.deleteMany({});
-    await prisma.productAddonGroup.deleteMany({});
-    await prisma.product.deleteMany({});
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "hacker@gmail.com" } });
-  });
+  }, 20000);
 
   // ====================== TEST CASES ====================== //
 

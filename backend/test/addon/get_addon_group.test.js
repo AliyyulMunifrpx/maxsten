@@ -1,47 +1,82 @@
 import supertest from "supertest";
-import { beforeEach, afterEach, describe, expect, test } from "vitest";
+import { beforeAll, afterAll, describe, expect, test } from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { v4 as uuidv4 } from "uuid";
-
-const LOGIN_EMAIL = "test_addongroup@gmail.com";
-const LOGIN_PASSWORD = "password123";
+// 🚨 Import supabase admin
+import { supabase } from "../../src/application/supabase.js";
 
 describe("GET /api/stores/addon-groups/:addonGroupId", () => {
   let cookies = [];
+
+  // User Scope
+  let testEmail = "";
   let userId = "";
+  let otherEmail = "";
+  let otherUserId = "";
+
+  // Data Scope
   let storeId = null;
   let activeAddonGroupId = "";
   let deletedAddonGroupId = "";
+  let otherStoreId = null;
   let otherUserAddonGroupId = "";
 
-  beforeEach(async () => {
-    // 1. Bersihkan data (dari child ke parent untuk hindari error Foreign Key)
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "other_user@gmail.com" } });
+  // =================================================================
+  // ⚡ SEKSI SUPER RINGAN: Setup dilakukan CUMA 1 KALI di awal file
+  // =================================================================
+  beforeAll(async () => {
+    testEmail = `get_addon_${Date.now()}@gmail.com`;
+    otherEmail = `other_get_addon_${Date.now()}@gmail.com`;
 
-    // 2. Register dan Login untuk User Utama
-    await supertest(web).post("/api/users").send({
-      email: LOGIN_EMAIL,
-      name: "User Addon Test",
-      password: LOGIN_PASSWORD,
+    // 1. Setup User Utama via Supabase
+    const { data: authMain, error: err1 } =
+      await supabase.auth.admin.createUser({
+        email: testEmail,
+        password: "password123",
+        email_confirm: true,
+        user_metadata: { name: "Tumbal Get Addon" },
+      });
+    if (err1) throw new Error(`Supabase Admin Error 1: ${err1.message}`);
+    userId = authMain.user.id;
+
+    await prisma.user.create({
+      data: {
+        id: userId,
+        supabase_id: userId,
+        email: testEmail,
+        name: "Tumbal Get Addon",
+      },
     });
 
-    const result = await supertest(web).post(`/api/users/login`).send({
-      email: LOGIN_EMAIL,
-      password: LOGIN_PASSWORD,
+    // 2. Setup User Lain (Untuk IDOR) via Supabase
+    const { data: authOther, error: err2 } =
+      await supabase.auth.admin.createUser({
+        email: otherEmail,
+        password: "password123",
+        email_confirm: true,
+        user_metadata: { name: "Tumbal Other" },
+      });
+    if (err2) throw new Error(`Supabase Admin Error 2: ${err2.message}`);
+    otherUserId = authOther.user.id;
+
+    await prisma.user.create({
+      data: {
+        id: otherUserId,
+        supabase_id: otherUserId,
+        email: otherEmail,
+        name: "Tumbal Other",
+      },
     });
 
-    cookies = result.headers["set-cookie"];
-    const user = await prisma.user.findUnique({
-      where: { email: LOGIN_EMAIL },
+    // 3. Login SEKALI SAJA untuk User Utama
+    const loginResult = await supertest(web).post("/api/users/login").send({
+      email: testEmail,
+      password: "password123",
     });
-    userId = user.id;
+    cookies = loginResult.headers["set-cookie"];
 
-    // 3. Buat Store milik User Utama
+    // 4. Buat Store milik User Utama
     const store = await prisma.store.create({
       data: {
         user_id: userId,
@@ -51,7 +86,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     });
     storeId = store.id;
 
-    // 4. Buat Addon Group AKTIF beserta Addon-nya (Ada yang aktif, ada yang soft-delete)
+    // 5. Buat Addon Group AKTIF beserta Addon-nya
     activeAddonGroupId = uuidv4();
     await prisma.addonGroup.create({
       data: {
@@ -66,15 +101,15 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
               id: uuidv4(),
               name: "Keju (Habis)",
               price: 4000,
-              is_delete: true,
+              is_delete: true, // 👈 Sengaja di soft-delete
               created_at: new Date(),
-            }, // 👈 Sengaja di soft-delete
+            },
           ],
         },
       },
     });
 
-    // 5. Buat Addon Group SOFT-DELETE (is_delete: true) milik User Utama
+    // 6. Buat Addon Group SOFT-DELETE milik User Utama
     deletedAddonGroupId = uuidv4();
     await prisma.addonGroup.create({
       data: {
@@ -86,40 +121,55 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
       },
     });
 
-    // 6. Buat User & Toko Lain (Untuk simulasi celah keamanan IDOR)
-    const otherUser = await prisma.user.create({
-      data: {
-        email: "other_user@gmail.com",
-        name: "Orang Lain",
-        supabase_id: uuidv4(),
-      },
-    });
+    // 7. Buat Toko & Addon Group milik Orang Lain
     const otherStore = await prisma.store.create({
       data: {
-        user_id: otherUser.id,
+        user_id: otherUserId,
         name: "Toko Orang Lain",
         timezone: "Asia/Jakarta",
       },
     });
+    otherStoreId = otherStore.id;
 
     otherUserAddonGroupId = uuidv4();
     await prisma.addonGroup.create({
       data: {
         id: otherUserAddonGroupId,
-        store_id: otherStore.id,
+        store_id: otherStoreId,
         name: "Topping Rahasia",
         created_at: new Date(),
       },
     });
   }, 20000);
 
-  afterEach(async () => {
-    await prisma.addon.deleteMany({});
-    await prisma.addonGroup.deleteMany({});
-    await prisma.store.deleteMany({});
-    await prisma.user.deleteMany({ where: { email: LOGIN_EMAIL } });
-    await prisma.user.deleteMany({ where: { email: "other_user@gmail.com" } });
-  });
+  // =================================================================
+  // ⚡ CLEANUP UTAMA: Dilakukan CUMA 1 KALI di akhir (Anti-Tubrukan)
+  // =================================================================
+  afterAll(async () => {
+    const activeUserIds = [userId, otherUserId].filter(Boolean);
+
+    if (activeUserIds.length > 0) {
+      await prisma.addon.deleteMany({
+        where: { addon_group: { store: { user_id: { in: activeUserIds } } } },
+      });
+      await prisma.addonGroup.deleteMany({
+        where: { store: { user_id: { in: activeUserIds } } },
+      });
+      await prisma.store.deleteMany({
+        where: { user_id: { in: activeUserIds } },
+      });
+      await prisma.user.deleteMany({
+        where: { id: { in: activeUserIds } },
+      });
+
+      // Hapus dari Supabase
+      for (const id of activeUserIds) {
+        try {
+          await supabase.auth.admin.deleteUser(id);
+        } catch (err) {}
+      }
+    }
+  }, 20000);
 
   // ====================== TEST CASES ====================== //
 
@@ -136,7 +186,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     // Pastikan addon yang ter-load HANYA yang aktif (is_delete: false)
     expect(result.body.data.addons).toHaveLength(1);
     expect(result.body.data.addons[0].name).toBe("Boba");
-  });
+  }, 20000);
 
   test("2. Should return 401 when unauthorized (no cookie)", async () => {
     const result = await supertest(web).get(
@@ -144,7 +194,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     );
 
     expect(result.status).toBe(401);
-  });
+  }, 20000);
 
   test("3. Should return 400 when addonGroupId is NOT a valid UUID", async () => {
     const result = await supertest(web)
@@ -154,7 +204,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     // Ditolak oleh Joi Validation
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
-  });
+  }, 20000);
 
   test("4. Should return 404 when Addon Group UUID does not exist in database", async () => {
     const randomUuid = uuidv4();
@@ -166,7 +216,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     expect(result.body.errors).toBe(
       "The add-on group was not found, or you do not have access",
     );
-  });
+  }, 20000);
 
   test("5. Should return 404 when Addon Group is already soft-deleted", async () => {
     const result = await supertest(web)
@@ -177,7 +227,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     expect(result.body.errors).toBe(
       "The add-on group was not found, or you do not have access",
     );
-  });
+  }, 20000);
 
   test("6. [SECURITY] Should return 404 when trying to access OTHER USER's Addon Group", async () => {
     // User login dengan akun utama, tapi nembak ID Addon Group punya toko orang lain
@@ -189,5 +239,5 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     expect(result.body.errors).toBe(
       "The add-on group was not found, or you do not have access",
     );
-  });
+  }, 20000);
 });
