@@ -90,7 +90,11 @@ const create = async (requestBody, file) => {
     if (supabaseFileName) {
       // Pastikan memanggil nama bucket yang sama yaitu "store-logos"
       await deleteImageFromSupabase(supabaseFileName, "store-logos").catch(
-        () => {},
+        (err) => {
+          console.error(
+            `[create] Failed to delete uploaded logo ${err.message}`,
+          );
+        },
       );
     }
 
@@ -175,48 +179,66 @@ const updateLogo = async (userId, file) => {
   });
 
   if (!store) {
-    // 🔥 PERBAIKAN 1: Hapus file sampah jika toko tidak ditemukan
-    if (file.path) await fs.unlink(file.path).catch(() => {});
+    // 🔥 PERBAIKAN 1: Tidak perlu lagi fs.unlink.
+    // memoryStorage otomatis membuang file di RAM jika kita throw error di sini.
     throw new ResponseError(404, "Store not found");
   }
 
   const oldLogoUrl = store.logo_url;
-  const newImagePath = `/uploads/${file.filename}`;
+
+  // Variabel untuk menampung data Supabase
+  let uploadedLogoUrl = null;
+  let newSupabaseFileName = null;
+
+  // --- 1. UPLOAD LOGO BARU KE SUPABASE ---
+  // Kita lakukan upload duluan sebelum update Database
+  const result = await uploadImageToSupabase(file, "store-logos", "images");
+  uploadedLogoUrl = result.url;
+  newSupabaseFileName = result.fileName; // Simpan untuk rollback jika DB error
 
   try {
+    // --- 2. UPDATE DATABASE ---
     await prisma.store.update({
       where: { id: store.id },
-      data: { logo_url: newImagePath },
+      data: { logo_url: uploadedLogoUrl },
       select: { id: true }, // Cukup id, karena return akhir ambil dari getStore()
     });
   } catch (err) {
-    // Hapus file baru jika update database gagal
-    if (file.path) await fs.unlink(file.path).catch(() => {});
+    // 🔥 PERBAIKAN 2: Rollback Supabase.
+    // Hapus logo BARU dari bucket jika update database gagal
+    if (newSupabaseFileName) {
+      await deleteImageFromSupabase(newSupabaseFileName, "store-logos").catch(
+        () => {},
+      );
+    }
     throw err;
   }
 
-  // 2. Baru hapus file lama SETELAH DB dikonfirmasi berhasil.
+  // --- 3. HAPUS LOGO LAMA SETELAH DB BERHASIL ---
   if (oldLogoUrl) {
-    // 🔥 PERBAIKAN 2: Gunakan process.cwd() agar konsisten dengan endpoint lain
-    // Dan pisahkan '/' agar leading slash tidak menyebabkan masalah pathing
-    const oldPath = path.join(
-      process.cwd(),
-      "public",
-      ...oldLogoUrl.split("/"),
-    );
-    try {
-      await fs.unlink(oldPath);
-    } catch (err) {
-      if (err.code !== "ENOENT") {
+    // Kita harus memastikan oldLogoUrl ini memang URL dari Supabase
+    // (Bukan URL sisa "/uploads/..." dari sistem lokal lamamu)
+    if (oldLogoUrl.includes("supabase.co")) {
+      try {
+        // Ekstrak nama file dari Public URL
+        // Contoh URL: https://[project].supabase.co/storage/v1/object/public/store-logos/images/logo-123.jpg
+        // Hasil split index [1]: "images/logo-123.jpg"
+        const parts = oldLogoUrl.split("/store-logos/");
+
+        if (parts.length > 1) {
+          const oldFileName = parts[1];
+          await deleteImageFromSupabase(oldFileName, "store-logos");
+        }
+      } catch (err) {
+        // Kita tangkap errornya tanpa throw, agar response berhasil update tidak terganggu
         console.error(
-          `[updateLogo] gagal hapus logo lama untuk store ${store.id} di path "${oldPath}": ${err.message}`,
+          `[updateLogo] Failed to delete old logo from Supabase for store ${store.id}: ${err.message}`,
         );
       }
     }
   }
 
-  // Menggunakan fungsi getStore yang sudah ada untuk me-return shape data yang komplit
-  // sesuai janji di dokumen (lengkap dengan is_open, operational_hours, dll)
+  // Menggunakan fungsi getStore yang sudah ada
   return getStore(userId);
 };
 const updateStoreProfile = async (userId, request) => {
@@ -786,6 +808,7 @@ const getStore = async (request) => {
     is_open: isStoreOpen,
   };
 };
+
 const deleteStore = async (userId) => {
   // 1. Ambil id DAN logo_url dari store
   const store = await prisma.store.findFirst({
@@ -795,7 +818,7 @@ const deleteStore = async (userId) => {
     },
     select: {
       id: true,
-      logo_url: true, // <-- Tambahkan ini
+      logo_url: true,
     },
   });
 
@@ -810,28 +833,32 @@ const deleteStore = async (userId) => {
     },
     data: {
       is_delete: true,
-      user_id: null, // Opsional: lepas relasi user agar user bisa buat store baru jika perlu
+      user_id: null, // Opsional: lepas relasi user agar user bisa buat store baru
     },
   });
 
-  // 3. Hapus file logo dari server jika toko punya logo
+  // 3. Hapus file logo dari Supabase jika toko punya logo
   if (store.logo_url) {
-    try {
-      // Hilangkan tanda '/' di depan path jika ada, lalu arahkan ke lokasi folder upload kamu
-      // Sesuaikan 'public' atau '.' sesuai letak folder uploads di project kamu
-      const filePath = path.join(
-        process.cwd(),
-        "public",
-        ...store.logo_url.split("/"),
-      );
-      console.log(filePath);
-      await fs.unlink(filePath);
-    } catch (error) {
-      // Log error saja tanpa throw, agar kegagalan hapus file tidak membatalkan soft delete di DB
-      console.error(
-        "Failed to delete the logo file from the server:",
-        error.message,
-      );
+    if (store.logo_url.includes("supabase.co")) {
+      try {
+        // Ekstrak nama file dari Public URL Supabase
+        // Contoh URL: https://[project].supabase.co/storage/v1/object/public/store-logos/images/logo-123.jpg
+        // Hasil split index [1]: "images/logo-123.jpg"
+        const parts = store.logo_url.split("/store-logos/");
+
+        if (parts.length > 1) {
+          const fileName = parts[1];
+          // Panggil utility hapus bucket
+          await deleteImageFromSupabase(fileName, "store-logos");
+        }
+      } catch (error) {
+        // Log error saja tanpa throw, agar API tetap merespons sukses (200 OK)
+        // karena dari sisi database, tokonya sudah berhasil dihapus.
+        console.error(
+          `[deleteStore] Failed to delete the logo file from Supabase for store ${store.id}:`,
+          error.message,
+        );
+      }
     }
   }
 };

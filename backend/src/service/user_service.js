@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { supabase } from "../application/supabase.js";
 import path from "path";
 import { unlink } from "fs/promises";
+import { deleteImageFromSupabase } from "../utils/delete_to_supabase.js";
 const register = async function (request) {
   const user = validate(registerUserValidation, request);
   console.log("REGISTER INPUT:", user);
@@ -206,6 +207,7 @@ const logout = async (accessToken) => {
 
   return "OK";
 };
+
 const deleteUser = async (userId, supabaseId) => {
   // 1. Cek Antrean Aktif
   const activeUserQueue = await prisma.queue.findFirst({
@@ -227,6 +229,7 @@ const deleteUser = async (userId, supabaseId) => {
     );
   }
 
+  // 2. Ambil informasi toko (termasuk logo_url)
   const store = await prisma.store.findFirst({
     where: {
       user_id: userId,
@@ -234,9 +237,11 @@ const deleteUser = async (userId, supabaseId) => {
     },
     select: {
       logo_url: true,
+      id: true, // Opsional, berguna jika mau nge-log error spesifik ke toko mana
     },
   });
 
+  // 3. Hapus data secara transaksional di Database
   try {
     await prisma.$transaction([
       prisma.store.updateMany({
@@ -249,6 +254,7 @@ const deleteUser = async (userId, supabaseId) => {
     ]);
   } catch (prismaError) {
     if (prismaError.code === "P2025") {
+      // Record to delete does not exist (bisa diabaikan sesuai logika aslimu)
     } else {
       console.error("Gagal hapus Prisma:", prismaError);
       throw new ResponseError(
@@ -258,6 +264,7 @@ const deleteUser = async (userId, supabaseId) => {
     }
   }
 
+  // 4. Hapus user dari Supabase Auth
   const { error } = await supabase.auth.admin.deleteUser(supabaseId);
   if (error) {
     console.error("Failed to delete user from Supabase:", error.message);
@@ -266,15 +273,25 @@ const deleteUser = async (userId, supabaseId) => {
     });
   }
 
+  // 5. 🔥 Hapus logo toko dari Supabase Storage (JIKA ADA)
   if (store && store.logo_url) {
-    try {
-      const filePath = path.join(process.cwd(), "public", store.logo_url);
-      await unlink(filePath);
-    } catch (fileError) {
-      console.error(
-        "File logo gagal dihapus dari hardisk (abaikan):",
-        fileError.message,
-      );
+    if (store.logo_url.includes("supabase.co")) {
+      try {
+        // Ekstrak nama file dari Public URL Supabase
+        const parts = store.logo_url.split("/store-logos/");
+        
+        if (parts.length > 1) {
+          const fileName = parts[1];
+          // Eksekusi hapus file dari bucket
+          await deleteImageFromSupabase(fileName, "store-logos");
+        }
+      } catch (fileError) {
+        // Log error saja tanpa throw, karena akun user & database sudah berhasil dihapus
+        console.error(
+          `[deleteUser] Store logo failed to be deleted from Supabase (ignore):`,
+          fileError.message,
+        );
+      }
     }
   }
 

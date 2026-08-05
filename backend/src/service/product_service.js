@@ -12,6 +12,8 @@ import {
   updateProductValidation,
 } from "../validation/product_validation.js";
 import { validate } from "../validation/validation.js";
+import { uploadImageToSupabase } from "../utils/upload_to_supabase.js";
+import { deleteImageFromSupabase } from "../utils/delete_to_supabase.js";
 const getProduct = async (userId, request) => {
   const req = validate(getProductValidation, request); // Asumsi ini balikin ID string/UUID
 
@@ -200,42 +202,51 @@ const getAllProducts = async (userId, request) => {
     },
   };
 };
+
 const createProduct = async (request, file) => {
-  // Simpan nama sementara buat jaga-jaga kalau error P2002 terjadi
   let productName = request.name;
 
-  try {
-    // ==========================================
-    // SEMUA LOGIKA LU MASUK KE DALAM TRY DI SINI
-    // ==========================================
+  // 1. Deklarasikan variabel untuk menampung data dari Supabase
+  let uploadedImageUrl = null;
+  let supabaseFileName = null;
 
+  try {
     // 1. Rapihkan data string dari FormData
     if (typeof request.variants === "string") {
-      try {
-        request.variants = JSON.parse(request.variants);
-      } catch (e) {
-        throw new ResponseError(400, "Invalid data format variants");
+      // Abaikan jika string kosong
+      if (request.variants.trim() === "") {
+        delete request.variants; // atau set menjadi [] jika itu ekspektasi database/logic Anda
+      } else {
+        try {
+          request.variants = JSON.parse(request.variants);
+        } catch (e) {
+          throw new ResponseError(400, "Invalid data format variants");
+        }
       }
     }
 
     if (typeof request.addon_group_ids === "string") {
-      try {
-        request.addon_group_ids = JSON.parse(request.addon_group_ids);
-      } catch (e) {
-        throw new ResponseError(
-          400,
-          "The format of the addon_group_ids data is invalid",
-        );
+      // Abaikan jika string kosong
+      if (request.addon_group_ids.trim() === "") {
+        delete request.addon_group_ids; // atau set menjadi [] jika itu ekspektasi database/logic Anda
+      } else {
+        try {
+          request.addon_group_ids = JSON.parse(request.addon_group_ids);
+        } catch (e) {
+          throw new ResponseError(
+            400,
+            "The format of the addon_group_ids data is invalid",
+          );
+        }
       }
     }
-
     if (typeof request.price === "string") {
       request.price = Number(request.price);
     }
 
     // 2. Validasi dengan Zod
     const req = validate(createProductValidation, request);
-    productName = req.name; // Update nama dari hasil validasi Zod yang bersih
+    productName = req.name;
 
     // 3. Cek apakah toko milik user ini ada
     const store = await prisma.store.findFirst({
@@ -264,7 +275,19 @@ const createProduct = async (request, file) => {
       }
     }
 
-    const productImagePath = file ? `/uploads/${file.filename}` : null;
+    // --- 5. UPLOAD GAMBAR KE SUPABASE (Jika Ada) ---
+    if (file) {
+      // Kita panggil bucket "product-images", dan bebas pakai folder apa, misal "images"
+      const result = await uploadImageToSupabase(
+        file,
+        "product-images",
+        "images",
+      );
+      uploadedImageUrl = result.url;
+      supabaseFileName = result.fileName;
+    }
+    // -----------------------------------------------
+
     const variantNames = (req.variants ?? []).map((v) =>
       v.name.trim().toLowerCase(),
     );
@@ -275,14 +298,15 @@ const createProduct = async (request, file) => {
         "Variant names within a product must be unique",
       );
     }
-    // 5. Eksekusi Create
+
+    // 6. Eksekusi Create
     const newProduct = await prisma.product.create({
       data: {
         name: req.name.trim().toLowerCase(),
         description:
           req.description !== undefined ? req.description.trim() : undefined,
         price: req.price,
-        image_url: productImagePath,
+        image_url: uploadedImageUrl, // <-- Masukkan URL Supabase di sini
         store_id: store.id,
 
         ...(req.variants &&
@@ -333,13 +357,17 @@ const createProduct = async (request, file) => {
     return newProduct;
   } catch (error) {
     // ==========================================
-    // ZONA PENGHANCURAN FILE GAGAL UPLOAD
+    // ZONA PENGHANCURAN FILE ZOMBIE
     // ==========================================
 
-    // 1. APAPUN ERRORNYA (Zod, Prisma, 404), HAPUS FILE FISIKNYA!
-    if (file) {
-      await fs.unlink(file.path).catch(() => {});
+    // 1. Jika gambar sudah terupload ke Supabase, TAPI Prisma (atau validasi setelahnya) gagal, hapus gambarnya!
+    if (supabaseFileName) {
+      await deleteImageFromSupabase(supabaseFileName, "product-images").catch(
+        () => {},
+      );
     }
+
+    // Catatan: fs.unlink dihapus karena kita pakai memoryStorage
 
     if (error.code === "P2002") {
       const modelName = error.meta?.modelName;
@@ -617,6 +645,7 @@ const updateProductInfo = async (userId, productId, request) => {
     throw error;
   }
 };
+
 const updateProductImage = async (userId, productId, file) => {
   if (!file) throw new ResponseError(400, "No image files were uploaded");
 
@@ -631,33 +660,65 @@ const updateProductImage = async (userId, productId, file) => {
   });
 
   if (!product) {
-    // PENTING: Kalau produk nggak ketemu, file baru yang terlanjur di-upload oleh multer
-    // harus dihapus agar tidak menjadi sampah di server!
-    if (file.path) {
-      try {
-        await unlink(file.path);
-      } catch (e) {}
-    }
+    // 🔥 PERBAIKAN 1: Tidak perlu lagi fs.unlink.
+    // File ada di memori RAM dan akan otomatis dibersihkan Node.js
+    // jika kita throw error di sini.
     throw new ResponseError(404, "Product not found");
   }
 
   const oldImageUrl = product.image_url;
-  const newImageUrl = `/uploads/${file.filename}`;
 
-  // 2. Update database terlebih dahulu
-  const updatedProduct = await prisma.product.update({
-    where: { id: productId },
-    data: { image_url: newImageUrl },
-    select: { id: true, name: true, image_url: true },
-  });
+  // Siapkan variabel untuk menampung hasil upload Supabase
+  let uploadedImageUrl = null;
+  let newSupabaseFileName = null;
 
-  // 3. Jika update database sukses dan produk punya gambar lama, hapus file lamanya
+  // --- 2. UPLOAD GAMBAR BARU KE SUPABASE ---
+  // Upload harus sukses dulu sebelum menyentuh database
+  const result = await uploadImageToSupabase(file, "product-images", "images");
+  uploadedImageUrl = result.url;
+  newSupabaseFileName = result.fileName;
+
+  let updatedProduct;
+  try {
+    // --- 3. UPDATE DATABASE ---
+    updatedProduct = await prisma.product.update({
+      where: { id: productId },
+      data: { image_url: uploadedImageUrl }, // Gunakan URL Publik dari Supabase
+      select: { id: true, name: true, image_url: true },
+    });
+  } catch (error) {
+    // --- 4. ROLLBACK (ANTI ZOMBIE FILE) ---
+    // Jika database gagal update (misal karena timeout Prisma),
+    // hapus file yang BARU SAJA berhasil di-upload ke Supabase
+    if (newSupabaseFileName) {
+      await deleteImageFromSupabase(
+        newSupabaseFileName,
+        "product-images",
+      ).catch(() => {});
+    }
+    throw error; // Lempar ulang errornya agar ditangkap oleh error middleware
+  }
+
+  // --- 5. HAPUS GAMBAR LAMA (JIKA ADA) ---
+  // Kode ini hanya jalan jika proses update Database berhasil 100%
   if (oldImageUrl) {
-    try {
-      const oldFilePath = path.join(process.cwd(), "public", oldImageUrl);
-      await unlink(oldFilePath);
-    } catch (error) {
-      // Abaikan jika file lama sudah tidak ada (ENOENT)
+    if (oldImageUrl.includes("supabase.co")) {
+      try {
+        // Ekstrak nama file lama dari URL Publik Supabase
+        const parts = oldImageUrl.split("/product-images/");
+
+        if (parts.length > 1) {
+          const oldFileName = parts[1];
+          // Hapus gambar lama dari bucket
+          await deleteImageFromSupabase(oldFileName, "product-images");
+        }
+      } catch (error) {
+        // Log error tanpa throw agar API tetap merespons kesuksesan update produk
+        console.error(
+          `[updateProductImage] Failed to delete OLD image from Supabase for product ${productId}:`,
+          error.message,
+        );
+      }
     }
   }
 
@@ -690,50 +751,53 @@ const updateProductAvailability = async (userId, request) => {
     },
   });
 };
+
 const deleteProduct = async (userId, id) => {
   const productId = validate(deleteProductValidation, id);
   // 1. Jalankan transaksi dengan pessimistic locking
-  return await prisma.$transaction(async (tx) => {
-    // Lock row produk untuk mencegah race condition dari request bersamaan
+  let imageToDeleteUrl = null;
+
+  // Mulai Transaksi Database
+  const deletedProduct = await prisma.$transaction(async (tx) => {
+    // 1. Lock row produk untuk mencegah race condition
     const lockedProduct = await tx.$queryRaw`
-  SELECT p.id FROM "products" p
-  INNER JOIN "stores" s ON p.store_id = s.id
-  WHERE p.id = ${productId}
-    AND p.is_delete = false
-    AND s.user_id = ${userId}
-    AND s.is_delete = false
-  FOR UPDATE
-`;
+    SELECT p.id FROM "products" p 
+    INNER JOIN "stores" s ON p.store_id = s.id 
+    WHERE p.id = ${productId} 
+      AND p.is_delete = false 
+      AND s.user_id = ${userId} 
+      AND s.is_delete = false 
+    FOR UPDATE
+  `;
+
     if (!lockedProduct || lockedProduct.length === 0) {
       throw new ResponseError(404, "Product not found or not owned by you");
     }
-    // 2. Cari produk sekaligus pastikan kepemilikan store milik user yang login
+
+    // 2. Cari produk (untuk mendapatkan image_url)
     const product = await tx.product.findFirst({
       where: {
         id: productId,
         is_delete: false,
-        store: {
-          user_id: userId,
-          is_delete: false,
-        },
+        store: { user_id: userId, is_delete: false },
       },
-      select: {
-        id: true,
-        image_url: true,
-      },
+      select: { id: true, image_url: true },
     });
 
     if (!product) {
       throw new ResponseError(404, "Product not found or not owned by you");
     }
 
-    // 3. Cek apakah produk ini sedang ada di antrean aktif
+    // SIMPAN URL GAMBAR untuk diproses di luar transaksi
+    if (product.image_url) {
+      imageToDeleteUrl = product.image_url;
+    }
+
+    // 3. Cek antrean aktif
     const activeQueueCount = await tx.queueDetail.count({
       where: {
         product_id: productId,
-        queue: {
-          status: { in: ["BELUM_BAYAR", "DIPROSES"] },
-        },
+        queue: { status: { in: ["BELUM_BAYAR", "DIPROSES"] } },
       },
     });
 
@@ -744,8 +808,8 @@ const deleteProduct = async (userId, id) => {
       );
     }
 
-    // 4. Lakukan Soft Delete pada produk & varian
-    const deletedProduct = await tx.product.update({
+    // 4. Soft Delete pada produk & varian
+    return await tx.product.update({
       where: { id: productId },
       data: {
         is_delete: true,
@@ -756,27 +820,31 @@ const deleteProduct = async (userId, id) => {
           },
         },
       },
-      select: {
-        id: true,
-        name: true,
-        is_delete: true,
-      },
+      select: { id: true, name: true, is_delete: true },
     });
+  }); // <--- TRANSAKSI DATABASE SELESAI DI SINI (Koneksi & Lock dilepas)
 
-    // 5. Cleanup file fisik gambar produk jika ada
-    if (product.image_url) {
-      try {
-        const filePath = path.join(process.cwd(), "public", product.image_url);
-        await unlink(filePath);
-      } catch (error) {
-        // Abaikan jika file fisik tidak ditemukan
+  // --- 5. Cleanup file gambar produk di Supabase ---
+  // Dieksekusi DI LUAR transaksi agar tidak memblokir database
+  if (imageToDeleteUrl && imageToDeleteUrl.includes("supabase.co")) {
+    try {
+      const parts = imageToDeleteUrl.split("/product-images/");
+      if (parts.length > 1) {
+        const fileName = parts[1];
+        await deleteImageFromSupabase(fileName, "product-images");
       }
+    } catch (error) {
+      // Transaksi database sudah berhasil, jadi kita cukup log error-nya saja
+      // jika Supabase gagal menghapus gambarnya.
+      console.error(
+        `[deleteProduct] Failed to delete image from Supabase for product ${productId}:`,
+        error.message,
+      );
     }
+  }
 
-    return deletedProduct;
-  });
+  return deletedProduct;
 };
-
 export default {
   updateProductImage,
   createProduct,
