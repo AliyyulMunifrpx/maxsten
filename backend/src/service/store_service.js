@@ -12,7 +12,6 @@ import {
 import { validate } from "../validation/validation.js";
 import { getDaysInMonth, subMonths } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
-import fs from "fs/promises";
 import assertValidOperationalHours from "../utils/valid_operational_hours.js";
 import { deleteImageFromSupabase } from "../utils/delete_to_supabase.js";
 import { uploadImageToSupabase } from "../utils/upload_to_supabase.js";

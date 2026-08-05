@@ -1,7 +1,5 @@
-import { unlink } from "fs/promises";
 import { prisma } from "../application/database.js";
 import { ResponseError } from "../error/response_error.js";
-import fs from "fs/promises";
 import path from "path";
 import {
   createProductValidation,

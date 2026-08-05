@@ -12,74 +12,73 @@ import { v7 as uuid } from "uuid";
 import crypto from "crypto";
 import { supabase } from "../application/supabase.js";
 import path from "path";
-import { unlink } from "fs/promises";
 import { deleteImageFromSupabase } from "../utils/delete_to_supabase.js";
+
+function emailLockKey(email) {
+  // advisory lock butuh bigint, jadi hash email jadi angka
+  const hash = crypto.createHash("md5").update(email.toLowerCase()).digest();
+  return hash.readBigInt64BE(0);
+}
+
 const register = async function (request) {
   const user = validate(registerUserValidation, request);
-  console.log("REGISTER INPUT:", user);
+  const lockKey = emailLockKey(user.email);
 
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      email: user.email,
+  return await prisma.$transaction(
+    async (tx) => {
+      // kunci berdasarkan email, dilepas otomatis pas transaksi selesai
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+
+      const existingUser = await tx.user.findFirst({
+        where: { email: user.email },
+      });
+      if (existingUser) {
+        throw new ResponseError(400, "That email address already exists");
+      }
+
+      let authData;
+      try {
+        const result = await supabase.auth.signUp({
+          email: user.email,
+          password: user.password,
+        });
+        if (result.error) {
+          console.log("SUPABASE SIGNUP ERROR:", result.error);
+          throw new ResponseError(400, "That email address already exists");
+        }
+        authData = result.data;
+      } catch (e) {
+        if (e instanceof ResponseError) throw e;
+        console.log("SUPABASE SIGNUP THREW (raw):", e);
+        throw new ResponseError(400, "That email address already exists");
+      }
+
+      if (!authData?.user || authData.user.identities?.length === 0) {
+        throw new ResponseError(400, "That email address already exists");
+      }
+
+      try {
+        return await tx.user.create({
+          data: {
+            supabase_id: authData.user.id,
+            email: user.email,
+            name: user.name,
+          },
+          select: { email: true, name: true },
+        });
+      } catch (e) {
+        console.log("PRISMA CREATE ERROR:", e);
+        try {
+          await supabase.auth.admin.deleteUser(authData.user.id);
+        } catch {}
+        if (e.code === "P2002") {
+          throw new ResponseError(400, "That email address already exists");
+        }
+        throw e;
+      }
     },
-  });
-
-  if (existingUser) {
-    throw new ResponseError(400, "That email address already exists");
-  }
-
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: user.email,
-    password: user.password,
-  });
-
-  if (authError) {
-    console.log("SUPABASE SIGNUP ERROR:", {
-      message: authError.message,
-      status: authError.status,
-      code: authError.code,
-      name: authError.name,
-    });
-    throw new ResponseError(authError.status || 400, authError.message);
-  }
-
-  console.log("SUPABASE SIGNUP SUCCESS:", {
-    userId: authData?.user?.id,
-    identitiesLength: authData?.user?.identities?.length,
-  });
-
-  if (!authData?.user || authData.user.identities?.length === 0) {
-    throw new ResponseError(400, "That email address already exists");
-  }
-
-  try {
-    return await prisma.user.create({
-      data: {
-        supabase_id: authData.user.id,
-        email: user.email,
-        name: user.name,
-      },
-      select: {
-        email: true,
-        name: true,
-      },
-    });
-  } catch (e) {
-    console.log("PRISMA CREATE ERROR:", {
-      code: e.code,
-      message: e.message,
-      meta: e.meta,
-    });
-
-    try {
-      await supabase.auth.admin.deleteUser(authData.user.id);
-    } catch {}
-
-    if (e.code === "P2002") {
-      throw new ResponseError(400, "That email address already exists");
-    }
-    throw e;
-  }
+    { timeout: 15000 },
+  );
 };
 const login = async function (request) {
   const loginRequest = validate(loginUserValidation, request);
@@ -279,7 +278,7 @@ const deleteUser = async (userId, supabaseId) => {
       try {
         // Ekstrak nama file dari Public URL Supabase
         const parts = store.logo_url.split("/store-logos/");
-        
+
         if (parts.length > 1) {
           const fileName = parts[1];
           // Eksekusi hapus file dari bucket

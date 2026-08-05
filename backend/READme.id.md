@@ -6,9 +6,9 @@ Dibangun dengan Node.js/Express, Prisma ORM, dan Supabase Auth, dengan update re
 
 ## ⚠️ Penting: Jalankan Secara Lokal (Localhost)
 
-API Live yang tertera di bawah ini **hanya disediakan untuk keperluan demo dan melihat dokumentasi**. 
+API Live yang tertera di bawah ini **hanya disediakan untuk keperluan demo dan melihat dokumentasi**.
 
-Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server memiliki batasan *resource* yang ketat dan tidak didesain untuk menerima *traffic* atau *request* dari project/frontend orang lain. 
+Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server memiliki batasan _resource_ yang ketat dan tidak didesain untuk menerima _traffic_ atau _request_ dari project/frontend orang lain.
 
 **Jika Anda ingin menguji API, melakukan testing lanjutan, atau membangun frontend di atas API ini, Anda diwajibkan untuk menjalankan project ini secara lokal di mesin Anda dengan mengikuti panduan di bagian [Memulai](#memulai) di bawah.**
 
@@ -17,11 +17,12 @@ Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server 
 - **Base URL:** [https://maxsten.onrender.com](https://maxsten.onrender.com)
 - **Dokumentasi API (Swagger UI):** [/docs/en](https://maxsten.onrender.com/docs/en) · [/docs/id](https://maxsten.onrender.com/docs/id)
 
-> **Catatan Demo:** Server demo akan "tidur" setelah tidak ada aktivitas. Request pertama setelah *idle* lama bisa memakan waktu 30-60 detik untuk membangunkan server. Request selanjutnya akan kembali cepat.
+> **Catatan Demo:** Server demo akan "tidur" setelah tidak ada aktivitas. Request pertama setelah _idle_ lama bisa memakan waktu 30-60 detik untuk membangunkan server. Request selanjutnya akan kembali cepat.
 
 ## Fitur
 
 **Penjual**
+
 - Setup toko dengan pemilihan lokasi auto-fill alamat dari kode pos, dan jam operasional yang bisa dikustomisasi (termasuk jadwal yang menyeberang tengah malam)
 - Manajemen produk, varian, dan grup add-on
 - Antrean pesanan real-time dengan update langsung (pesanan baru, perubahan status)
@@ -32,6 +33,7 @@ Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server 
 - Laporan ringkasan toko berbasis AI dan saran deskripsi produk otomatis berbasis AI
 
 **Pembeli**
+
 - Tidak perlu akun — diidentifikasi lewat cookie guest yang di-generate otomatis
 - Jelajahi katalog publik toko dengan pencarian fuzzy (toleran salah ketik)
 - Buat pesanan, pantau status pesanan secara real-time, dan batalkan pesanan yang belum diproses
@@ -39,6 +41,7 @@ Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server 
 - Pembuatan pesanan dibatasi rate limit per IP untuk mencegah penyalahgunaan
 
 **Platform**
+
 - Autentikasi berbasis cookie (`httpOnly`) yang didukung Supabase Auth, dengan refresh sesi otomatis
 - Soft-delete di seluruh sistem, dengan pengecekan kepemilikan yang selalu di-scope ke toko milik user yang login
 - Job terjadwal untuk otomatis membatalkan pesanan yang belum dibayar setelah lewat batas waktu
@@ -46,15 +49,15 @@ Karena API ini di-hosting menggunakan layanan gratis (Render Free Tier), server 
 
 ## Tech Stack
 
-| Layer | Teknologi |
-|---|---|
-| Runtime | Node.js, Express |
-| Database | PostgreSQL via Prisma ORM |
-| Auth | Supabase Auth (sesi berbasis cookie) |
-| Real-time | Socket.IO |
-| Validasi | Joi |
-| Testing | Vitest, Supertest |
-| Job terjadwal | node-cron |
+| Layer         | Teknologi                            |
+| ------------- | ------------------------------------ |
+| Runtime       | Node.js, Express                     |
+| Database      | PostgreSQL via Prisma ORM            |
+| Auth          | Supabase Auth (sesi berbasis cookie) |
+| Real-time     | Socket.IO                            |
+| Validasi      | Joi                                  |
+| Testing       | Vitest, Supertest                    |
+| Job terjadwal | node-cron                            |
 
 ## Memulai
 
@@ -129,7 +132,10 @@ Server dan WebSocket akan berjalan bersamaan di `http://localhost:3000` (atau po
 npx vitest
 ```
 
-Test dijalankan langsung ke project Supabase dan database sungguhan — **gunakan project Supabase terpisah khusus untuk testing** dengan fitur *email confirmation* dimatikan. Hal ini mencegah test run menghabiskan kuota email asli atau merusak data production. 
+Test dijalankan langsung ke project Supabase dan database sungguhan — **gunakan project Supabase terpisah khusus untuk testing** dengan fitur _email confirmation_ dimatikan. Hal ini mencegah test run menghabiskan kuota email asli atau merusak data production.
+
+> **⚠️ Sebelum menjalankan test suite:** turunkan dulu konfigurasi rate limiter di endpoint publik (buyer-facing). Secara default rate limiter diset ke **1 request per 10 menit** (`windowMs: 10 * 60 * 1000, max: 1`), yang akan membuat sebagian besar test unit gagal (banyak request beruntun ke endpoint yang sama dalam waktu singkat). Ubah sementara jadi **1 request per 1 detik** sebelum menjalankan `npx vitest`, lalu kembalikan ke nilai semula (10 menit) sebelum deploy ke production.
+
 ## Dokumentasi API
 
 Dokumentasi REST API bersifat interaktif (Swagger UI) dan tersedia dalam 2 bahasa:

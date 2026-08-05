@@ -1,93 +1,77 @@
 # Maxsten API
 
-Backend API for **Maxsten** — a queue management system designed for Indonesian small businesses (UMKM). Sellers can manage stores, products, and customer queues in real time, while buyers can browse store catalogs and place orders without creating an account.
+Backend API for **Maxsten** — a queue management system for Indonesian small businesses (UMKM). Sellers manage their store, menu, and order queue in real time; buyers can browse a store's menu and place orders without creating an account.
 
-Built with **Node.js/Express**, **Prisma ORM**, **Supabase Auth**, and **Socket.IO** for real-time updates.
+Built with Node.js/Express, Prisma ORM, and Supabase Auth, with real-time updates via Socket.IO.
 
----
+## ⚠️ Important: Run It Locally
 
-## ⚠️ Important: Run Locally (Localhost)
+The live API listed below is **provided for demo purposes and viewing the documentation only**.
 
-The live API listed below is provided **for documentation and demonstration purposes only**.
+Because this API is hosted on a free-tier service (Render Free Tier), the server has strict resource limits and isn't designed to handle traffic or requests from other people's projects/frontends.
 
-Since it is hosted on **Render Free Tier**, the server has limited resources and is **not intended to handle traffic or requests from external frontend projects**.
+**If you want to test the API, run further testing, or build a frontend on top of this API, you are required to run this project locally on your own machine by following the [Getting Started](#getting-started) section below.**
 
-If you want to test the API, perform more extensive testing, or build your own frontend on top of it, **you should run the project locally** by following the setup guide below.
+### Live Demo API (Reference Only)
 
----
+- **Base URL:** [https://maxsten.onrender.com](https://maxsten.onrender.com)
+- **API Documentation (Swagger UI):** [/docs/en](https://maxsten.onrender.com/docs/en) · [/docs/id](https://maxsten.onrender.com/docs/id)
 
-## Live Demo API (Reference Only)
+> **Demo Note:** The demo server "sleeps" after a period of inactivity. The first request after a long idle period may take 30-60 seconds to wake the server up. Subsequent requests will be fast again.
 
-**Base URL:** https://maxsten.onrender.com
+## Features
 
-**Swagger Documentation:**
+**Seller**
 
-* `/docs/en`
-* `/docs/id`
+- Store setup with location picker and address auto-fill from postal code, plus customizable operating hours (including schedules that cross midnight)
+- Product, variant, and add-on group management
+- Real-time order queue with live updates (new orders, status changes)
+- Dashboard with today's metrics, hourly traffic charts, and month-to-date trends
+- Sales history with pagination, best-selling products, and best-selling add-ons
+- Manual store open/close override, independent of the operating hours schedule
+- Reusable order cancellation reason templates
+- AI-generated store summary reports and AI-assisted product description suggestions
 
-**Demo Note:** The demo server automatically sleeps after a period of inactivity. The first request after being idle may take **30–60 seconds** while the server wakes up. Subsequent requests will be fast again.
+**Buyer**
 
----
+- No account needed — identified via an auto-generated guest cookie
+- Browse a store's public catalog with fuzzy search (typo-tolerant)
+- Place orders, track order status in real time, and cancel orders that haven't been processed yet
+- Real-time order status updates via Socket.IO
+- Order creation is rate-limited per IP to prevent abuse
 
-# Features
+**Platform**
 
-## Seller
+- Cookie-based (`httpOnly`) authentication backed by Supabase Auth, with automatic session refresh
+- Soft-delete throughout the system, with ownership checks always scoped to the logged-in user's store
+- Scheduled job to automatically cancel unpaid orders once they pass the time limit
+- Scheduled job to clean up orphaned Supabase Auth accounts (failed deletions)
 
-* Store setup with location selection, automatic address lookup from postal code, and customizable operating hours (including overnight schedules)
-* Product, variant, and add-on group management
-* Real-time order queue updates (new orders and status changes)
-* Dashboard with today's metrics, hourly traffic chart, and monthly trends
-* Sales history with pagination, best-selling products, and top-performing add-ons
-* Manual store open/close override independent of scheduled operating hours
-* Reusable order cancellation reason templates
-* AI-generated business performance summaries and AI-assisted product description suggestions
-
-## Buyer
-
-* No account required — buyers are identified using an automatically generated guest cookie
-* Browse public store catalogs with fuzzy search (typo-tolerant)
-* Create orders, track order status in real time, and cancel orders that have not yet been processed
-* Real-time order status updates via Socket.IO
-* Order creation is protected with per-IP rate limiting to prevent abuse
-
-## Platform
-
-* Cookie-based authentication (httpOnly) powered by Supabase Auth with automatic session refresh
-* System-wide soft delete with ownership checks always scoped to the authenticated seller's store
-* Scheduled job that automatically cancels unpaid orders after the payment timeout expires
-* Scheduled cleanup job for orphaned Supabase Auth accounts that failed to be deleted
-
----
-
-# Tech Stack
+## Tech Stack
 
 | Layer          | Technology                            |
 | -------------- | ------------------------------------- |
 | Runtime        | Node.js, Express                      |
 | Database       | PostgreSQL via Prisma ORM             |
-| Authentication | Supabase Auth (cookie-based sessions) |
+| Auth           | Supabase Auth (cookie-based sessions) |
 | Real-time      | Socket.IO                             |
 | Validation     | Joi                                   |
 | Testing        | Vitest, Supertest                     |
-| Scheduled Jobs | node-cron                             |
+| Scheduled jobs | node-cron                             |
 
----
+## Getting Started
 
-# Getting Started
+To run this project on your own machine, follow the steps below.
 
-To run this project on your own machine, follow these steps.
+### Prerequisites
 
-## Prerequisites
+- Node.js version 18 or newer
+- PostgreSQL database (local or a cloud service)
+- A Supabase account and project (for Authentication & Storage)
 
-* Node.js 18 or later
-* PostgreSQL database (local or cloud-hosted)
-* A Supabase project (Authentication & Storage)
+### 1. Installation
 
----
-
-## 1. Installation
-
-Clone the repository and install all dependencies:
+Clone this repository and install all dependencies:
 
 ```bash
 git clone <repo-url>
@@ -95,126 +79,94 @@ cd maxsten-backend
 npm install
 ```
 
----
+### 2. Environment Variables
 
-## 2. Environment Variables
-
-Create a `.env` file in the project root and copy the template below. Replace each value with your own PostgreSQL and Supabase credentials.
+Create a file named `.env` in the project root, then copy the format below. Make sure to fill in the values from your own Supabase project and database:
 
 ```env
-# Prisma Database Connection
+# Prisma database connection (use your own PostgreSQL database URL)
 DATABASE_URL=postgresql://user:password@localhost:5432/maxsten
 DIRECT_URL=postgresql://user:password@localhost:5432/maxsten
 
-# Supabase Configuration
+# Supabase configuration
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_WEBHOOK_SECRET=your_webhook_secret
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Local URLs
+# Local URL configuration
 FRONTEND_URL=http://localhost:5173
 BACKEND_URL=http://localhost:3000
 
-# AI Integration
+# AI integration
 OPENROUTER_API_KEY=your_openrouter_key
 
-# Server Configuration
+# Server config
 NODE_ENV=development
 PORT=3000
 ```
 
-> **Warning:** `SUPABASE_SERVICE_ROLE_KEY` grants full administrative access to your Supabase project. Never expose it to client-side code or commit it to a public repository.
+> **⚠️ Warning:** `SUPABASE_SERVICE_ROLE_KEY` has full admin access — never expose it to the client side or commit it to public version control (GitHub, etc).
 
----
+### 3. Database Setup (Prisma)
 
-## 3. Database Setup (Prisma)
-
-Synchronize your Prisma schema with PostgreSQL:
+Sync the Prisma schema to your PostgreSQL database by running:
 
 ```bash
 npx prisma generate
 npx prisma migrate dev
 ```
 
----
+### 4. Running the Server
 
-## 4. Run the Server
-
-Start both the REST API and the WebSocket server:
+Run the API and WebSocket server:
 
 ```bash
 node src/main
 ```
 
-The server will be available at:
+The server and WebSocket will run together at `http://localhost:3000` (or the port set in your `.env`).
 
-```
-http://localhost:3000
-```
-
-(or whichever port is configured in your `.env` file).
-
----
-
-# Testing
+## Testing
 
 ```bash
 npx vitest
 ```
 
-The test suite runs against a **real PostgreSQL database and Supabase project**. It is recommended to use a dedicated Supabase project for testing with **email confirmation disabled**. This prevents automated tests from consuming production email quotas or affecting production data.
+Tests run directly against a real Supabase project and database — **use a separate Supabase project dedicated to testing** with _email confirmation_ disabled. This prevents test runs from consuming real email quota or corrupting production data.
 
----
+> **⚠️ Before running the test suite:** temporarily lower the rate limiter configuration on the public (buyer-facing) endpoints. By default the rate limiter is set to **1 request per 10 minutes** (`windowMs: 10 * 60 * 1000, max: 1`), which will cause most unit tests to fail (many back-to-back requests hit the same endpoint in a short window). Change it temporarily to **1 request per 1 second** before running `npx vitest`, then revert it back to the original value (10 minutes) before deploying to production.
 
-# API Documentation
+## API Documentation
 
-Interactive Swagger documentation is available in two languages:
+The REST API documentation is interactive (Swagger UI) and available in 2 languages:
 
-* 🇬🇧 English: `/docs/en` (when running locally)
-* 🇮🇩 Indonesian: `/docs/id` (when running locally)
+- 🇬🇧 English: [/docs/en](http://localhost:3000/docs/en) (if running locally)
+- 🇮🇩 Bahasa Indonesia: [/docs/id](http://localhost:3000/docs/id) (if running locally)
 
-WebSocket events (rooms, authentication flow, and payload formats) are **not included in Swagger**. Please refer to:
+WebSocket events (rooms, connection/auth, payload shapes) are not covered in Swagger — please refer to [`./docs/indonesian/websocket`](./docs/indonesian/websocket).
 
-```
-./docs/english/websocket
-```
-
----
-
-# Project Structure
+## Project Structure
 
 ```
 src/
-├── application/      # Express app, Prisma client, Supabase client
+├── application/      # Express app setup, Prisma client, Supabase client
 ├── controller/       # Request handlers
 ├── service/          # Business logic
-├── middleware/       # Authentication & error handling
+├── middleware/       # Auth, error handling
 ├── socket/           # Socket.IO event handlers
-├── validation/       # Joi validation schemas
-└── error/            # Custom error classes
+├── validation/       # Joi schemas
+└── error/             # Custom error class
 
 test/                 # Vitest + Supertest test suite
-docs/                 # WebSocket documentation (REST API is documented in Swagger)
+docs/                 # WebSocket documentation (REST is covered in Swagger)
 ```
 
----
+## Design Decision Notes
 
-# Design Decisions
+- **Soft-delete everywhere.** Stores, products, variants, and add-ons are never permanently deleted — data is marked `is_delete: true` so historical order data stays intact and transaction history isn't broken.
+- **Ownership is verified at the query level**, not just checked afterward — every seller-side query is always filtered by the logged-in user's store, so a request for another seller's data returns `404 Not Found` rather than `403 Forbidden` (preventing information leakage about whether the resource exists at all).
+- **Operating hours can cross midnight.** Both the store's open/close status and daily queue numbering correctly account for schedules that cross midnight (e.g. open 6 PM, close 3 AM), instead of blindly resetting at calendar midnight.
 
-### Soft Delete Everywhere
+## License
 
-Stores, products, variants, and add-ons are never physically deleted. Instead, they are marked with `is_delete = true` to preserve historical order data and maintain transaction integrity.
-
-### Ownership Verification at the Query Level
-
-Seller queries are always scoped to stores owned by the authenticated user. Requests targeting another seller's resources return **404 Not Found** instead of **403 Forbidden**, preventing information disclosure about whether a resource exists.
-
-### Overnight Operating Hours
-
-Store availability and daily queue numbering both support operating schedules that cross midnight (for example, opening at **6:00 PM** and closing at **3:00 AM**). Queue numbering is based on the actual business day rather than resetting automatically at midnight.
-
----
-
-# License
-
-This project is private and is **not licensed for commercial reuse or redistribution without prior permission**.
+Private project — not licensed for commercial reuse without permission.

@@ -151,7 +151,6 @@ describe("POST /api/users (register)", () => {
       supertest(web).post(endpoint()).send(payload("Race A")),
       supertest(web).post(endpoint()).send(payload("Race B")),
     ]);
-
     const statuses = [resA.status, resB.status].sort();
     expect(statuses).toEqual([201, 400]);
 

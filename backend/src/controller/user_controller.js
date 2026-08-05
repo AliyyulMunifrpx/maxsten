@@ -7,6 +7,8 @@ const register = async (req, res, next) => {
       data: result, // result dari service cuma ngembaliin email & name
     });
   } catch (e) {
+        console.error("REGISTER CONTROLLER ERROR:", e);
+
     next(e);
   }
 };
