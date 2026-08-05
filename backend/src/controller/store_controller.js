@@ -24,7 +24,7 @@ const create = async (req, res, next) => {
         }
       }
     }
-
+    delete req.body.logo;
     const result = await storeService.create(
       { userId: req.user.id, ...req.body },
       req.file,

@@ -37,7 +37,7 @@ const errorMiddleware = (error, req, res, next) => {
   // Handle Server Error (500)
   const isProduction = process.env.NODE_ENV === "production";
   return res.status(500).json({
-    errors: isProduction ? "Terjadi kesalahan pada server." : error.message,
+    errors: isProduction ? "An error occurred on the server" : error.message,
   });
 };
 
