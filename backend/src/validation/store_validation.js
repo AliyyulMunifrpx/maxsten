@@ -38,7 +38,7 @@ const createStoreValidation = Joi.object({
         .optional(),
       is_active: Joi.boolean(),
     }),
-  ),
+  ).optional(),
 });
 const openCloseStoreValidation = Joi.object({
   store_id: Joi.string().max(100).required(),

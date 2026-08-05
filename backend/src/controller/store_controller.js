@@ -3,15 +3,28 @@ import storeService from "../service/store_service.js";
 const create = async (req, res, next) => {
   try {
     if (typeof req.body.operational_hours === "string") {
-      try {
-        req.body.operational_hours = JSON.parse(req.body.operational_hours);
-      } catch {
-        throw new ResponseError(
-          400,
-          "'operational_hours' must be a valid JSON array of objects",
-        );
+      const trimmedHours = req.body.operational_hours.trim();
+
+      // Cegat jika isinya string kosong, "undefined", atau "null"
+      if (
+        !trimmedHours ||
+        trimmedHours === "undefined" ||
+        trimmedHours === "null"
+      ) {
+        req.body.operational_hours = undefined; // Set jadi undefined agar memicu nilai default di service
+      } else {
+        // Baru di-parse kalau memang ada isinya (misal "[{...}]")
+        try {
+          req.body.operational_hours = JSON.parse(trimmedHours);
+        } catch {
+          throw new ResponseError(
+            400,
+            "'operational_hours' must be a valid JSON array of objects",
+          );
+        }
       }
     }
+
     const result = await storeService.create(
       { userId: req.user.id, ...req.body },
       req.file,
