@@ -15,6 +15,7 @@ import path from "path";
 import { unlink } from "fs/promises";
 const register = async function (request) {
   const user = validate(registerUserValidation, request);
+  console.log("REGISTER INPUT:", user);
 
   const existingUser = await prisma.user.findFirst({
     where: {
@@ -32,8 +33,19 @@ const register = async function (request) {
   });
 
   if (authError) {
-    throw new ResponseError(400, authError.message);
+    console.log("SUPABASE SIGNUP ERROR:", {
+      message: authError.message,
+      status: authError.status,
+      code: authError.code,
+      name: authError.name,
+    });
+    throw new ResponseError(authError.status || 400, authError.message);
   }
+
+  console.log("SUPABASE SIGNUP SUCCESS:", {
+    userId: authData?.user?.id,
+    identitiesLength: authData?.user?.identities?.length,
+  });
 
   if (!authData?.user || authData.user.identities?.length === 0) {
     throw new ResponseError(400, "That email address already exists");
@@ -52,6 +64,12 @@ const register = async function (request) {
       },
     });
   } catch (e) {
+    console.log("PRISMA CREATE ERROR:", {
+      code: e.code,
+      message: e.message,
+      meta: e.meta,
+    });
+
     try {
       await supabase.auth.admin.deleteUser(authData.user.id);
     } catch {}
@@ -149,27 +167,20 @@ const updateUser = async (userId, request) => {
 };
 
 const syncEmailWebhook = async (payload) => {
-  const { type, record, old_record } = payload;
-  if (type === "UPDATE" && old_record?.email && record?.email) {
-    if (old_record.email !== record.email) {
-      try {
-        // Gunakan updateMany!
-        // Kalau supabase_id ini belum ada di Prisma, tidak akan terjadi error P2025.
-        // Webhook akan tetap membalas 200 OK dengan tenang ke Supabase.
-        await prisma.user.updateMany({
-          where: { supabase_id: record.id },
-          data: { email: record.email },
-        });
-        console.log(
-          `[WEBHOOK] Successfully updated email for ID: ${record.id}`,
-        );
-      } catch (error) {
-        console.error(
-          `[WEBHOOK] DB Error updating email for ID: ${record.id}`,
-          error,
-        );
-        throw new Error("Database update failed");
-      }
+  const { record, old_record } = payload;
+  if (old_record?.email && record?.email && old_record.email !== record.email) {
+    try {
+      await prisma.user.updateMany({
+        where: { supabase_id: record.id },
+        data: { email: record.email },
+      });
+      console.log(`[WEBHOOK] Successfully updated email for ID: ${record.id}`);
+    } catch (error) {
+      console.error(
+        `[WEBHOOK] DB Error updating email for ID: ${record.id}`,
+        error,
+      );
+      throw new Error("Database update failed");
     }
   }
   return "OK";
