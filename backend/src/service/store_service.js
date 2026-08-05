@@ -10,12 +10,17 @@ import {
   getStoreValidation,
 } from "../validation/store_validation.js";
 import { validate } from "../validation/validation.js";
-
 import { getDaysInMonth, subMonths } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import fs from "fs/promises";
 import assertValidOperationalHours from "../utils/valid_operational_hours.js";
+import { deleteImageFromSupabase } from "../utils/delete_to_supabase.js";
+import { uploadImageToSupabase } from "../utils/upload_to_supabase.js";
 const create = async (requestBody, file) => {
+  // 1. Inisiasi variabel di luar blok try agar bisa diakses oleh blok catch
+  let uploadedLogoUrl = null;
+  let supabaseFileName = null;
+
   try {
     const req = validate(createStoreValidation, requestBody);
 
@@ -30,7 +35,14 @@ const create = async (requestBody, file) => {
       throw new ResponseError(400, "You already have a store");
     }
 
-    const logoPath = file ? `/uploads/${file.filename}` : null;
+    // --- 2. PROSES UPLOAD KE SUPABASE ---
+    if (file) {
+      // Menggunakan "store-logos" sebagai bucket, dan "images" sebagai foldernya
+      const result = await uploadImageToSupabase(file, "store-logos", "images");
+      uploadedLogoUrl = result.url;
+      supabaseFileName = result.fileName; // Simpan path ini untuk rollback jika eror
+    }
+    // ------------------------------------
 
     // Default operational hours (Sunday = 0, Saturday = 6)
     const defaultOperationalHours = Array.from({ length: 7 }).map(
@@ -62,7 +74,7 @@ const create = async (requestBody, file) => {
         postal_code: req.postal_code,
         latitude: req.latitude,
         longitude: req.longitude,
-        logo_url: logoPath,
+        logo_url: uploadedLogoUrl, // <--- 3. Gunakan URL dari Supabase di sini
         timezone: req.timezone,
         operational_hours: {
           create: operationalHoursData,
@@ -73,9 +85,16 @@ const create = async (requestBody, file) => {
       },
     });
   } catch (error) {
-    if (file) {
-      await fs.unlink(file.path).catch(() => {});
+    // --- 4. PROSES ROLLBACK (ANTI ZOMBIE FILE) ---
+    // Jika upload berhasil tapi proses Prisma gagal, hapus gambar dari Supabase
+    if (supabaseFileName) {
+      // Pastikan memanggil nama bucket yang sama yaitu "store-logos"
+      await deleteImageFromSupabase(supabaseFileName, "store-logos").catch(
+        () => {},
+      );
     }
+
+    // Catatan: fs.unlink sudah resmi dibuang karena memoryStorage tidak menghasilkan file fisik.
 
     if (error.code === "P2002") {
       throw new ResponseError(400, "You already have a store");
