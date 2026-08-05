@@ -4,8 +4,10 @@ import { prisma } from "../../src/application/database.js";
 // 🚨 Import supabase admin
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import path from "path";
-import { unlink, readdir, mkdir } from "fs/promises";
+
+// 🔥 Hapus import path dan fs
+
+const BUCKET_NAME = "product-images";
 
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -50,6 +52,8 @@ describe("create product", () => {
     cookies = login.headers["set-cookie"];
 
     // 5. Buat Toko Tumbal secara manual
+    // Catatan: Karena store logo juga pakai Supabase, biarkan saja test ini berjalan normal
+    // tanpa upload logo store (atau upload pun tak masalah karena akan dibersihkan di afterEach store).
     const createStoreRes = await supertest(web)
       .post("/api/stores")
       .set("Cookie", cookies)
@@ -69,58 +73,62 @@ describe("create product", () => {
         JSON.stringify([
           { day: 0, open_time: "08:00", close_time: "20:00", is_active: true },
         ]),
-      )
-      .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
+      ); // attach logo dihilangkan sementara biar test ini lebih fokus ke produk
 
     storeId = createStoreRes.body.data.public_id;
   }, 20000);
 
   afterEach(async () => {
     // --- CLEANUP TERSENTRAL ---
-    // Karena kita tidak tahu public_id toko secara pasti (kecuali di-query),
-    // lebih aman hapus berdasarkan user_id.
 
-    // 1. Ambil data produk milik user ini untuk dapet URL gambarnya
+    // 1. Ambil data produk milik user ini untuk dapet URL gambar produknya
     const productsToDelete = await prisma.product.findMany({
       where: { store: { user_id: userId } },
       select: { image_url: true },
     });
 
-    // 2. Ambil data toko milik user ini untuk dapet URL logonya
+    // 2. Ambil data toko milik user ini untuk dapet ID-nya
     const storesToDelete = await prisma.store.findMany({
       where: { user_id: userId },
-      select: { id: true, logo_url: true },
+      select: { id: true, logo_url: true }, // logo toko
     });
     const internalStoreIds = storesToDelete.map((s) => s.id);
 
-    // 3. Hapus file fisik gambar produk
+    // 3. Hapus file gambar produk dari bucket Supabase 'product-images'
     for (const product of productsToDelete) {
-      if (product.image_url) {
-        try {
-          const cleanPath = product.image_url.startsWith("/")
-            ? product.image_url.substring(1)
-            : product.image_url;
-          const filePath = path.join(process.cwd(), "public", cleanPath);
-          await unlink(filePath);
-        } catch (error) {}
+      if (product.image_url && product.image_url.includes("supabase.co")) {
+        const parts = product.image_url.split(`/${BUCKET_NAME}/`);
+        if (parts.length > 1) {
+          await supabase.storage
+            .from(BUCKET_NAME)
+            .remove([parts[1]])
+            .catch(() => {});
+        }
       }
     }
 
-    // 4. Hapus file fisik logo toko
+    // 4. Hapus file logo toko (jika ada) dari bucket 'store-logos'
     for (const store of storesToDelete) {
-      if (store.logo_url) {
-        try {
-          const cleanPath = store.logo_url.startsWith("/")
-            ? store.logo_url.substring(1)
-            : store.logo_url;
-          const filePath = path.join(process.cwd(), "public", cleanPath);
-          await unlink(filePath);
-        } catch (error) {}
+      if (store.logo_url && store.logo_url.includes("supabase.co")) {
+        const parts = store.logo_url.split(`/store-logos/`);
+        if (parts.length > 1) {
+          await supabase.storage
+            .from("store-logos")
+            .remove([parts[1]])
+            .catch(() => {});
+        }
       }
     }
 
     // 5. Eksekusi hapus data dari database (Child -> Parent -> User)
     if (internalStoreIds.length > 0) {
+      // Hapus varian dan Addon yang mungkin nyantol di produk tersebut
+      await prisma.variant.deleteMany({
+        where: { product: { store_id: { in: internalStoreIds } } },
+      });
+      await prisma.productAddonGroup.deleteMany({
+        where: { product: { store_id: { in: internalStoreIds } } },
+      });
       await prisma.product.deleteMany({
         where: { store_id: { in: internalStoreIds } },
       });
@@ -162,6 +170,7 @@ describe("create product", () => {
     expect(result.status).toBe(201);
     expect(result.body.data.name).toBe("test product full");
     expect(result.body.data.variants).toHaveLength(2);
+    expect(result.body.data.image_url).toMatch(/supabase\.co/); // Pastikan url nya menunjuk ke Supabase
   }, 20000);
 
   test("should successfully create product with minimal data (no variants/addons)", async () => {
@@ -265,7 +274,7 @@ describe("create product", () => {
     expect(result.body.errors).toContain("Some add-on groups are not valid");
   }, 20000);
 
-  test("should delete uploaded image from disk if creating product fails (prevent zombie files)", async () => {
+  test("should delete uploaded image from Supabase if creating product fails (prevent zombie files)", async () => {
     // 1. Kita bikin produk pertama biar namanya ke-register
     await supertest(web)
       .post("/api/stores/products")
@@ -274,12 +283,12 @@ describe("create product", () => {
       .field("description", "test product minimal")
       .field("price", "20000");
 
-    // 2. Siapkan folder uploads dan hitung jumlah file SEBELUM nge-hit API yang gagal
-    const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-    await mkdir(UPLOAD_DIR, { recursive: true });
-    const filesBefore = await readdir(UPLOAD_DIR);
+    // 2. Hitung jumlah file di bucket Supabase SEBELUM nge-hit API yang gagal
+    const { data: filesBefore } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list("images");
+    const countBefore = filesBefore ? filesBefore.length : 0;
 
-    // 💡 PENINGKATAN: Gunakan Date.now() di nama file agar tidak ada tabrakan antar test concurrent
     const dynamicZombieFilename = `zombie-image-${Date.now()}.png`;
 
     // 3. Hit API lagi pakai nama yang sama persis (Pasti gagal / 400), dengan melampirkan gambar!
@@ -294,10 +303,14 @@ describe("create product", () => {
     expect(result.status).toBe(409);
     expect(result.body.errors).toContain("already exists in this store");
 
-    // 4. Hitung jumlah file di folder uploads SETELAH API gagal
-    const filesAfter = await readdir(UPLOAD_DIR);
+    // 4. Hitung jumlah file di bucket Supabase SETELAH API gagal
+    const { data: filesAfter } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list("images");
+    const countAfter = filesAfter ? filesAfter.length : 0;
 
-    // 5. Kunci Utamanya: Karena API gagal, controller harusnya otomatis menghapus file 'zombie-image.png'.
-    expect(filesAfter.length).toBe(filesBefore.length);
+    // 5. Kunci Utamanya: Karena API gagal, controller harusnya otomatis menghapus file upload dari Supabase.
+    // Jadi jumlah file sebelum dan sesudah eror harus sama.
+    expect(countAfter).toBe(countBefore);
   }, 20000);
 });

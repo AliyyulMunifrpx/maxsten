@@ -1,12 +1,20 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-// 🚨 Import supabase admin
+// 🚨 Import supabase admin & client
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { unlink, writeFile, mkdir } from "fs/promises";
-import path from "path";
 import crypto from "crypto";
+
+// 🔥 Hapus fs/promises dan path karena kita tidak lagi menyimpan file lokal
+
+const BUCKET_NAME = "product-images";
+
+// Buffer gambar transparan kecil untuk disuntikkan ke Supabase selama testing
+const FAKE_LOGO_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 describe("DELETE /api/stores/products/:productId", () => {
   let cookies;
@@ -15,7 +23,7 @@ describe("DELETE /api/stores/products/:productId", () => {
   let store;
   let product;
   let guest;
-  let dummyImagePath;
+  let dummyImageFileName;
 
   beforeEach(async () => {
     // 1. Generate email unik per test
@@ -65,22 +73,27 @@ describe("DELETE /api/stores/products/:productId", () => {
       },
     });
 
-    // 6. Create dummy image file for cleanup testing
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-
+    // 6. 🟢 UPLOAD GAMBAR "DUMMY" KE SUPABASE
     // Gunakan Date.now() agar file test benar-benar unik antar run paralel
-    const filename = `test-delete-${Date.now()}.png`;
-    dummyImagePath = path.join(uploadDir, filename);
-    await writeFile(dummyImagePath, Buffer.from("dummy image content"));
+    dummyImageFileName = `test-delete-${Date.now()}.png`;
+    const fullPath = `images/${dummyImageFileName}`;
 
-    // 7. Seed Product & Variants
+    await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(fullPath, FAKE_LOGO_BUFFER, { contentType: "image/png" });
+
+    // Dapatkan URL Publiknya
+    const { data: publicUrlData } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(fullPath);
+
+    // 7. Seed Product & Variants dengan URL Supabase
     product = await prisma.product.create({
       data: {
         store_id: store.id,
         name: "Test Delete Product",
         price: 30000,
-        image_url: `/uploads/${filename}`,
+        image_url: publicUrlData.publicUrl, // <--- Gunakan URL Cloud
         variants: {
           create: [
             { name: "Pedas", additional_price: 2000 },
@@ -100,7 +113,7 @@ describe("DELETE /api/stores/products/:productId", () => {
   }, 20000);
 
   afterEach(async () => {
-    // --- CLEANUP ABSOLUT BERDASARKAN ID (BUKAN NAMA) ---
+    // --- CLEANUP ABSOLUT BERDASARKAN ID ---
     if (store?.id) {
       await prisma.queueDetail.deleteMany({
         where: { queue: { store_id: store.id } },
@@ -109,6 +122,7 @@ describe("DELETE /api/stores/products/:productId", () => {
         where: { store_id: store.id },
       });
       await prisma.variant.deleteMany({
+        // <-- Sesuaikan dengan schema ProductVariant mu
         where: { product: { store_id: store.id } },
       });
       await prisma.product.deleteMany({
@@ -135,16 +149,18 @@ describe("DELETE /api/stores/products/:productId", () => {
       } catch (err) {}
     }
 
-    // Hapus dummy file gambar jika masih tersisa
-    if (dummyImagePath) {
+    // 🧹 Hapus gambar dummy di Supabase jika masih tersisa (bila testnya gagal hapus produk)
+    if (dummyImageFileName) {
       try {
-        await unlink(dummyImagePath);
+        await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([`images/${dummyImageFileName}`]);
       } catch (e) {}
     }
   }, 20000);
 
   // --- SKENARIO 1: SUKSES ---
-  test("should successfully soft delete product, its variants, and remove image file", async () => {
+  test("should successfully soft delete product, its variants, and remove image file from Supabase", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/products/${product.id}`)
       .set("Cookie", cookies);
@@ -155,7 +171,7 @@ describe("DELETE /api/stores/products/:productId", () => {
     // 1. Cek status soft delete product di DB
     const dbProduct = await prisma.product.findUnique({
       where: { id: product.id },
-      include: { variants: true },
+      include: { variants: true }, // Pastikan ini namanya variants atau variant sesuai dengan relasimu
     });
     expect(dbProduct.is_delete).toBe(true);
 
@@ -164,8 +180,15 @@ describe("DELETE /api/stores/products/:productId", () => {
       expect(v.is_delete).toBe(true);
     });
 
-    // 3. Cek file gambar fisik terhapus dari disk
-    await expect(unlink(dummyImagePath)).rejects.toThrow();
+    // 3. ☁️ Cek file gambar fisik terhapus dari bucket Supabase
+    const { data: fileList } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list("images");
+
+    // Ekspektasi: File yang bernama dummyImageFileName sudah tidak ada di dalam daftar Supabase
+    const stillExists =
+      fileList && fileList.some((f) => f.name === dummyImageFileName);
+    expect(stillExists).toBe(false);
   }, 20000);
 
   // --- SKENARIO 2: ERROR VALIDASI JOI ---
@@ -179,7 +202,7 @@ describe("DELETE /api/stores/products/:productId", () => {
 
   // --- SKENARIO 3: ERROR ACTIVE QUEUE ---
   test("should reject (400) if product has active queue in progress (DIPROSES)", async () => {
-    // Bikin Queue & QueueDetail sesuai schema Prisma terbaru
+    // Bikin Queue & QueueDetail sesuai schema Prisma
     const queue = await prisma.queue.create({
       data: {
         store_id: store.id,

@@ -1,11 +1,11 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-// 🚨 Import supabase admin
+// 🚨 Import supabase admin & client
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { unlink } from "fs/promises";
-import path from "path";
+
+// 🔥 Hapus fs/promises dan path karena tidak ada lagi file fisik di server
 
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -104,39 +104,45 @@ describe("GET /api/stores/products/:productId", () => {
   afterEach(async () => {
     // --- CLEANUP TERSENTRAL BERDASARKAN ID TOKO ---
     if (storeId) {
-      // 1. Ambil data produk milik toko ini untuk hapus foto fisik
+      // 1. ☁️ Hapus foto produk dari bucket 'product-images' di Supabase
       const productsToDelete = await prisma.product.findMany({
         where: { store_id: storeId },
         select: { image_url: true },
       });
 
       for (const product of productsToDelete) {
-        if (product.image_url) {
-          try {
-            const cleanPath = product.image_url.startsWith("/")
-              ? product.image_url.substring(1)
-              : product.image_url;
-            await unlink(path.join(process.cwd(), "public", cleanPath));
-          } catch (error) {}
+        if (product.image_url && product.image_url.includes("supabase.co")) {
+          const parts = product.image_url.split("/product-images/");
+          if (parts.length > 1) {
+            await supabase.storage
+              .from("product-images")
+              .remove([parts[1]])
+              .catch(() => {});
+          }
         }
       }
 
-      // 2. Ambil data toko ini untuk hapus logo fisik
+      // 2. ☁️ Hapus logo toko dari bucket 'store-logos' di Supabase
       const storeToDelete = await prisma.store.findUnique({
         where: { id: storeId },
         select: { logo_url: true },
       });
 
-      if (storeToDelete?.logo_url) {
-        try {
-          const cleanPath = storeToDelete.logo_url.startsWith("/")
-            ? storeToDelete.logo_url.substring(1)
-            : storeToDelete.logo_url;
-          await unlink(path.join(process.cwd(), "public", cleanPath));
-        } catch (error) {}
+      if (
+        storeToDelete?.logo_url &&
+        storeToDelete.logo_url.includes("supabase.co")
+      ) {
+        const parts = storeToDelete.logo_url.split("/store-logos/");
+        if (parts.length > 1) {
+          await supabase.storage
+            .from("store-logos")
+            .remove([parts[1]])
+            .catch(() => {});
+        }
       }
 
-      // 3. Eksekusi hapus data dari database (Relasi Varian akan terhapus jika onDelete Cascade, tapi kita buat aman)
+      // 3. Eksekusi hapus data dari database
+      // Catatan: Pastikan menggunakan nama tabel varian yang benar sesuai schema Prisma kamu (variant)
       await prisma.variant.deleteMany({
         where: { product: { store_id: storeId } },
       });
@@ -175,7 +181,7 @@ describe("GET /api/stores/products/:productId", () => {
     // Pastikan relasi dan default value aggregate ikut terbawa
     expect(result.body.data.variants).toHaveLength(2);
     expect(result.body.data.total_sold).toBe(0); // Karena belum ada pesanan SELESAI
-    expect(result.body.data.image_url).toBeDefined();
+    expect(result.body.data.image_url).toMatch(/supabase\.co/); // Ganti dengan pengecekan regex Supabase
   }, 20000);
 
   test("should reject if product id format is invalid (Joi Validation)", async () => {

@@ -1,11 +1,11 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-// 🚨 Import supabase admin
+// 🚨 Import supabase admin & client
 import { supabase } from "../../src/application/supabase.js";
 import { beforeAll, afterAll, describe, expect, test } from "vitest";
-import { unlink } from "fs/promises";
-import path from "path";
+
+// 🔥 Hapus fs/promises dan path
 
 const FAKE_LOGO_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -105,37 +105,41 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   // ⚡ CLEANUP: Dilakukan CUMA 1 KALI setelah semua test selesai
   // =================================================================
   afterAll(async () => {
-    // 1. Ambil & Hapus File Gambar Produk
+    // 1. Ambil Data URL Gambar Produk
     const productsToDelete = await prisma.product.findMany({
       where: { store_id: storeInternalId },
       select: { image_url: true },
     });
 
+    // 🔥 Hapus file produk dari bucket Supabase 'product-images'
     for (const product of productsToDelete) {
-      if (product.image_url) {
-        try {
-          const cleanPath = product.image_url.startsWith("/")
-            ? product.image_url.substring(1)
-            : product.image_url;
-          await unlink(path.join(process.cwd(), "public", cleanPath));
-        } catch (error) {}
+      if (product.image_url && product.image_url.includes("supabase.co")) {
+        const parts = product.image_url.split("/product-images/");
+        if (parts.length > 1) {
+          await supabase.storage
+            .from("product-images")
+            .remove([parts[1]])
+            .catch(() => {});
+        }
       }
     }
 
-    // 2. Ambil & Hapus File Logo Toko
+    // 2. Ambil Data URL Logo Toko
     const storesToDelete = await prisma.store.findMany({
       where: { id: storeInternalId },
       select: { logo_url: true },
     });
 
+    // 🔥 Hapus file logo dari bucket Supabase 'store-logos'
     for (const store of storesToDelete) {
-      if (store.logo_url) {
-        try {
-          const cleanPath = store.logo_url.startsWith("/")
-            ? store.logo_url.substring(1)
-            : store.logo_url;
-          await unlink(path.join(process.cwd(), "public", cleanPath));
-        } catch (error) {}
+      if (store.logo_url && store.logo_url.includes("supabase.co")) {
+        const parts = store.logo_url.split("/store-logos/");
+        if (parts.length > 1) {
+          await supabase.storage
+            .from("store-logos")
+            .remove([parts[1]])
+            .catch(() => {});
+        }
       }
     }
 
@@ -164,6 +168,8 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   }, 20000);
 
   // ====================== TEST CASES ====================== //
+  // Sisanya tetap sama karena endpoint ini hanya method GET,
+  // tidak ada proses manipulasi file di dalamnya.
 
   test("should successfully get all products with pagination metadata (Default Page 1)", async () => {
     const result = await supertest(web)

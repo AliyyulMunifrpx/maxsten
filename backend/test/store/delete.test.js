@@ -1,13 +1,19 @@
 import supertest from "supertest";
-import path from "path";
-import fsPromises from "fs/promises";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 // 🚨 Import supabase admin
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+// 🔥 PERBAIKAN: Hapus import path dan fs/promises!
+
 const ENDPOINT = "/api/stores/me";
+
+// Buffer gambar transparan kecil untuk disuntikkan ke Supabase selama testing
+const FAKE_LOGO_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 describe("delete store", () => {
   let cookies = [];
@@ -38,7 +44,7 @@ describe("delete store", () => {
     // 3. Inject data ke Prisma
     await prisma.user.create({
       data: {
-        id: userId, // Hapus jika Prisma ID pakai auto-generate default
+        id: userId,
         supabase_id: userId,
         email: testEmail,
         name: "Tumbal Store Delete",
@@ -53,24 +59,43 @@ describe("delete store", () => {
 
     cookies = result.headers["set-cookie"];
 
-    // Gak perlu lagi hapus toko lama di sini, karena user ini 100% baru lahir
     createdStoreIds = [];
   }, 20000);
 
   afterEach(async () => {
-    // 1. Hapus semua toko yang dibuat selama test (Pencarian pakai public_id)
+    // 1. Bersihkan sisa gambar di Supabase jika ada test yang gagal di tengah jalan
+    if (createdStoreIds.length > 0) {
+      const storesToDelete = await prisma.store.findMany({
+        where: { public_id: { in: createdStoreIds } },
+        select: { logo_url: true },
+      });
+
+      for (const store of storesToDelete) {
+        if (store.logo_url && store.logo_url.includes("supabase.co")) {
+          const parts = store.logo_url.split("/store-logos/");
+          if (parts.length > 1) {
+            await supabase.storage
+              .from("store-logos")
+              .remove([parts[1]])
+              .catch(() => {});
+          }
+        }
+      }
+    }
+
+    // 2. Hapus semua toko yang dibuat selama test (Pencarian pakai public_id)
     if (createdStoreIds.length > 0) {
       await prisma.store.deleteMany({
         where: { public_id: { in: createdStoreIds } },
       });
     }
 
-    // 2. Hapus user tumbal dari Prisma
+    // 3. Hapus user tumbal dari Prisma
     if (testEmail) {
       await prisma.user.deleteMany({ where: { email: testEmail } });
     }
 
-    // 3. Hapus user tumbal dari Supabase Auth
+    // 4. Hapus user tumbal dari Supabase Auth
     if (userId) {
       try {
         await supabase.auth.admin.deleteUser(userId);
@@ -141,6 +166,7 @@ describe("delete store", () => {
     await createStoreDirect("Warung Tanpa Login Hapus");
 
     const result = await supertest(web).delete(ENDPOINT); // Tanpa cookie
+    console.log("DEBUG: result.status", result.status, "result.body", result.body);
     expect(result.status).toBe(401);
   }, 20000);
 
@@ -196,31 +222,40 @@ describe("delete store", () => {
     expect(createResult.status).toBe(201);
   }, 20000);
 
-  test("should actually remove the logo file from disk on soft-delete", async () => {
-    // 💡 PENINGKATAN: Pakai Date.now() biar aman kalau test dijalankan concurrent/parallel
-    const logoRelativePath = `/uploads/delete-store-test-${Date.now()}.png`;
-    const actualDiskPath = path.join(process.cwd(), "public", logoRelativePath);
+  test("should actually remove the logo file from Supabase on soft-delete", async () => {
+    // 1. Upload logo "bohongan" langsung ke Supabase pakai client SDK
+    const fileNameOnly = `test-delete-${Date.now()}.png`;
+    const fullPath = `images/${fileNameOnly}`;
 
-    await fsPromises.mkdir(path.dirname(actualDiskPath), { recursive: true });
-    await fsPromises.writeFile(actualDiskPath, "fake-image-content");
+    await supabase.storage
+      .from("store-logos")
+      .upload(fullPath, FAKE_LOGO_BUFFER, { contentType: "image/png" });
 
+    // Dapatkan Public URL-nya untuk disimpan ke Database
+    const { data: publicUrlData } = supabase.storage
+      .from("store-logos")
+      .getPublicUrl(fullPath);
+
+    // 2. Buat toko di Database dengan URL Supabase tersebut
     await createStoreDirect("Warung Cek Hapus File Logo", {
-      logo_url: logoRelativePath,
+      logo_url: publicUrlData.publicUrl,
     });
 
+    // 3. Eksekusi API Delete Store
     const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
     expect(del.status).toBe(200);
 
-    // Mengecek apakah file sudah benar-benar hilang dari disk
-    const stillExists = await fsPromises
-      .access(actualDiskPath)
-      .then(() => true)
-      .catch(() => false);
+    // 4. Mengecek apakah file sudah benar-benar hilang dari Supabase Bucket
+    const { data: fileList } = await supabase.storage
+      .from("store-logos")
+      .list("images");
 
+    // Cari apakah masih ada file dengan nama yang kita buat tadi
+    const stillExists =
+      fileList && fileList.some((f) => f.name === fileNameOnly);
+
+    // Ekspektasi: File harus sudah hilang dari bucket
     expect(stillExists).toBe(false);
-
-    // Cleanup darurat kalau ternyata testnya gagal
-    await fsPromises.unlink(actualDiskPath).catch(() => {});
   }, 20000);
 
   test("should not throw when the store has no logo file to delete", async () => {

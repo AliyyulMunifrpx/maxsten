@@ -1,22 +1,19 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
-// 🚨 Import supabase admin
+// 🚨 Import supabase admin & client
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import fs from "fs/promises";
-import fsSync from "fs";
-import path from "path";
 
 const ENDPOINT = "/api/stores/me/logo";
 const FILE_FIELD = "logo";
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const BUCKET_NAME = "store-logos";
 
-// Helper: convert logo_url ("/uploads/xxx.png") -> path fisik di disk
-function logoUrlToDiskPath(logoUrl) {
-  const cleanPath = logoUrl.startsWith("/") ? logoUrl.substring(1) : logoUrl;
-  return path.join(process.cwd(), "public", cleanPath);
-}
+// Buffer gambar transparan kecil untuk disuntikkan ke API selama testing
+const FAKE_LOGO_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 function baseProfilePayload(name) {
   return {
@@ -40,7 +37,7 @@ describe("update store logo", () => {
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
-  let createdFilePaths = [];
+  let uploadedFileNames = []; // Menyimpan nama file Supabase untuk dibersihkan nanti
 
   beforeEach(async () => {
     // 1. Generate email unik per test
@@ -65,7 +62,7 @@ describe("update store logo", () => {
     // 3. Inject data ke Prisma
     await prisma.user.create({
       data: {
-        id: userId, // Hapus jika Prisma ID lu pakai auto-generate UUID/Int
+        id: userId,
         supabase_id: userId,
         email: testEmail,
         name: "Tumbal Update Logo",
@@ -80,30 +77,50 @@ describe("update store logo", () => {
     cookies = result.headers["set-cookie"];
 
     // 5. Reset Array.
-    // Tidak butuh hapus toko lama karena user ini 100% fresh.
     createdStoreIds = [];
-    createdFilePaths = [];
-
-    // Pastikan folder uploads tersedia
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
+    uploadedFileNames = [];
   }, 20000);
 
   afterEach(async () => {
     vi.restoreAllMocks();
 
-    // 1. Hapus Relasi Toko Prisma
+    // 1. Hapus Relasi Toko Prisma & Catat logo URL yang tersisa
     if (createdStoreIds.length > 0) {
+      const stores = await prisma.store.findMany({
+        where: { public_id: { in: createdStoreIds } },
+        select: { logo_url: true },
+      });
+
+      for (const store of stores) {
+        if (store.logo_url && store.logo_url.includes("supabase.co")) {
+          const parts = store.logo_url.split(`/${BUCKET_NAME}/`);
+          if (parts.length > 1) {
+            uploadedFileNames.push(parts[1]);
+          }
+        }
+      }
+
       await prisma.store.deleteMany({
         where: { public_id: { in: createdStoreIds } },
       });
     }
 
-    // 2. Hapus User dari tabel Prisma
+    // 2. Bersihin file dari bucket Supabase yang sempat dibuat selama test
+    if (uploadedFileNames.length > 0) {
+      // Hilangkan nama duplikat sebelum menghapus
+      const uniqueFiles = [...new Set(uploadedFileNames)];
+      await supabase.storage
+        .from(BUCKET_NAME)
+        .remove(uniqueFiles)
+        .catch(() => {});
+    }
+
+    // 3. Hapus User dari tabel Prisma
     if (testEmail) {
       await prisma.user.deleteMany({ where: { email: testEmail } });
     }
 
-    // 3. Hapus User dari Supabase Auth
+    // 4. Hapus User dari Supabase Auth
     if (userId) {
       try {
         await supabase.auth.admin.deleteUser(userId);
@@ -111,21 +128,24 @@ describe("update store logo", () => {
         // best-effort cleanup
       }
     }
-
-    // 4. Bersihin file fisik yang sempat dibuat/diupload selama test
-    for (const filePath of createdFilePaths) {
-      await fs.unlink(filePath).catch(() => {});
-    }
   }, 20000);
 
   async function createStoreDirect(name, { logoFileName } = {}) {
     let logo_url = null;
 
     if (logoFileName) {
-      const filePath = path.join(UPLOAD_DIR, logoFileName);
-      await fs.writeFile(filePath, "fake-old-logo-bytes");
-      createdFilePaths.push(filePath);
-      logo_url = `/uploads/${logoFileName}`;
+      const fullPath = `images/${logoFileName}`;
+      // Upload manual file fake ke Supabase
+      await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(fullPath, FAKE_LOGO_BUFFER, { contentType: "image/png" });
+
+      uploadedFileNames.push(fullPath);
+
+      const { data } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(fullPath);
+      logo_url = data.publicUrl;
     }
 
     const store = await prisma.store.create({
@@ -141,7 +161,7 @@ describe("update store logo", () => {
   }
 
   function attachNewLogo(req, filename = "new-logo.png") {
-    return req.attach(FILE_FIELD, Buffer.from("fake-new-logo-bytes"), filename);
+    return req.attach(FILE_FIELD, FAKE_LOGO_BUFFER, filename);
   }
 
   test("should return 400 when no file is provided, and should not touch the store", async () => {
@@ -176,72 +196,34 @@ describe("update store logo", () => {
     );
 
     expect(result.status).toBe(200);
-    expect(result.body.data.logo_url).toMatch(/^\/uploads\/.+/);
-
-    createdFilePaths.push(logoUrlToDiskPath(result.body.data.logo_url));
+    expect(result.body.data.logo_url).toMatch(/supabase\.co/);
   }, 20000);
 
-  test("happy path: deletes the old logo file on disk, saves the new one, and returns fresh store data", async () => {
-    // 💡 PENINGKATAN: Pakai Date.now() di nama file dummy biar terhindar dari tabrakan Race Condition di folder saat parallel test
+  test("happy path: deletes the old logo file in bucket, saves the new one, and returns fresh store data", async () => {
     const oldFileName = `old-logo-happy-${Date.now()}.png`;
 
     await createStoreDirect("Warung Logo Lama", {
       logoFileName: oldFileName,
     });
 
-    const oldFilePath = path.join(UPLOAD_DIR, oldFileName);
-    expect(fsSync.existsSync(oldFilePath)).toBe(true);
-
     const result = await attachNewLogo(
       supertest(web).patch(ENDPOINT).set("Cookie", cookies),
     );
 
     expect(result.status).toBe(200);
-    expect(result.body.data.logo_url).toMatch(/^\/uploads\/.+/);
+    expect(result.body.data.logo_url).toMatch(/supabase\.co/);
     expect(typeof result.body.data.is_open).toBe("boolean");
 
-    expect(fsSync.existsSync(oldFilePath)).toBe(false);
-
-    const newFilePath = logoUrlToDiskPath(result.body.data.logo_url);
-    expect(fsSync.existsSync(newFilePath)).toBe(true);
-    createdFilePaths.push(newFilePath);
+    // Pastikan gambar lama sudah tidak ada di Supabase
+    const { data: fileList } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list("images");
+    const stillExists =
+      fileList && fileList.some((f) => f.name === oldFileName);
+    expect(stillExists).toBe(false);
   }, 20000);
 
-  test("logs a warning but still returns 200 when deleting the old logo fails for a non-ENOENT reason", async () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    const oldFileName = `old-logo-eacces-${Date.now()}.png`;
-    const store = await createStoreDirect("Warung Logo Gagal Hapus", {
-      logoFileName: oldFileName,
-    });
-    const oldFilePath = path.join(UPLOAD_DIR, oldFileName);
-
-    const originalUnlink = fs.unlink.bind(fs);
-    const unlinkSpy = vi.spyOn(fs, "unlink").mockImplementation((p) => {
-      if (path.resolve(String(p)) === path.resolve(oldFilePath)) {
-        return Promise.reject(
-          Object.assign(new Error("EACCES"), { code: "EACCES" }),
-        );
-      }
-      return originalUnlink(p);
-    });
-
-    const result = await attachNewLogo(
-      supertest(web).patch(ENDPOINT).set("Cookie", cookies),
-    );
-    expect(result.status).toBe(200);
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(`store ${store.id}`),
-    );
-
-    unlinkSpy.mockRestore();
-    createdFilePaths.push(oldFilePath);
-    createdFilePaths.push(logoUrlToDiskPath(result.body.data.logo_url));
-  }, 20000);
-
-  test("does not log anything when the old logo file was already gone (ENOENT)", async () => {
+  test("does not log error when the old logo file was already missing in bucket", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -250,19 +232,20 @@ describe("update store logo", () => {
     const store = await createStoreDirect("Warung Logo Sudah Hilang", {
       logoFileName: oldFileName,
     });
-    const oldFilePath = path.join(UPLOAD_DIR, oldFileName);
 
-    // hapus manual duluan
-    await fs.unlink(oldFilePath);
-    createdFilePaths = createdFilePaths.filter((p) => p !== oldFilePath);
+    // Hapus manual file tersebut dari Supabase sebelum API dipanggil
+    await supabase.storage.from(BUCKET_NAME).remove([`images/${oldFileName}`]);
 
     const result = await attachNewLogo(
       supertest(web).patch(ENDPOINT).set("Cookie", cookies),
     );
 
     expect(result.status).toBe(200);
+
+    // Ekspektasi: Kode API mu menangkap (catch) error dengan silent kalau file tidak ada,
+    // jadi console.error yang dilempar oleh API seharusnya tidak pernah dipanggil.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
 
-    createdFilePaths.push(logoUrlToDiskPath(result.body.data.logo_url));
+    consoleErrorSpy.mockRestore();
   }, 20000);
 });

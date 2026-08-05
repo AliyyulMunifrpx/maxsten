@@ -5,9 +5,7 @@ import { prisma } from "../../src/application/database.js";
 import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import fs from "fs/promises";
-import { unlink } from "fs/promises";
-import path from "path";
+// 🔥 PERBAIKAN 1: Hapus import fs dan path karena kita tidak menyentuh hardisk lagi!
 
 // PNG 1x1 transparan, biar gak butuh file fixture beneran di disk
 const FAKE_LOGO_BUFFER = Buffer.from(
@@ -44,7 +42,7 @@ describe("create store", () => {
     // 3. Inject data ke Prisma
     await prisma.user.create({
       data: {
-        id: userId, // Hapus jika Prisma ID pakai auto-generate
+        id: userId,
         supabase_id: userId,
         email: testEmail,
         name: "Tumbal Store Create",
@@ -68,24 +66,22 @@ describe("create store", () => {
       select: { logo_url: true },
     });
 
-    // 2. Hapus file fisik logonya jika ada
+    // 2. 🔥 PERBAIKAN 2: Hapus file dari Supabase (bukan hardisk)
     for (const store of storesToDelete) {
-      if (store.logo_url) {
-        const cleanPath = store.logo_url.startsWith("/")
-          ? store.logo_url.substring(1)
-          : store.logo_url;
-
-        const filePath = path.join(process.cwd(), "public", cleanPath);
-
-        try {
-          await unlink(filePath);
-        } catch (error) {
-          // Abaikan jika file memang tidak ada
+      if (store.logo_url && store.logo_url.includes("supabase.co")) {
+        const parts = store.logo_url.split("/store-logos/");
+        if (parts.length > 1) {
+          const fileName = parts[1];
+          try {
+            await supabase.storage.from("store-logos").remove([fileName]);
+          } catch (error) {
+            // Abaikan jika file memang tidak ada
+          }
         }
       }
     }
 
-    // 3. SAPU BERSIH DATA: Hapus User dari Prisma (otomatis cascade menghapus tokonya jika di schema lu diset onDelete: Cascade, tapi kita manual aja biar aman)
+    // 3. SAPU BERSIH DATA: Hapus User dari Prisma
     if (testEmail) {
       await prisma.store.deleteMany({ where: { user_id: userId } });
       await prisma.user.deleteMany({ where: { email: testEmail } });
@@ -162,48 +158,13 @@ describe("create store", () => {
       .send({
         ...baseStorePayload("Warung Custom Jam"),
         operational_hours: [
-          {
-            day: 0,
-            open_time: "00:00",
-            close_time: "00:00",
-            is_active: false,
-          },
-          {
-            day: 1,
-            open_time: "09:00",
-            close_time: "17:00",
-            is_active: true,
-          },
-          {
-            day: 2,
-            open_time: "09:00",
-            close_time: "17:00",
-            is_active: true,
-          },
-          {
-            day: 3,
-            open_time: "09:00",
-            close_time: "17:00",
-            is_active: true,
-          },
-          {
-            day: 4,
-            open_time: "09:00",
-            close_time: "17:00",
-            is_active: true,
-          },
-          {
-            day: 5,
-            open_time: "09:00",
-            close_time: "17:00",
-            is_active: true,
-          },
-          {
-            day: 6,
-            open_time: "10:00",
-            close_time: "15:00",
-            is_active: true,
-          },
+          { day: 0, open_time: "00:00", close_time: "00:00", is_active: false },
+          { day: 1, open_time: "09:00", close_time: "17:00", is_active: true },
+          { day: 2, open_time: "09:00", close_time: "17:00", is_active: true },
+          { day: 3, open_time: "09:00", close_time: "17:00", is_active: true },
+          { day: 4, open_time: "09:00", close_time: "17:00", is_active: true },
+          { day: 5, open_time: "09:00", close_time: "17:00", is_active: true },
+          { day: 6, open_time: "10:00", close_time: "15:00", is_active: true },
         ],
       });
     expect(result.status).toBe(400);
@@ -248,14 +209,16 @@ describe("create store", () => {
         ]),
       )
       .attach("logo", FAKE_LOGO_BUFFER, "logo.png");
-console.log(result.body)
+
     expect(result.status).toBe(201);
 
     const store = await prisma.store.findUnique({
       where: { public_id: result.body.data.public_id },
     });
 
-    expect(store.logo_url).toMatch(/^\/uploads\//);
+    // 🔥 PERBAIKAN 3: Ganti ekspektasi menjadi regex untuk URL Supabase
+    expect(store.logo_url).toMatch(/supabase\.co/);
+    expect(store.logo_url).toContain("store-logos");
   }, 20000);
 
   test("should reject creating a second store for the same user", async () => {
@@ -348,17 +311,18 @@ console.log(result.body)
     expect(successCount).toBe(1);
   }, 20000);
 
-  test("should delete uploaded logo from disk if creating store fails (prevent zombie files)", async () => {
+  test("should delete uploaded logo from Supabase if creating store fails (prevent zombie files)", async () => {
     // 1. Kita bikin toko pertama (SUKSES)
     await supertest(web)
       .post("/api/stores")
       .set("Cookie", cookies)
       .send(baseStorePayload("Warung Pertama"));
 
-    // 2. Hitung jumlah file di folder uploads SEBELUM nembak API
-    const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-    const filesBefore = await fs.readdir(UPLOAD_DIR);
+    // 2. 🔥 PERBAIKAN 4: Hitung jumlah file di bucket Supabase SEBELUM nembak API
+    const { data: filesBefore } = await supabase.storage
+      .from("store-logos")
+      .list("images");
+    const countBefore = filesBefore ? filesBefore.length : 0;
 
     // 3. Tembak toko KEDUA pakai file logo fisik. PASTI GAGAL (400)
     const payload = baseStorePayload("Warung Kedua Bikin Error");
@@ -380,10 +344,13 @@ console.log(result.body)
 
     expect(result.status).toBe(400);
 
-    // 4. Hitung jumlah file di folder uploads SETELAH API gagal.
-    const filesAfter = await fs.readdir(UPLOAD_DIR);
+    // 4. Hitung jumlah file di bucket Supabase SETELAH API gagal.
+    const { data: filesAfter } = await supabase.storage
+      .from("store-logos")
+      .list("images");
+    const countAfter = filesAfter ? filesAfter.length : 0;
 
-    // Ekspektasi: Jumlah file SEBELUM dan SESUDAH harus sama persis!
-    expect(filesAfter.length).toBe(filesBefore.length);
+    // Ekspektasi: Karena di-rollback, jumlah gambar di Supabase harus tetap sama
+    expect(countAfter).toBe(countBefore);
   }, 20000);
 });
