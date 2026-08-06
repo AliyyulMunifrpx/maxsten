@@ -1,12 +1,11 @@
 generator client {
   provider        = "prisma-client-js"
   output          = "../generated/prisma"
-  previewFeatures = ["partialIndexes", "postgresqlExtensions"]
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
   provider   = "postgresql"
-  extensions = [uuid_ossp(map: "uuid-ossp", schema: "extensions"), vector]
 }
 
 model User {
