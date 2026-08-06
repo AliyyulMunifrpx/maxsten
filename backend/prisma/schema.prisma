@@ -85,7 +85,6 @@ model Product {
   description        String?
   created_at         DateTime               @default(now())
   updated_at         DateTime?
-  embedding          Unsupported("vector")?
   productAddonGroups ProductAddonGroup[]
   store              Store                  @relation(fields: [store_id], references: [id])
   queueDetail        QueueDetail[]
