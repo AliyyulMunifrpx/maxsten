@@ -66,7 +66,7 @@ const getAllProductDisplay = async (req, res, next) => {
 
 const getQueue = async (req, res, next) => {
   try {
-    const guestId = req.cookies.guest_id;
+    const guestId = req.cookies.guest_id || req.headers["guest-id"];
 
     if (!guestId) {
       return res.status(401).json({ errors: "Unauthorized" });
@@ -85,7 +85,7 @@ const getQueue = async (req, res, next) => {
 };
 const cancelQueue = async (req, res, next) => {
   try {
-    const guestId = req.cookies.guest_id;
+    const guestId = req.cookies.guest_id || req.headers["guest-id"];
 
     if (!guestId) {
       return res.status(401).json({ errors: "Unauthorized" });
