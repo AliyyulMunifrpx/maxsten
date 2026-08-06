@@ -116,7 +116,72 @@ npx prisma generate
 npx prisma migrate dev
 ```
 
-### 4. Menjalankan Server
+### 4. Setup Tambahan Supabase (Webhook Trigger & Storage Bucket)
+
+Project ini bergantung pada beberapa objek Supabase yang **tidak dikelola lewat Prisma migration** (trigger di schema `auth`, dan storage bucket). Objek-objek ini harus dibuat manual sekali lewat **SQL Editor** di Supabase Dashboard project Anda.
+
+#### 4a. Trigger sinkronisasi email
+
+Saat user mengubah email lewat Supabase Auth, trigger ini akan memanggil endpoint `/api/webhooks/email` di API ini agar tabel `User` ikut ter-update. Jalankan SQL berikut di **SQL Editor** Supabase:
+
+```sql
+CREATE OR REPLACE FUNCTION notify_email_updated()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM net.http_post(
+    url := current_setting('app.webhook_email_url', true),
+    body := jsonb_build_object(
+      'record', to_jsonb(NEW),
+      'old_record', to_jsonb(OLD)
+    ),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-webhook-secret', current_setting('app.webhook_secret', true)
+    )
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_email_updated ON auth.users;
+CREATE TRIGGER on_auth_user_email_updated
+AFTER UPDATE ON auth.users
+FOR EACH ROW EXECUTE FUNCTION notify_email_updated();
+```
+
+Lalu atur URL endpoint dan secret sesuai environment Anda (ganti dengan URL API Anda sendiri — bisa `http://localhost:3000/...` lewat tunnel seperti [ngrok](https://ngrok.com), atau URL deploy production):
+
+```sql
+ALTER DATABASE postgres SET app.webhook_email_url = 'https://URL-API-ANDA/api/webhooks/email';
+ALTER DATABASE postgres SET app.webhook_secret = 'ISI_SAMA_DENGAN_SUPABASE_WEBHOOK_SECRET_DI_ENV';
+```
+
+> **Catatan:** Supabase (cloud) mengirim request ke endpoint ini, jadi endpoint Anda harus bisa diakses dari internet. Saat development lokal, jalankan `ngrok http 3000` untuk mendapatkan URL publik sementara. Jika Anda hanya ingin menjalankan/menguji fitur lain di luar sinkronisasi email, langkah ini bisa dilewati.
+
+#### 4b. Storage Bucket
+
+Buat 3 storage bucket berikut lewat **SQL Editor** yang sama:
+
+```sql
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('maxsten logo', 'maxsten logo', true, null, null),
+  ('store-logos', 'store-logos', true, null, null),
+  ('product-images', 'product-images', true, null, null)
+ON CONFLICT (id) DO NOTHING;
+```
+
+Fungsi masing-masing bucket:
+
+| Bucket           | Digunakan untuk                   |
+| ---------------- | --------------------------------- |
+| `maxsten logo`   | Logo aplikasi Maxsten             |
+| `store-logos`    | Logo toko yang diunggah penjual   |
+| `product-images` | Foto produk yang diunggah penjual |
+
+Ketiga bucket bersifat **public** (bisa diakses baca tanpa autentikasi), tanpa batas ukuran file atau pembatasan tipe file.
+
+### 5. Menjalankan Server
 
 Jalankan server API dan WebSocket:
 
