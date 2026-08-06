@@ -113,7 +113,7 @@ Sinkronkan skema database dari Prisma ke PostgreSQL Anda dengan menjalankan:
 
 ```bash
 npx prisma generate
-npx prisma migrate dev
+npx prisma db push
 ```
 
 ### 4. Setup Tambahan Supabase (Webhook Trigger & Storage Bucket)
