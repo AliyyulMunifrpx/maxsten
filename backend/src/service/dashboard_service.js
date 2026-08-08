@@ -16,19 +16,20 @@ const getDashboard = async (request) => {
   const userId = validate(getDashboardValidation, request);
 
   // 1. Ambil Data Dasar Toko
-  const store = await prisma.store.findFirst({
-    where: { user_id: userId, is_delete: false },
-    select: {
-      id: true,
-      public_id: true,
-      name: true,
-      description: true,
-      logo_url: true,
-      timezone: true,
-      operational_hours: true,
-    },
-  });
-
+ const store = await prisma.store.findFirst({
+  where: { user_id: userId, is_delete: false },
+  select: {
+    id: true,
+    public_id: true,
+    name: true,
+    description: true,
+    logo_url: true,
+    timezone: true,
+    operational_hours: true,
+    manual_status: true,      // ➕ tambah
+    manual_updated_at: true,  // ➕ tambah
+  },
+});
   if (!store) throw new ResponseError(404, "Store not found");
   const tz = store.timezone || "Asia/Jakarta";
 
