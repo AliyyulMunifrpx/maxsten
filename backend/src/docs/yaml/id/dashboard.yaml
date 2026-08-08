@@ -113,6 +113,11 @@ components:
               name:
                 type: string
                 example: "Es Teh"
+              description:
+                type: string
+                nullable: true
+                description: Deskripsi dari produk.
+                example: "Es teh manis segar dengan gula tebu asli."
               price:
                 type: integer
                 example: 5000
@@ -122,6 +127,10 @@ components:
               is_available:
                 type: boolean
                 example: true
+              total_sold:
+                type: integer
+                description: Total jumlah produk ini yang sudah terjual.
+                example: 154
         latest_addons:
           type: array
           description: Maksimal 5 add-on terbaru.

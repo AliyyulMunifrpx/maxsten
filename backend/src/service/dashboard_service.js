@@ -103,6 +103,7 @@ const getDashboard = async (request) => {
       select: {
         id: true,
         name: true,
+        description: true, // ✅ dipakai FE buat card produk
         price: true,
         image_url: true,
         is_available: true,
@@ -192,6 +193,34 @@ const getDashboard = async (request) => {
   ]);
 
   // ==========================================
+  // 3B. TOTAL TERJUAL PER PRODUK (5 Produk Terbaru)
+  // ==========================================
+  // 1 query groupBy buat semua produk sekaligus (bukan aggregate per
+  // produk satu-satu) - pola sama seperti product_service.js getAllProducts,
+  // biar gak N+1.
+  const latestProductIds = latestProducts.map((p) => p.id);
+
+  const soldAggregates = latestProductIds.length
+    ? await prisma.queueDetail.groupBy({
+        by: ["product_id"],
+        where: {
+          product_id: { in: latestProductIds },
+          queue: { status: "SELESAI" },
+        },
+        _sum: { quantity: true },
+      })
+    : [];
+
+  const soldMap = new Map(
+    soldAggregates.map((row) => [row.product_id, row._sum.quantity || 0]),
+  );
+
+  const latestProductsWithSold = latestProducts.map((p) => ({
+    ...p,
+    total_sold: soldMap.get(p.id) || 0,
+  }));
+
+  // ==========================================
   // 4. KALKULASI METRIK & TREND (Hari Ini vs Kemarin)
   // ==========================================
 
@@ -244,7 +273,7 @@ const getDashboard = async (request) => {
       is_open: isStoreOpen,
     },
     lists: {
-      latest_products: latestProducts,
+      latest_products: latestProductsWithSold,
       latest_addons: latestAddons,
       oldest_active_queues: oldestActiveQueues, // ✅ Kasir bisa langsung lihat antrean yang udah nunggu lama
       active_queues_count: activeQueuesCount, // ✅ Buat badge notif jumlah antrean

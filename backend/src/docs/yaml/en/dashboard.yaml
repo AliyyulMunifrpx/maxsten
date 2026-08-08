@@ -114,6 +114,11 @@ components:
               name:
                 type: string
                 example: "Iced Tea"
+              description:
+                type: string
+                nullable: true
+                description: Product description.
+                example: "Fresh sweet iced tea with real cane sugar."
               price:
                 type: integer
                 example: 5000
@@ -123,6 +128,10 @@ components:
               is_available:
                 type: boolean
                 example: true
+              total_sold:
+                type: integer
+                description: Total number of this product sold.
+                example: 154
         latest_addons:
           type: array
           description: Maximum 5 latest add-ons.
