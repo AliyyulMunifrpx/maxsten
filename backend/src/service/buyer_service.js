@@ -30,15 +30,17 @@ const createQueue = async (request) => {
   const req = validate(createQueueValidation, request);
 
   // 1. Tarik data toko sekalian sama jadwal operasionalnya
-  const store = await prisma.store.findFirst({
-    where: { public_id: req.public_id, is_delete: false },
-    select: {
-      id: true,
-      operational_hours: true,
-      payment_timeout: true,
-      timezone: true,
-    },
-  });
+const store = await prisma.store.findFirst({
+  where: { public_id: req.public_id, is_delete: false },
+  select: {
+    id: true,
+    operational_hours: true,
+    payment_timeout: true,
+    timezone: true,
+    manual_status: true,      // ➕ tambah
+    manual_updated_at: true,  // ➕ tambah
+  },
+});
 
   if (!store) throw new ResponseError(404, "Store not found");
 
