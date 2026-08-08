@@ -88,6 +88,7 @@ const getDashboard = async (request) => {
     latestProducts,
     latestAddons,
     oldestActiveQueues,
+    activeQueuesCount, // ✅ total antrean BELUM_BAYAR + DIPROSES, buat badge notif
     aggTodaySelesai,
     aggTodayBatal,
     todayCompletedQueues, // Buat ngitung Peak Hour & chart jam-jaman
@@ -130,6 +131,16 @@ const getDashboard = async (request) => {
         status: true,
         total_price: true,
         created_at: true,
+        expired_at: true, // ✅ dari tabel queue: created_at + timeout payment milik toko, dipakai FE buat hitung sisa waktu
+      },
+    }),
+
+    // ✅ Total count antrean aktif (BELUM_BAYAR + DIPROSES) — gak kena limit take:5,
+    // dipakai buat badge notif jumlah antrean.
+    prisma.queue.count({
+      where: {
+        store_id: store.id,
+        status: { in: ["BELUM_BAYAR", "DIPROSES"] },
       },
     }),
 
@@ -224,6 +235,7 @@ const getDashboard = async (request) => {
   // 5. RESPONSE FINAL (RAPAT DAN BERSIH)
   // ==========================================
   return {
+    server_time: nowUtc.toISOString(), // ✅ FE hitung countdown relatif ke ini, bukan ke jam device user
     store: {
       public_id: store.public_id,
       name: store.name,
@@ -235,6 +247,7 @@ const getDashboard = async (request) => {
       latest_products: latestProducts,
       latest_addons: latestAddons,
       oldest_active_queues: oldestActiveQueues, // ✅ Kasir bisa langsung lihat antrean yang udah nunggu lama
+      active_queues_count: activeQueuesCount, // ✅ Buat badge notif jumlah antrean
     },
     today: {
       omzet: {

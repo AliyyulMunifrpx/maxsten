@@ -65,6 +65,11 @@ components:
         data:
           type: object
           properties:
+            server_time:
+              type: string
+              format: date-time
+              description: Current server time in UTC. The frontend should calculate the countdown relative to this value, not the user's device time.
+              example: "2026-08-08T00:25:17.000Z"
             store:
               $ref: "#/components/schemas/DashboardStore"
             lists:
@@ -138,6 +143,10 @@ components:
                 type: string
                 description: Helps the frontend identify which group this add-on belongs to.
                 example: "addon-group-uuid-1"
+        active_queues_count:
+          type: integer
+          description: Total number of currently active queues (BELUM_BAYAR or DIPROSES) for the notification badge.
+          example: 12
         oldest_active_queues:
           type: array
           description: Maximum 5 oldest active queues (BELUM_BAYAR/DIPROSES) waiting for handling.
@@ -160,6 +169,11 @@ components:
                 type: string
                 format: date-time
                 example: "2026-07-27T10:00:00.000Z"
+              expired_at:
+                type: string
+                format: date-time
+                description: The maximum time limit before the queue is considered expired.
+                example: "2026-08-08T00:25:00.000Z"
 
     DashboardMetric:
       type: object
