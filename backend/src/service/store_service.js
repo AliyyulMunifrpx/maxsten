@@ -266,8 +266,7 @@ const updateStoreProfile = async (userId, request) => {
     },
   });
   return await getStore(userId);
-};
-const getStoreHistory = async (
+};const getStoreHistory = async (
   userId,
   month,
   year,
@@ -454,6 +453,7 @@ const getStoreHistory = async (
     _count: true,
   });
 
+  // --- MENGHITUNG METRIK BULAN INI ---
   const totalOmzet = aggSelesai._sum.total_price || 0;
   const totalPesananSelesai = aggSelesai._count || 0;
   const totalBatal = aggBatal._count || 0;
@@ -467,21 +467,78 @@ const getStoreHistory = async (
   const averageOrderValue =
     totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
 
+  // --- MENGHITUNG METRIK BULAN LALU (Untuk Tren) ---
+  const totalOmzetPrev = aggSelesaiPrev._sum.total_price || 0;
+  const totalPesananSelesaiPrev = aggSelesaiPrev._count || 0;
+  const totalBatalPrev = aggBatalPrev._count || 0;
+
+  const totalTransactionsPrev = totalPesananSelesaiPrev + totalBatalPrev;
+  const cancellationRatePrev =
+    totalTransactionsPrev > 0
+      ? Number(((totalBatalPrev / totalTransactionsPrev) * 100).toFixed(2))
+      : 0;
+
+  const averageOrderValuePrev =
+    totalPesananSelesaiPrev > 0 ? Math.round(totalOmzetPrev / totalPesananSelesaiPrev) : 0;
+
+
+  // --- MENGHITUNG WAKTU TUNGGU BULAN INI ---
+  const waitTimeRows = await prisma.queue.findMany({
+    where: {
+      store_id: store.id,
+      status: "SELESAI",
+      completed_at: { not: null },
+      ...dateCondition,
+    },
+    select: { created_at: true, completed_at: true },
+  });
+
+  const averageWaitTimeMinutes = waitTimeRows.length
+    ? Math.round(
+        waitTimeRows.reduce((sum, row) => {
+          const createdAt = new Date(row.created_at);
+          const completedAt = new Date(row.completed_at);
+          return sum + (completedAt - createdAt) / 60000;
+        }, 0) / waitTimeRows.length,
+      )
+    : 0;
+
+  // --- MENGHITUNG WAKTU TUNGGU BULAN LALU (Untuk Tren) ---
+  const waitTimeRowsPrev = await prisma.queue.findMany({
+    where: {
+      store_id: store.id,
+      status: "SELESAI",
+      completed_at: { not: null },
+      ...prevDateCondition,
+    },
+    select: { created_at: true, completed_at: true },
+  });
+
+  const averageWaitTimeMinutesPrev = waitTimeRowsPrev.length
+    ? Math.round(
+        waitTimeRowsPrev.reduce((sum, row) => {
+          const createdAt = new Date(row.created_at);
+          const completedAt = new Date(row.completed_at);
+          return sum + (completedAt - createdAt) / 60000;
+        }, 0) / waitTimeRowsPrev.length,
+      )
+    : 0;
+
+
+  // --- KALKULASI TREN (%) ---
   const calcTrend = (current, previous) => {
-    // 1. Jika bulan lalu 0 dan bulan ini juga 0 = Tidak ada perubahan (0%)
     if (previous === 0 && current === 0) return 0;
-
-    // 2. Jika bulan lalu 0, tapi bulan ini ada pemasukan = Naik 100% (karena dibagi 0 itu error/infinity)
     if (previous === 0 && current > 0) return 100;
-
-    // 3. Jika datanya normal, hitung persentase kenaikan/penurunan
     return Number((((current - previous) / previous) * 100).toFixed(1));
   };
 
   const trend = {
-    omzet: calcTrend(totalOmzet, aggSelesaiPrev._sum.total_price || 0),
-    pesanan: calcTrend(totalPesananSelesai, aggSelesaiPrev._count),
-    batal: calcTrend(totalBatal, aggBatalPrev._count),
+    omzet: calcTrend(totalOmzet, totalOmzetPrev),
+    pesanan: calcTrend(totalPesananSelesai, totalPesananSelesaiPrev),
+    batal: calcTrend(totalBatal, totalBatalPrev),
+    cancellationRate: calcTrend(cancellationRate, cancellationRatePrev),
+    averageOrderValue: calcTrend(averageOrderValue, averageOrderValuePrev),
+    averageWaitTime: calcTrend(averageWaitTimeMinutes, averageWaitTimeMinutesPrev),
   };
 
   let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
@@ -574,26 +631,6 @@ const getStoreHistory = async (
   const peakDayIndex = dailyCounts.indexOf(maxDailyCount);
   const peakDayName = maxDailyCount > 0 ? dayNames[peakDayIndex] : "-";
 
-  // --- DATA TAMBAHAN ---
-  const waitTimeRows = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: "SELESAI",
-      completed_at: { not: null },
-      ...dateCondition,
-    },
-    select: { created_at: true, completed_at: true },
-  });
-
-  const averageWaitTimeMinutes = waitTimeRows.length
-    ? Math.round(
-        waitTimeRows.reduce((sum, row) => {
-          const createdAt = new Date(row.created_at);
-          const completedAt = new Date(row.completed_at);
-          return sum + (completedAt - createdAt) / 60000;
-        }, 0) / waitTimeRows.length,
-      )
-    : 0;
 
   // Top Selling Products (Cuma tabel ranking)
   const allTopSellingGroups = await prisma.queueDetail.groupBy({
@@ -684,7 +721,7 @@ const getStoreHistory = async (
       cancellationRate,
       averageOrderValue,
       averageWaitTimeMinutes,
-      trend,
+      trend, // Sudah memuat ke-6 tren yang diperlukan
       peakTraffic: {
         peakHour: peakHourString,
         peakDay: peakDayName,
