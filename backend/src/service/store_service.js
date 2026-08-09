@@ -826,6 +826,8 @@ const getStore = async (request) => {
       postal_code: true,
       logo_url: true,
       timezone: true,
+      latitude: true,
+      longitude: true,
       manual_status: true,
       manual_updated_at: true,
       operational_hours: { orderBy: { day: "asc" } },
