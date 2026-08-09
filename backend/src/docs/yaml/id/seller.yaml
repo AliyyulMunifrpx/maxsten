@@ -98,14 +98,14 @@ paths:
         * `DIBATALKAN` -> *(status akhir)*
       security:
         - cookieAuth: []
-      parameters:
+          parameters:
         - name: queueId
           in: path
           required: true
-          description: ID antrean (UUID)
+          description: ID antrean (integer)
           schema:
-            type: string
-            format: uuid
+            type: integer
+            example: 501
       requestBody:
         required: true
         content:
