@@ -316,6 +316,8 @@ const getAllProductDisplay = async (request) => {
       logo_url: true,
       timezone: true,
       operational_hours: true,
+          manual_status: true,      // ➕ tambah
+    manual_updated_at: true,  // ➕ tambah
     },
   });
 
