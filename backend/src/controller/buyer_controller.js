@@ -2,43 +2,41 @@ import buyerService from "../service/buyer_service.js";
 import crypto from "crypto";
 const createQueue = async (req, res, next) => {
   try {
-    // 1. Ambil guest_id dari Cookie (bukan dari req.body)
-    let guestId = req.cookies.guest_id;
+    // 1. Ambil guest_id: prioritaskan header 'guest-id' (dipake FE lewat
+    //    localStorage), fallback ke cookie kalau header gak ada, baru
+    //    generate baru kalau dua-duanya kosong sama sekali.
+    let guestId = req.headers["guest-id"] || req.cookies.guest_id;
     let isNewGuest = false;
 
-    // 2. Kalau belum punya (pembeli baru pertama kali pesen), BE bikinin ID-nya
     if (!guestId) {
       guestId = crypto.randomUUID();
       isNewGuest = true;
     }
 
-    // 3. Gabungkan payload dari frontend dengan guestId dari backend
+    // 2. Gabungkan payload dari frontend dengan guestId
     const payload = {
       ...req.body,
       guest_id: guestId,
-      public_id: req.params.storeId, // <--- Timpa/Masukkan guestId valid ke payload
+      public_id: req.params.storeId,
     };
 
     const result = await buyerService.createQueue(payload);
 
     // --- Socket.io Logic ---
     const { store, ...response } = result;
-
     const storeId = store.id;
     const io = req.app.get("socketio");
-
     if (io) {
       io.to(`TOKO_${storeId}`).emit("NEW_QUEUE", response);
     }
 
-    // 4. SET COOKIE KE BROWSER PEMBELI
-    // Ini krusial biar pas dia connect Websocket, socketAuth bisa baca 'guest_id'-nya!
+    // 3. SET COOKIE KE BROWSER PEMBELI (tetep dipertahanin buat socket auth)
     if (isNewGuest) {
       res.cookie("guest_id", guestId, {
-        httpOnly: true, // Aman dari serangan XSS (gabisa dibaca javascript frontend)
-        secure: process.env.NODE_ENV === "production", // Wajib true kalau pakai HTTPS
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
         sameSite: "none",
-        maxAge: 24 * 60 * 60 * 1000, // Aktif 1 hari (sesuaikan kebutuhan)
+        maxAge: 24 * 60 * 60 * 1000,
       });
     }
 
