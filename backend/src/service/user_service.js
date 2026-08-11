@@ -296,7 +296,7 @@ const deleteUser = async (userId, supabaseId) => {
 
   return "OK";
 };
-const updateEmail = async (userId, request) => {
+const updateEmail = async (user, request) => {
   const newEmail = request.email;
 
   if (!newEmail) {
@@ -334,7 +334,7 @@ const updateEmail = async (userId, request) => {
   // Kita update langsung di sini biar respons ke frontend langsung fresh, 
   // nggak perlu nunggu webhook yang jalan di background.
   const updatedUser = await prisma.user.update({
-    where: { id: userId },
+    where: { id: user },
     data: { email: newEmail },
     select: {
       id: true,
