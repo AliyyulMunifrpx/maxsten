@@ -846,57 +846,72 @@ const getStore = async (request) => {
     is_open: isStoreOpen,
   };
 };
-
 const deleteStore = async (userId) => {
-  // 1. Ambil id DAN logo_url dari store
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-    select: {
-      id: true,
-      logo_url: true,
-    },
+
+  const deletedStore = await prisma.$transaction(async (tx) => {
+    // 1. Ambil id DAN logo_url dari store pake transaksi (tx)
+    const store = await tx.store.findFirst({
+      where: {
+        user_id: userId,
+        is_delete: false,
+      },
+      select: {
+        id: true,
+        logo_url: true,
+      },
+    });
+
+    if (!store) {
+      throw new ResponseError(404, "Store not found");
+    }
+
+    // 2. Cek apakah ada antrean aktif pake transaksi (tx)
+    const hasActiveOrders = await tx.queue.findFirst({
+      where: {
+        store_id: store.id,
+        status: {
+          in: ["BELUM_BAYAR", "DIPROSES"],
+        },
+      },
+    });
+
+    if (hasActiveOrders) {
+      throw new ResponseError(
+        400,
+        "The store cannot be deleted because there are still pending orders"
+      );
+    }
+
+    // 3. Soft delete toko di database pake transaksi (tx)
+    await tx.store.update({
+      where: {
+        id: store.id,
+      },
+      data: {
+        is_delete: true,
+        user_id: null, // PASTIKAN di schema.prisma field ini "Int?" atau "String?" (Boleh Null)
+      },
+    });
+
+    // Return data toko buat dipakai di luar transaksi
+    return store; 
   });
 
-  if (!store) {
-    throw new ResponseError(404, "Store not found");
-  }
 
-  // 2. Soft delete toko di database terlebih dahulu
-  await prisma.store.update({
-    where: {
-      id: store.id,
-    },
-    data: {
-      is_delete: true,
-      user_id: null, // Opsional: lepas relasi user agar user bisa buat store baru
-    },
-  });
+  if (deletedStore.logo_url && deletedStore.logo_url.includes("supabase.co")) {
+    try {
+      const parts = deletedStore.logo_url.split("/store-logos/");
 
-  // 3. Hapus file logo dari Supabase jika toko punya logo
-  if (store.logo_url) {
-    if (store.logo_url.includes("supabase.co")) {
-      try {
-        // Ekstrak nama file dari Public URL Supabase
-        // Contoh URL: https://[project].supabase.co/storage/v1/object/public/store-logos/images/logo-123.jpg
-        // Hasil split index [1]: "images/logo-123.jpg"
-        const parts = store.logo_url.split("/store-logos/");
-
-        if (parts.length > 1) {
-          const fileName = parts[1];
-          // Panggil utility hapus bucket
-          await deleteImageFromSupabase(fileName, "store-logos");
-        }
-      } catch (error) {
-        // Log error saja tanpa throw, agar API tetap merespons sukses (200 OK)
-        // karena dari sisi database, tokonya sudah berhasil dihapus.
-        console.error(
-          `[deleteStore] Failed to delete the logo file from Supabase for store ${store.id}:`,
-          error.message,
-        );
+      if (parts.length > 1) {
+        const fileName = parts[1];
+        await deleteImageFromSupabase(fileName, "store-logos");
       }
+    } catch (error) {
+      // Log error saja tanpa throw
+      console.error(
+        `[deleteStore] Failed to delete the logo file from Supabase for store ${deletedStore.id}:`,
+        error.message,
+      );
     }
   }
 };
