@@ -266,7 +266,9 @@ const updateStoreProfile = async (userId, request) => {
     },
   });
   return await getStore(userId);
-};const getStoreHistory = async (
+};
+
+const getStoreHistory = async (
   userId,
   month,
   year,
@@ -291,10 +293,8 @@ const updateStoreProfile = async (userId, request) => {
   if (!store) throw new ResponseError(404, "Store not found");
 
   const tz = store.timezone || "Asia/Jakarta";
-
   const nowUtc = new Date();
   const nowZoned = toZonedTime(nowUtc, tz);
-
   const currentYear = nowZoned.getFullYear();
   const currentMonth = nowZoned.getMonth() + 1;
 
@@ -431,29 +431,101 @@ const updateStoreProfile = async (userId, request) => {
     String(i + 1).padStart(2, "0"),
   );
 
-  const aggSelesai = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    _sum: { total_price: true },
-    _count: true,
-  });
+  let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
+  if (status === "SELESAI") statusCondition = "SELESAI";
+  else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
 
-  const aggBatal = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "DIBATALKAN", ...dateCondition },
-    _count: true,
-  });
+  const skip = (pageNum - 1) * limitNum;
 
-  const aggSelesaiPrev = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "SELESAI", ...prevDateCondition },
-    _sum: { total_price: true },
-    _count: true,
-  });
+  // ==========================================
+  // PARALLEL QUERIES (PERFORMA MAKSIMAL)
+  // ==========================================
+  const [
+    aggSelesai,
+    aggBatal,
+    aggSelesaiPrev,
+    aggBatalPrev,
+    waitTimeRows,
+    waitTimeRowsPrev,
+    history,
+    revenueRows,
+    allTopSellingGroups,
+    allCompletedDetails,
+  ] = await Promise.all([
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      _sum: { total_price: true },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "DIBATALKAN", ...dateCondition },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "SELESAI", ...prevDateCondition },
+      _sum: { total_price: true },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "DIBATALKAN", ...prevDateCondition },
+      _count: true,
+    }),
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        completed_at: { not: null },
+        processed_at: { not: null },
+        ...dateCondition,
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        completed_at: { not: null },
+        processed_at: { not: null },
+        ...prevDateCondition,
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
+    prisma.queue.findMany({
+      where: { store_id: store.id, status: statusCondition, ...dateCondition },
+      orderBy: { created_at: "desc" },
+      skip,
+      take: limitNum,
+      include: {
+        queueDetails: {
+          include: { product: true, variant: true },
+        },
+      },
+    }),
+    prisma.queue.findMany({
+      where: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      select: { created_at: true, total_price: true },
+      orderBy: { created_at: "asc" },
+    }),
+    prisma.queueDetail.groupBy({
+      by: ["product_id"],
+      where: {
+        queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: "desc" } },
+    }),
+    prisma.queueDetail.findMany({
+      where: {
+        queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
+        selected_addons: { not: null },
+      },
+      select: { selected_addons: true, quantity: true },
+    }),
+  ]);
 
-  const aggBatalPrev = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "DIBATALKAN", ...prevDateCondition },
-    _count: true,
-  });
-
-  // --- MENGHITUNG METRIK BULAN INI ---
+  // ==========================================
+  // KALKULASI METRIK
+  // ==========================================
   const totalOmzet = aggSelesai._sum.total_price || 0;
   const totalPesananSelesai = aggSelesai._count || 0;
   const totalBatal = aggBatal._count || 0;
@@ -467,7 +539,6 @@ const updateStoreProfile = async (userId, request) => {
   const averageOrderValue =
     totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
 
-  // --- MENGHITUNG METRIK BULAN LALU (Untuk Tren) ---
   const totalOmzetPrev = aggSelesaiPrev._sum.total_price || 0;
   const totalPesananSelesaiPrev = aggSelesaiPrev._count || 0;
   const totalBatalPrev = aggBatalPrev._count || 0;
@@ -479,53 +550,31 @@ const updateStoreProfile = async (userId, request) => {
       : 0;
 
   const averageOrderValuePrev =
-    totalPesananSelesaiPrev > 0 ? Math.round(totalOmzetPrev / totalPesananSelesaiPrev) : 0;
+    totalPesananSelesaiPrev > 0
+      ? Math.round(totalOmzetPrev / totalPesananSelesaiPrev)
+      : 0;
 
+  // Helper Waktu Tunggu Dapur
+  const calculateAvgWaitTime = (rows) => {
+    let totalWaitMs = 0;
+    let validCount = 0;
+    rows.forEach((row) => {
+      if (row.processed_at && row.completed_at) {
+        const waitMs =
+          new Date(row.completed_at).getTime() -
+          new Date(row.processed_at).getTime();
+        if (waitMs >= 0) {
+          totalWaitMs += waitMs;
+          validCount++;
+        }
+      }
+    });
+    return validCount === 0 ? 0 : Math.round(totalWaitMs / validCount / 60000);
+  };
 
-  // --- MENGHITUNG WAKTU TUNGGU BULAN INI ---
-  const waitTimeRows = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: "SELESAI",
-      completed_at: { not: null },
-      ...dateCondition,
-    },
-    select: { created_at: true, completed_at: true },
-  });
+  const averageWaitTimeMinutes = calculateAvgWaitTime(waitTimeRows);
+  const averageWaitTimeMinutesPrev = calculateAvgWaitTime(waitTimeRowsPrev);
 
-  const averageWaitTimeMinutes = waitTimeRows.length
-    ? Math.round(
-        waitTimeRows.reduce((sum, row) => {
-          const createdAt = new Date(row.created_at);
-          const completedAt = new Date(row.completed_at);
-          return sum + (completedAt - createdAt) / 60000;
-        }, 0) / waitTimeRows.length,
-      )
-    : 0;
-
-  // --- MENGHITUNG WAKTU TUNGGU BULAN LALU (Untuk Tren) ---
-  const waitTimeRowsPrev = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: "SELESAI",
-      completed_at: { not: null },
-      ...prevDateCondition,
-    },
-    select: { created_at: true, completed_at: true },
-  });
-
-  const averageWaitTimeMinutesPrev = waitTimeRowsPrev.length
-    ? Math.round(
-        waitTimeRowsPrev.reduce((sum, row) => {
-          const createdAt = new Date(row.created_at);
-          const completedAt = new Date(row.completed_at);
-          return sum + (completedAt - createdAt) / 60000;
-        }, 0) / waitTimeRowsPrev.length,
-      )
-    : 0;
-
-
-  // --- KALKULASI TREN (%) ---
   const calcTrend = (current, previous) => {
     if (previous === 0 && current === 0) return 0;
     if (previous === 0 && current > 0) return 100;
@@ -538,42 +587,20 @@ const updateStoreProfile = async (userId, request) => {
     batal: calcTrend(totalBatal, totalBatalPrev),
     cancellationRate: calcTrend(cancellationRate, cancellationRatePrev),
     averageOrderValue: calcTrend(averageOrderValue, averageOrderValuePrev),
-    averageWaitTime: calcTrend(averageWaitTimeMinutes, averageWaitTimeMinutesPrev),
+    averageWaitTime: calcTrend(
+      averageWaitTimeMinutes,
+      averageWaitTimeMinutesPrev,
+    ),
   };
-
-  let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
-  if (status === "SELESAI") statusCondition = "SELESAI";
-  else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
-
-  const skip = (pageNum - 1) * limitNum;
-  const history = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: statusCondition,
-      ...dateCondition,
-    },
-    orderBy: { created_at: "desc" },
-    skip,
-    take: limitNum,
-    include: {
-      queueDetails: {
-        include: { product: true, variant: true },
-      },
-    },
-  });
 
   let totalRows = totalPesananSelesai + totalBatal;
   if (status === "SELESAI") totalRows = totalPesananSelesai;
   if (status === "DIBATALKAN") totalRows = totalBatal;
   const totalPages = Math.ceil(totalRows / limitNum);
 
-  // --- DATA UNTUK CHART ---
-  const revenueRows = await prisma.queue.findMany({
-    where: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    select: { created_at: true, total_price: true },
-    orderBy: { created_at: "asc" },
-  });
-
+  // ==========================================
+  // DATA UNTUK CHART & RANKING
+  // ==========================================
   const overallHourlyCounts = Array(24).fill(0);
   const dailyCounts = Array(7).fill(0);
   const dayNames = [
@@ -614,7 +641,6 @@ const updateStoreProfile = async (userId, request) => {
   });
 
   const revenueChartData = labelOrder.map((label) => revenueChartMap[label]);
-
   const dailyChartData = dailyCounts.map((count, index) => ({
     label: dayNames[index],
     pesanan: count,
@@ -631,17 +657,7 @@ const updateStoreProfile = async (userId, request) => {
   const peakDayIndex = dailyCounts.indexOf(maxDailyCount);
   const peakDayName = maxDailyCount > 0 ? dayNames[peakDayIndex] : "-";
 
-
-  // Top Selling Products (Cuma tabel ranking)
-  const allTopSellingGroups = await prisma.queueDetail.groupBy({
-    by: ["product_id"],
-    where: {
-      queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    },
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: "desc" } },
-  });
-
+  // Top Selling Products
   const totalTopSellingRows = allTopSellingGroups.length;
   const skipTop = (topPageNum - 1) * topLimitNum;
   const topSellingGroups = allTopSellingGroups.slice(
@@ -667,16 +683,7 @@ const updateStoreProfile = async (userId, request) => {
   }));
 
   // Top Addons
-  const allCompletedDetails = await prisma.queueDetail.findMany({
-    where: {
-      queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
-      selected_addons: { not: null },
-    },
-    select: { selected_addons: true, quantity: true },
-  });
-
   const addonSalesMap = {};
-
   allCompletedDetails.forEach((detail) => {
     let addons = detail.selected_addons;
     if (typeof addons === "string") {
@@ -704,6 +711,9 @@ const updateStoreProfile = async (userId, request) => {
     .sort((a, b) => b.totalQuantity - a.totalQuantity)
     .slice(0, 10);
 
+  // ==========================================
+  // FINAL RESPONSE
+  // ==========================================
   return {
     meta: {
       selectedMonth,
@@ -721,7 +731,7 @@ const updateStoreProfile = async (userId, request) => {
       cancellationRate,
       averageOrderValue,
       averageWaitTimeMinutes,
-      trend, // Sudah memuat ke-6 tren yang diperlukan
+      trend,
       peakTraffic: {
         peakHour: peakHourString,
         peakDay: peakDayName,
@@ -751,6 +761,7 @@ const updateStoreProfile = async (userId, request) => {
     topAddons: topSellingAddons,
   };
 };
+
 const getOperationalHours = async (userId) => {
   const store = await prisma.store.findFirst({
     where: {
@@ -847,7 +858,6 @@ const getStore = async (request) => {
   };
 };
 const deleteStore = async (userId) => {
-
   const deletedStore = await prisma.$transaction(async (tx) => {
     // 1. Ambil id DAN logo_url dari store pake transaksi (tx)
     const store = await tx.store.findFirst({
@@ -878,7 +888,7 @@ const deleteStore = async (userId) => {
     if (hasActiveOrders) {
       throw new ResponseError(
         400,
-        "The store cannot be deleted because there are still pending orders"
+        "The store cannot be deleted because there are still pending orders",
       );
     }
 
@@ -894,9 +904,8 @@ const deleteStore = async (userId) => {
     });
 
     // Return data toko buat dipakai di luar transaksi
-    return store; 
+    return store;
   });
-
 
   if (deletedStore.logo_url && deletedStore.logo_url.includes("supabase.co")) {
     try {

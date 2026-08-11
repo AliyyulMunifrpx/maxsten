@@ -12,24 +12,45 @@ const calcTrend = (current, previous) => {
   return Number((((current - previous) / previous) * 100).toFixed(1));
 };
 
+// 👇 TAMBAHAN: Fungsi helper buat hitung rata-rata waktu tunggu (dalam menit)
+const calculateAvgWaitTime = (queues) => {
+  let totalWaitMs = 0;
+  let validCount = 0;
+
+  queues.forEach((q) => {
+    // Cuma hitung yang ada nilai processed_at dan completed_at (Data valid)
+    if (q.processed_at && q.completed_at) {
+      const waitMs = q.completed_at.getTime() - q.processed_at.getTime();
+      if (waitMs >= 0) {
+        totalWaitMs += waitMs;
+        validCount++;
+      }
+    }
+  });
+
+  // Return rata-rata dalam bentuk menit (dibulatkan)
+  if (validCount === 0) return 0;
+  return Math.round(totalWaitMs / validCount / 60000); // 60000 ms = 1 menit
+};
+
 const getDashboard = async (request) => {
   const userId = validate(getDashboardValidation, request);
 
   // 1. Ambil Data Dasar Toko
- const store = await prisma.store.findFirst({
-  where: { user_id: userId, is_delete: false },
-  select: {
-    id: true,
-    public_id: true,
-    name: true,
-    description: true,
-    logo_url: true,
-    timezone: true,
-    operational_hours: true,
-    manual_status: true,      // ➕ tambah
-    manual_updated_at: true,  // ➕ tambah
-  },
-});
+  const store = await prisma.store.findFirst({
+    where: { user_id: userId, is_delete: false },
+    select: {
+      id: true,
+      public_id: true,
+      name: true,
+      description: true,
+      logo_url: true,
+      timezone: true,
+      operational_hours: true,
+      manual_status: true,
+      manual_updated_at: true,
+    },
+  });
   if (!store) throw new ResponseError(404, "Store not found");
   const tz = store.timezone || "Asia/Jakarta";
 
@@ -39,7 +60,6 @@ const getDashboard = async (request) => {
   const nowUtc = new Date();
   const nowZoned = toZonedTime(nowUtc, tz);
 
-  // Awal Hari Ini (00:00:00 lokal)
   const startOfTodayZoned = new Date(
     nowZoned.getFullYear(),
     nowZoned.getMonth(),
@@ -51,12 +71,6 @@ const getDashboard = async (request) => {
   );
   const startOfTodayUtc = fromZonedTime(startOfTodayZoned, tz);
 
-  // Kemarin, dipotong di JAM:MENIT:DETIK yang SAMA dengan sekarang -
-  // supaya "hari ini (sejauh ini)" dan "kemarin (sejauh jam yang sama)"
-  // dibandingkan dalam rentang waktu yang sama panjangnya (fair, gak
-  // kebablasan kayak isu MTD sebelumnya). new Date(...) dengan
-  // getDate() - 1 otomatis rollover ke bulan/tahun sebelumnya kalau hari
-  // ini tanggal 1.
   const zonedYesterdayStart = new Date(
     nowZoned.getFullYear(),
     nowZoned.getMonth(),
@@ -89,12 +103,13 @@ const getDashboard = async (request) => {
     latestProducts,
     latestAddons,
     oldestActiveQueues,
-    activeQueuesCount, // ✅ total antrean BELUM_BAYAR + DIPROSES, buat badge notif
+    activeQueuesCount,
     aggTodaySelesai,
     aggTodayBatal,
-    todayCompletedQueues, // Buat ngitung Peak Hour & chart jam-jaman
+    todayCompletedQueues, // ✅ Ditambah select processed_at & completed_at
     aggYesterdaySelesai,
     aggYesterdayBatal,
+    yesterdayCompletedQueues, // ✅ BARU: Buat ngitung trend waktu tunggu kemarin
   ] = await Promise.all([
     // ✅ 5 Produk Terbaru
     prisma.product.findMany({
@@ -104,7 +119,7 @@ const getDashboard = async (request) => {
       select: {
         id: true,
         name: true,
-        description: true, // ✅ dipakai FE buat card produk
+        description: true,
         price: true,
         image_url: true,
         is_available: true,
@@ -119,13 +134,13 @@ const getDashboard = async (request) => {
       select: { id: true, name: true, price: true, addon_group_id: true },
     }),
 
-    // ✅ 5 Antrean Terlama (Paling atas) yg masih aktif
+    // ✅ 5 Antrean Terlama yg masih aktif
     prisma.queue.findMany({
       where: {
         store_id: store.id,
         status: { in: ["BELUM_BAYAR", "DIPROSES"] },
       },
-      orderBy: { created_at: "asc" }, // ASC = Terlama
+      orderBy: { created_at: "asc" },
       take: 5,
       select: {
         id: true,
@@ -133,12 +148,11 @@ const getDashboard = async (request) => {
         status: true,
         total_price: true,
         created_at: true,
-        expired_at: true, // ✅ dari tabel queue: created_at + timeout payment milik toko, dipakai FE buat hitung sisa waktu
+        expired_at: true,
       },
     }),
 
-    // ✅ Total count antrean aktif (BELUM_BAYAR + DIPROSES) — gak kena limit take:5,
-    // dipakai buat badge notif jumlah antrean.
+    // ✅ Total count antrean aktif
     prisma.queue.count({
       where: {
         store_id: store.id,
@@ -164,16 +178,18 @@ const getDashboard = async (request) => {
       },
       _count: true,
     }),
+
+    // 👇 FIX: Ambil created_at (buat chart jam) DAN waktu prosesnya (buat hitung lama nunggu)
     prisma.queue.findMany({
       where: {
         store_id: store.id,
         status: "SELESAI",
         created_at: { gte: startOfTodayUtc, lt: nowUtc },
       },
-      select: { created_at: true },
+      select: { created_at: true, processed_at: true, completed_at: true },
     }),
 
-    // Agregasi KEMARIN (sampai jam yang sama dengan sekarang)
+    // Agregasi KEMARIN
     prisma.queue.aggregate({
       where: {
         store_id: store.id,
@@ -191,14 +207,21 @@ const getDashboard = async (request) => {
       },
       _count: true,
     }),
+
+    // 👇 BARU: Ambil data kemarin cuma buat ngitung rata-rata waktu prosesnya
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        created_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
   ]);
 
   // ==========================================
-  // 3B. TOTAL TERJUAL PER PRODUK (5 Produk Terbaru)
+  // 3B. TOTAL TERJUAL PER PRODUK
   // ==========================================
-  // 1 query groupBy buat semua produk sekaligus (bukan aggregate per
-  // produk satu-satu) - pola sama seperti product_service.js getAllProducts,
-  // biar gak N+1.
   const latestProductIds = latestProducts.map((p) => p.id);
 
   const soldAggregates = latestProductIds.length
@@ -222,7 +245,7 @@ const getDashboard = async (request) => {
   }));
 
   // ==========================================
-  // 4. KALKULASI METRIK & TREND (Hari Ini vs Kemarin)
+  // 4. KALKULASI METRIK & TREND
   // ==========================================
 
   const omzetToday = aggTodaySelesai._sum.total_price || 0;
@@ -233,16 +256,18 @@ const getDashboard = async (request) => {
   const pesananSelesaiYesterday = aggYesterdaySelesai._count || 0;
   const pesananBatalYesterday = aggYesterdayBatal._count || 0;
 
-  // AOV - trend dihitung dari rasio omzet/pesanan yang BELUM dibulatkan,
-  // Math.round cuma dipakai buat value yang ditampilkan (konsisten sama
-  // history_service.js yang cuma membulatkan sekali buat averageOrderValue).
+  // AOV
   const aovTodayRaw =
     pesananSelesaiToday > 0 ? omzetToday / pesananSelesaiToday : 0;
   const aovYesterdayRaw =
     pesananSelesaiYesterday > 0 ? omzetYesterday / pesananSelesaiYesterday : 0;
   const aovToday = Math.round(aovTodayRaw);
 
-  // B. Hitung Jam Paling Ramai & Chart Jam-Jaman HARI INI
+  // 👇 BARU: Rata-Rata Waktu Tunggu (DIPROSES sampai SELESAI) dalam menit
+  const avgWaitTimeToday = calculateAvgWaitTime(todayCompletedQueues);
+  const avgWaitTimeYesterday = calculateAvgWaitTime(yesterdayCompletedQueues);
+
+  // Peak Hour & Chart Jam
   const hourlyCounts = Array(24).fill(0);
   todayCompletedQueues.forEach((q) => {
     const localHour = toZonedTime(q.created_at, tz).getHours();
@@ -251,21 +276,18 @@ const getDashboard = async (request) => {
 
   const maxHourlyCount = Math.max(...hourlyCounts);
   const peakHourIndex = hourlyCounts.indexOf(maxHourlyCount);
-  // NOTE: label "23:00 - 24:00" untuk jam terakhir sengaja dibiarkan sama
-  // seperti history_service.js.
   const peakHourString =
     maxHourlyCount > 0
       ? `${String(peakHourIndex).padStart(2, "0")}:00 - ${String(peakHourIndex + 1).padStart(2, "0")}:00`
       : "-";
 
-  // C. Status Toko Buka/Tutup
   const isStoreOpen = calculateStoreStatus(store, store.operational_hours);
 
   // ==========================================
-  // 5. RESPONSE FINAL (RAPAT DAN BERSIH)
+  // 5. RESPONSE FINAL
   // ==========================================
   return {
-    server_time: nowUtc.toISOString(), // ✅ FE hitung countdown relatif ke ini, bukan ke jam device user
+    server_time: nowUtc.toISOString(),
     store: {
       public_id: store.public_id,
       name: store.name,
@@ -276,13 +298,13 @@ const getDashboard = async (request) => {
     lists: {
       latest_products: latestProductsWithSold,
       latest_addons: latestAddons,
-      oldest_active_queues: oldestActiveQueues, // ✅ Kasir bisa langsung lihat antrean yang udah nunggu lama
-      active_queues_count: activeQueuesCount, // ✅ Buat badge notif jumlah antrean
+      oldest_active_queues: oldestActiveQueues,
+      active_queues_count: activeQueuesCount,
     },
     today: {
       omzet: {
         value: omzetToday,
-        trend: calcTrend(omzetToday, omzetYesterday), // vs kemarin, jam yang sama
+        trend: calcTrend(omzetToday, omzetYesterday),
       },
       pesanan_selesai: {
         value: pesananSelesaiToday,
@@ -296,8 +318,13 @@ const getDashboard = async (request) => {
         value: aovToday,
         trend: calcTrend(aovTodayRaw, aovYesterdayRaw),
       },
-      peak_hour: peakHourString, // ✅ Jam tersibuk hari ini
-      hourly_traffic: hourlyCounts, // ✅ Chart live jam-jaman hari ini (index 0-23 = jam, partial kalau toko belum tutup)
+      // 👇 TAMBAHAN DI RESPONSE: Waktu tunggu real dapur (dalam menit)
+      avg_wait_time: {
+        value: avgWaitTimeToday,
+        trend: calcTrend(avgWaitTimeToday, avgWaitTimeYesterday),
+      },
+      peak_hour: peakHourString,
+      hourly_traffic: hourlyCounts,
     },
   };
 };

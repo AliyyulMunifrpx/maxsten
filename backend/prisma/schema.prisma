@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
+  provider = "postgresql"
 }
 
 model User {
@@ -74,18 +74,18 @@ model StoreOperationalHour {
 }
 
 model Product {
-  id                 String                 @id @default(uuid())
-  name               String                 @db.VarChar(100)
+  id                 String              @id @default(uuid())
+  name               String              @db.VarChar(100)
   price              Int
-  is_available       Boolean                @default(true)
+  is_available       Boolean             @default(true)
   store_id           Int
-  image_url          String?                @db.VarChar(255)
-  is_delete          Boolean                @default(false)
+  image_url          String?             @db.VarChar(255)
+  is_delete          Boolean             @default(false)
   description        String?
-  created_at         DateTime               @default(now())
+  created_at         DateTime            @default(now())
   updated_at         DateTime?
   productAddonGroups ProductAddonGroup[]
-  store              Store                  @relation(fields: [store_id], references: [id])
+  store              Store               @relation(fields: [store_id], references: [id])
   queueDetail        QueueDetail[]
   variants           Variant[]
 
@@ -155,6 +155,7 @@ model Queue {
   total_price         Int           @default(0)
   status              QueueStatus   @default(BELUM_BAYAR)
   created_at          DateTime      @default(now())
+  processed_at        DateTime?
   completed_at        DateTime?
   note                String?
   expired_at          DateTime
