@@ -158,7 +158,10 @@ const editQueueStatus = async (request) => {
   // 3. SIAPKAN PAYLOAD UPDATE SESUAI STATUS BARU
   let updateData = { status: req.status };
 
-  if (req.status === "SELESAI") {
+  // 👇 INI PERUBAHANNYA: Isi processed_at kalau statusnya DIPROSES
+  if (req.status === "DIPROSES") {
+    updateData.processed_at = new Date();
+  } else if (req.status === "SELESAI") {
     updateData.completed_at = new Date();
   } else if (req.status === "DIBATALKAN") {
     updateData.cancellation_reason = req.reason || null;
@@ -177,6 +180,7 @@ const editQueueStatus = async (request) => {
         id: true,
         queue_number: true,
         status: true,
+        processed_at: true, // 👇 TAMBAHAN DI SINI BIAR DATANYA KEKIRIM KE FRONTEND
         completed_at: true,
         cancellation_reason: true,
         cancelled_by: true,
