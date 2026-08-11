@@ -143,7 +143,7 @@ const deleteUser = async (req, res, next) => {
 const updateEmail = async (req, res, next) => {
   try {
     // req.user didapat dari authMiddleware yang udah lu bikin
-    const result = await userService.updateEmail(req.user.id, req.body);
+    const result = await userService.updateEmail(req.user, req.body);
     res.status(200).json({
       data: result,
     });
