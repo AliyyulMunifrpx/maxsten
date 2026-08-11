@@ -296,6 +296,55 @@ const deleteUser = async (userId, supabaseId) => {
 
   return "OK";
 };
+const updateEmail = async (userId, request) => {
+  const newEmail = request.email;
+
+  if (!newEmail) {
+    throw new ResponseError(400, "The new email address cannot be blank");
+  }
+
+  // Kalau emailnya sama aja kayak yang lama, gak usah ngapa-ngapain
+  if (user.email === newEmail) {
+    return user;
+  }
+
+  // 1. PRE-FLIGHT CHECK: Cari apakah email udah dipakai orang lain di DB Lokal
+  const existingUser = await prisma.user.findUnique({
+    where: { email: newEmail },
+  });
+
+  if (existingUser) {
+    // TOLAK SEKARANG JUGA SEBELUM NYENTUH SUPABASE
+    throw new ResponseError(409, "This email address is already in use by another user. Please use a different email address.");
+  }
+
+  // 2. UPDATE KE SUPABASE AUTH
+  const { data: authData, error: authError } = await supabase.auth.admin.updateUserById(
+    user.supabase_id,
+    { 
+      email: newEmail, 
+    }
+  );
+
+  if (authError) {
+    throw new ResponseError(500, "Failed to update email in Supabase: " + authError.message);
+  }
+
+  // 3. UPDATE DB LOKAL (PRISMA)
+  // Kita update langsung di sini biar respons ke frontend langsung fresh, 
+  // nggak perlu nunggu webhook yang jalan di background.
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { email: newEmail },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+
+  return updatedUser;
+};
 export default {
   register,
   login,
@@ -303,4 +352,5 @@ export default {
   syncEmailWebhook,
   logout,
   deleteUser,
+  updateEmail
 };
