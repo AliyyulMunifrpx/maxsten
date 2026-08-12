@@ -41,6 +41,9 @@ const register = async function (request) {
         const result = await supabase.auth.signUp({
           email: user.email,
           password: user.password,
+              options: {
+      emailRedirectTo: `${process.env.FRONTEND_URL}/dashboard`,
+    },
         });
         if (result.error) {
           console.log("SUPABASE SIGNUP ERROR:", result.error);
