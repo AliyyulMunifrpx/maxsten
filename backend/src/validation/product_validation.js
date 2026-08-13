@@ -23,7 +23,7 @@ const createProductValidation = Joi.object({
 
 const updateProductValidation = Joi.object({
   name: Joi.string().max(100).optional(),
-  description: Joi.string().optional(),
+  description: Joi.string().allow('').optional(),
   price: Joi.number().optional().positive(),
   variants: Joi.array()
     .items(
