@@ -1,4 +1,5 @@
-// src/components/dashboard/product-card.jsx
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { ImageOff, Flame } from "lucide-react";
 
 export default function ProductCard({
@@ -10,12 +11,26 @@ export default function ProductCard({
   image_url,
   is_available,
 }) {
+  const navigate = useNavigate();
   const formattedPrice = `Rp${Number(price ?? 0).toLocaleString("id-ID")}`;
 
+  function handleClick() {
+    navigate("/products", { state: { highlightId: id } });
+  }
+
   return (
-    <div className="w-full h-[25%] grid grid-cols-3 hover:bg-white/10 rounded-none border-b-1 border-white/10 transition-colors">
+    <motion.div
+      onClick={handleClick}
+      whileHover={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+      transition={{ duration: 0.2 }}
+      className="w-full grid grid-cols-3 rounded-none border-b-1 border-white/10 cursor-pointer"
+    >
       <div className="h-full w-full flex items-center justify-center p-[8px]">
-        <div className="aspect-square h-full max-w-full rounded-none overflow-hidden bg-white/10 flex items-center justify-center">
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          className="aspect-square h-full max-w-full rounded-none overflow-hidden bg-white/10 flex items-center justify-center"
+        >
           {image_url ? (
             <img
               src={image_url}
@@ -25,7 +40,7 @@ export default function ProductCard({
           ) : (
             <ImageOff className="text-white/30" />
           )}
-        </div>
+        </motion.div>
       </div>
 
       <div className="h-full w-full col-span-2 pr-[16px] py-[10px] flex flex-col justify-between">
@@ -42,7 +57,7 @@ export default function ProductCard({
             className={`shrink-0 text-[11px] font-bold px-[8px] py-[2px] rounded-full ${
               is_available
                 ? "bg-green-500/20 text-green-500"
-                : "bg-white/10 text-white/50"
+                : "bg-white/10 text-red-400 bg-red-400/20"
             }`}
           >
             {is_available ? "Tersedia" : "Habis"}
@@ -50,7 +65,7 @@ export default function ProductCard({
         </div>
 
         <div className="flex items-end justify-between">
-          <p className="text-[16px] font-bold text-[#D99A25]">
+          <p className="text-[16px] font-bold text-[#C0FE04]">
             {formattedPrice}
           </p>
           {total_sold > 0 && (
@@ -61,6 +76,6 @@ export default function ProductCard({
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -25,7 +25,7 @@ export default function DashboardLayout() {
     <SidebarProvider>
       <AppSidebar />
       {/* Ubah min-h-screen menjadi h-screen agar parent terkunci pada tinggi layar (viewport) */}
-      <div className="flex h-screen flex-1 flex-col overflow-hidden">
+      <div className="flex h-[100dvh] flex-1 flex-col overflow-hidden">
         <TopBar />
 
         {/* Area ini yang akan scroll berkat flex-1 dan overflow-y-auto */}

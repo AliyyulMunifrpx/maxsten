@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Asumsi tidak terpakai tapi dibiarkan
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -13,7 +14,11 @@ import {
 } from "@/components/ui/select";
 import { createStore, usePostalCode } from "../../hooks/store.js";
 import LocationPicker from "../../components/store/location-picker.jsx";
-import FieldLabel from "../../components/store/field-label.jsx";
+import FieldLabel from "../../components/field-label.jsx";
+import { RevealButton } from "../../components/reveal-button.jsx";
+import ImageCropperModal from "../../components/image-cropper-modal.jsx";
+import { useDocumentTitle } from "../../hooks/use-document-title.js";
+// Pastikan path import ini sesuai dengan struktur folder kamu
 
 const DAYS = [
   { day: 0, label: "Senin" },
@@ -31,17 +36,18 @@ const TIMEZONES = [
   { value: "Asia/Jayapura", label: "WIT — Jayapura" },
 ];
 
-// Disesuaikan: Background lebih gelap (inset), rounded-md, aksen kuning dari dashboard
 const inputCls =
-  "bg-[#1e1e1e] border-white/10 text-white placeholder:text-white/30 focus-visible:ring-[#F2A724] focus-visible:border-[#F2A724] rounded-md transition-all";
+  "rounded-none bg-white/5 border-white/10 text-white text-[12px] placeholder:text-white/30 focus-visible:ring-[#C0FE04] focus-visible:border-[#C0FE04] transition-all";
 
 const readOnlyCls =
-  "bg-[#1e1e1e] border-white/5 text-white/50 rounded-md cursor-not-allowed";
+  "rounded-none bg-white/5 border-white/5 text-white/50 text-[12px] cursor-not-allowed";
+
+const labelCls = "text-[16px] font-bold text-white/50";
 
 export default function CreateStorePage() {
   const navigate = useNavigate();
   const { mutate, isPending, error } = createStore();
-
+  useDocumentTitle("Buat Toko");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -70,7 +76,10 @@ export default function CreateStorePage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
 
-  // Pengecekan minimal 1 hari aktif
+  // State baru untuk cropper dan preview
+  const [pendingLogoSrc, setPendingLogoSrc] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
+
   const isAnyDayOpen = hours.some((h) => h.is_active);
 
   useEffect(() => {
@@ -123,47 +132,82 @@ export default function CreateStorePage() {
     );
   }
 
+  // --- FUNGSI UNTUK IMAGE CROPPER ---
+  function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingLogoSrc(URL.createObjectURL(file));
+    e.target.value = ""; // Reset value agar file yang sama bisa di-klik lagi jika batal
+  }
+
+  function handleCropConfirm(blob) {
+    // Ubah Blob menjadi File object agar sesuai format yang dikirim ke backend
+    const file = new File([blob], "store_logo.png", { type: "image/png" });
+
+    setForm((prev) => ({ ...prev, logo: file }));
+    setLogoPreviewUrl(URL.createObjectURL(blob));
+    setPendingLogoSrc(null);
+  }
+  // ---------------------------------
+
   function handleSubmit(e) {
     e.preventDefault();
+
+    // 1. Validasi Manual Kode Pos
+    if (!form.postal_code) {
+      toast.error("Silakan cari dan pilih kelurahan dari dropdown kode pos!");
+      return;
+    }
+
+    // 2. Validasi Manual Jam Operasional
+    if (!isAnyDayOpen) {
+      toast.error("Pilih minimal 1 hari operasional!");
+      return;
+    }
+
     mutate(
       { ...form, operational_hours: hours },
-      { onSuccess: () => navigate("/dashboard") },
+      {
+        onSuccess: () => {
+          toast.success("Toko kamu berhasil dibuat!");
+          navigate("/dashboard");
+        },
+        onError: () => {
+          toast.error(error.message);
+        },
+      },
     );
   }
 
   return (
-    /* Disesuaikan: Background page disamakan dengan sidebar/bg utama dashboard */
-    <div className="min-h-screen bg-[#1e1e1e] px-6 py-10 font-sans">
-      <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide">
-            Buat Toko Baru
-          </h1>
-          <p className="mt-1 text-sm text-white/50">
+    <div className="min-h-full bg-[#1e1e1e] p-[16px] sm:p-[24px] relative">
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto w-full flex flex-col gap-[24px]"
+      >
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        >
+          <h1 className="text-[24px] font-bold text-white">Buat Toko Baru</h1>
+          <p className="mt-[4px] text-[12px] text-white/50">
             Lengkapi data toko kamu buat mulai jualan di platform.
           </p>
-        </div>
+        </motion.div>
+        <div className="w-full h-[1px] bg-white/10"></div>
 
-        {error && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 p-4">
-            <p className="text-sm font-medium text-red-400">
-              {error?.response?.data?.errors ||
-                "Gagal membuat toko, coba lagi."}
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch">
+        <div className="grid grid-cols-1 gap-[16px] lg:grid-cols-2 lg:items-stretch">
           {/* Kolom Kiri */}
-          {/* Disesuaikan: Card background dengan border-radius 2xl seperti di dashboard */}
-          <div className="flex h-full flex-col gap-8 rounded-md border-1 border-white/10 bg-white/5 p-6 lg:p-8 shadow-sm">
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="name"
-                  className="text-sm font-medium text-white/80"
-                  required={true}
-                >
+          <motion.div
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
+            className="flex h-full flex-col gap-[24px] border border-white/10  p-[16px] sm:p-[24px]"
+          >
+            <div className="flex flex-col gap-[16px]">
+              <div className="flex flex-col gap-[6px]">
+                <FieldLabel htmlFor="name" className={labelCls} required>
                   Nama Toko
                 </FieldLabel>
                 <Input
@@ -175,11 +219,8 @@ export default function CreateStorePage() {
                   className={inputCls}
                 />
               </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="description"
-                  className="text-sm font-medium text-white/80"
-                >
+              <div className="flex flex-col gap-[6px]">
+                <FieldLabel htmlFor="description" className={labelCls}>
                   Deskripsi
                 </FieldLabel>
                 <Textarea
@@ -188,49 +229,54 @@ export default function CreateStorePage() {
                   value={form.description}
                   onChange={handleChange}
                   rows={3}
-                  className={inputCls}
+                  className={`${inputCls} resize-none`}
                 />
               </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="logo"
-                  className="text-sm font-medium text-white/80"
-                >
+
+              {/* PERUBAHAN: Input Logo dengan Pratinjau */}
+              <div className="flex flex-col gap-[6px]">
+                <FieldLabel htmlFor="logo" className={labelCls}>
                   Logo Toko
                 </FieldLabel>
-                <Input
-                  id="logo"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) =>
-                    setForm({ ...form, logo: e.target.files[0] })
-                  }
-                  className={`${inputCls} file:text-white file:bg-white/10 file:rounded-md file:border-0 file:px-3 file:mr-3 hover:file:bg-white/20`}
-                />
+                <div className="flex items-center gap-[16px]">
+                  {logoPreviewUrl && (
+                    <div className="h-[48px] w-[48px] shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/5">
+                      <img
+                        src={logoPreviewUrl}
+                        alt="Preview Logo"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <Input
+                    id="logo"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className={`${inputCls} flex-1 file:text-white file:bg-white/10 file:border-0 file:px-[16px] file:mr-[12px] hover:file:bg-white/20`}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="timezone"
-                className="text-sm font-medium text-white/80"
-                required={true}
-              >
+            <div className="flex flex-col gap-[6px]">
+              <FieldLabel htmlFor="timezone" className={labelCls} required>
                 Zona Waktu
               </FieldLabel>
               <Select
                 value={form.timezone}
+                required
                 onValueChange={(value) => setForm({ ...form, timezone: value })}
               >
                 <SelectTrigger id="timezone" className={inputCls}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-md border-white/10 bg-[#2D2E34] text-white shadow-xl">
+                <SelectContent className="rounded-none border-white/10 bg-[#242429] text-white">
                   {TIMEZONES.map((tz) => (
                     <SelectItem
                       key={tz.value}
                       value={tz.value}
-                      className="focus:bg-[#F2A724] focus:text-[#1e1e1e] cursor-pointer rounded-md my-1"
+                      className="rounded-none focus:bg-[#C0FE04] focus:text-[#1e1e1e] cursor-pointer text-[16px] my-[2px]"
                     >
                       {tz.label}
                     </SelectItem>
@@ -239,83 +285,90 @@ export default function CreateStorePage() {
               </Select>
             </div>
 
-            <div className="relative space-y-4 pt-2">
-              <FieldLabel
-                htmlFor="operational_hours"
-                className="text-sm font-medium text-white/80"
-                required={true}
-              >
+            {/* Jam Operasional */}
+            <div className="flex flex-col gap-[12px] pt-[8px] border-t border-white/10">
+              <FieldLabel className={labelCls} required>
                 Jam Operasional
               </FieldLabel>
-
-              {/* INPUT PROXY */}
-              <input
-                type="text"
-                className="absolute left-0 top-0 h-0 w-0 opacity-0 pointer-events-none"
-                value={isAnyDayOpen ? "valid" : ""}
-                onChange={() => {}}
-                tabIndex={-1}
-                required
-                onInvalid={(e) =>
-                  e.target.setCustomValidity(
-                    "Pilih minimal 1 hari operasional!",
-                  )
-                }
-                onInput={(e) => e.target.setCustomValidity("")}
-              />
-
-              <div id="operational_hours" className="space-y-3">
+              <div className="flex flex-col gap-[10px]">
                 {DAYS.map((d) => {
                   const row = hours.find((h) => h.day === d.day);
+                  const isActive = row?.is_active ?? false;
                   return (
                     <div
                       key={d.day}
-                      className="flex items-center gap-4 text-white"
+                      className={`flex flex-col gap-[8px] p-[10px] border transition-colors ${
+                        isActive
+                          ? "border-white/10 bg-white/5"
+                          : "border-white/5"
+                      }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={row.is_active}
-                        onChange={() => toggleDay(d.day)}
-                        className="h-4 w-4 rounded bg-[#1C1D22] border-white/20 accent-[#F2A724] focus:ring-[#F2A724] focus:ring-offset-0"
-                      />
-                      <span className="w-16 text-sm">{d.label}</span>
-                      <Input
-                        type="time"
-                        value={row.open_time}
-                        disabled={!row.is_active}
-                        onChange={(e) =>
-                          updateDayTime(d.day, "open_time", e.target.value)
-                        }
-                        className={`w-32 ${inputCls}`}
-                        required={row.is_active}
-                      />
-                      <span className="text-sm text-white/40">s/d</span>
-                      <Input
-                        type="time"
-                        value={row.close_time}
-                        disabled={!row.is_active}
-                        onChange={(e) =>
-                          updateDayTime(d.day, "close_time", e.target.value)
-                        }
-                        className={`w-32 ${inputCls}`}
-                        required={row.is_active}
-                      />
+                      <label className="flex items-center gap-[10px] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isActive}
+                          onChange={() => toggleDay(d.day)}
+                          className="h-[16px] w-[16px] bg-[#1e1e1e] border-white/20 accent-[#C0FE04]"
+                        />
+                        <span className="text-[12px] text-white font-medium flex-1">
+                          {d.label}
+                        </span>
+                        <span
+                          className={`text-[11px] font-bold px-[8px] py-[2px] rounded-full ${
+                            isActive
+                              ? "bg-green-400/20 text-green-400"
+                              : "bg-white/10 text-white/40"
+                          }`}
+                        >
+                          {isActive ? "Buka" : "Tutup"}
+                        </span>
+                      </label>
+
+                      {isActive && (
+                        <div className="flex items-center gap-[8px] pl-[26px]">
+                          <input
+                            type="time"
+                            value={row?.open_time || "08:00"}
+                            onChange={(e) =>
+                              updateDayTime(d.day, "open_time", e.target.value)
+                            }
+                            className={`${inputCls} text-[13px]`}
+                            required
+                          />
+                          <span className="text-[12px] text-white/40 shrink-0">
+                            s/d
+                          </span>
+                          <input
+                            type="time"
+                            value={row?.close_time || "20:00"}
+                            onChange={(e) =>
+                              updateDayTime(d.day, "close_time", e.target.value)
+                            }
+                            className={`${inputCls} text-[13px]`}
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Kolom Kanan */}
-          {/* Disesuaikan: Card background dengan border-radius 2xl */}
-          <div className="flex h-full flex-col gap-8 rounded-md bg-white/5 border-1 border-white/10 p-6 lg:p-8 shadow-sm">
-            <div className="space-y-5">
-              <div className="space-y-2">
+          <motion.div
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, ease: "easeOut", delay: 0.1 }}
+            className="flex h-full flex-col gap-[24px]  border border-white/10 p-[16px] sm:p-[24px]"
+          >
+            <div className="flex flex-col gap-[16px]">
+              <div className="flex flex-col gap-[6px]">
                 <FieldLabel
                   htmlFor="street_address"
-                  className="text-sm font-medium text-white/80"
-                  required={true}
+                  className={labelCls}
+                  required
                 >
                   Alamat Jalan
                 </FieldLabel>
@@ -329,33 +382,21 @@ export default function CreateStorePage() {
                 />
               </div>
 
-              <div className="relative space-y-2">
+              <div className="relative flex flex-col gap-[6px]">
                 <FieldLabel
                   htmlFor="postal_search"
-                  className="text-sm font-medium text-white/80"
-                  required={true}
+                  className={labelCls}
+                  required
                 >
                   Cari Kode Pos / Kelurahan
                 </FieldLabel>
-
-                {/* INPUT PROXY */}
-                <input
-                  type="text"
-                  className="absolute bottom-0 left-1/2 h-0 w-0 opacity-0 pointer-events-none"
-                  value={form.postal_code}
-                  onChange={() => {}}
-                  tabIndex={-1}
-                  required
-                  onInvalid={(e) =>
-                    e.target.setCustomValidity(
-                      "Silakan cari dan pilih kelurahan dari dropdown kode pos!",
-                    )
-                  }
-                  onInput={(e) => e.target.setCustomValidity("")}
-                />
+                <p className="italic text-white/60 text-[12px]">
+                  digunakan untuk mengisi kolom otomatis di bawah
+                </p>
 
                 <Input
                   id="postal_search"
+                  required
                   value={postalQuery}
                   onChange={(e) => {
                     setPostalQuery(e.target.value);
@@ -366,12 +407,14 @@ export default function CreateStorePage() {
                   className={inputCls}
                 />
                 {showResults && postalQuery.length >= 3 && (
-                  <div className="absolute z-10 mt-2 max-h-60 w-full overflow-auto rounded-md border border-white/10 bg-[#2D2E34] shadow-2xl">
+                  <div className="absolute z-10 mt-[8px] max-h-[240px] w-full overflow-auto border border-white/10 bg-[#242429]">
                     {searchingPostal && (
-                      <p className="p-4 text-sm text-white/40">Mencari...</p>
+                      <p className="p-[16px] text-[12px] text-white/40">
+                        Mencari...
+                      </p>
                     )}
                     {!searchingPostal && postalResults?.data?.length === 0 && (
-                      <p className="p-4 text-sm text-white/40">
+                      <p className="p-[16px] text-[12px] text-white/40">
                         Tidak ditemukan.
                       </p>
                     )}
@@ -380,12 +423,12 @@ export default function CreateStorePage() {
                         type="button"
                         key={result.id}
                         onClick={() => handleSelectPostal(result)}
-                        className="block w-full px-4 py-3 text-left text-sm text-white hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                        className="block w-full px-[16px] py-[16px] text-left text-[12px] text-white hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
                       >
-                        <p className="font-medium text-[#F2A724]">
+                        <p className="font-medium text-[#C0FE04]">
                           {result.title}
                         </p>
-                        <p className="text-xs text-white/60 mt-1">
+                        <p className="text-[12px] text-white/60 mt-[4px]">
                           {result.description}
                         </p>
                       </button>
@@ -394,14 +437,10 @@ export default function CreateStorePage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="village"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
-                    Kelurahan
+              <div className="grid grid-cols-2 gap-[16px]">
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="village" className={labelCls} required>
+                    Kelurahan (otomatis)
                   </FieldLabel>
                   <Input
                     id="village"
@@ -412,13 +451,9 @@ export default function CreateStorePage() {
                     className={readOnlyCls}
                   />
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="district"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
-                    Kecamatan
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="district" className={labelCls} required>
+                    Kecamatan (otomaits)
                   </FieldLabel>
                   <Input
                     id="district"
@@ -429,13 +464,9 @@ export default function CreateStorePage() {
                     className={readOnlyCls}
                   />
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="city"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
-                    Kota/Kabupaten
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="city" className={labelCls} required>
+                    Kota/Kabupaten (otomatis)
                   </FieldLabel>
                   <Input
                     id="city"
@@ -446,13 +477,9 @@ export default function CreateStorePage() {
                     className={readOnlyCls}
                   />
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="province"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
-                    Provinsi
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="province" className={labelCls} required>
+                    Provinsi (otomatis)
                   </FieldLabel>
                   <Input
                     id="province"
@@ -463,13 +490,13 @@ export default function CreateStorePage() {
                     className={readOnlyCls}
                   />
                 </div>
-                <div className="col-span-2 space-y-2">
+                <div className="col-span-2 flex flex-col gap-[6px]">
                   <FieldLabel
                     htmlFor="postal_code"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
+                    className={labelCls}
+                    required
                   >
-                    Kode Pos
+                    Kode Pos (otomatis)
                   </FieldLabel>
                   <Input
                     id="postal_code"
@@ -482,7 +509,7 @@ export default function CreateStorePage() {
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
+              <div className="flex flex-col gap-[16px]">
                 <LocationPicker
                   latitude={form.latitude}
                   longitude={form.longitude}
@@ -492,13 +519,9 @@ export default function CreateStorePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="latitude"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
+              <div className="grid grid-cols-2 gap-[16px]">
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="latitude" className={labelCls} required>
                     Latitude
                   </FieldLabel>
                   <Input
@@ -512,12 +535,8 @@ export default function CreateStorePage() {
                     className={inputCls}
                   />
                 </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="longitude"
-                    className="text-sm font-medium text-white/80"
-                    required={true}
-                  >
+                <div className="flex flex-col gap-[6px]">
+                  <FieldLabel htmlFor="longitude" className={labelCls} required>
                     Longitude
                   </FieldLabel>
                   <Input
@@ -536,33 +555,58 @@ export default function CreateStorePage() {
                 type="button"
                 variant="outline"
                 onClick={handleGetLocation}
-                className="w-full rounded-md border-white/10 bg-white text-[#1e1e1e] hover:bg-white/60 transition-colors mt-2"
+                className="rounded-none w-full border-white/10 bg-white text-[16px] font-medium text-[#1e1e1e] hover:bg-white/60 transition-colors"
               >
                 Ambil Lokasi Saat Ini
               </Button>
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-4 pt-4">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => navigate(-1)}
-            className="rounded-md px-8 text-white/70 hover:bg-white/5 hover:text-white transition-colors"
-          >
-            Batal
-          </Button>
-          <Button
-            type="submit"
-            disabled={isPending}
-            className="rounded-md bg-[#F2A724] px-10 font-bold text-[#25262B] hover:bg-[#F2A724]/60 transition-colors shadow-md"
-          >
-            {isPending ? "Menyimpan..." : "Buat Toko"}
-          </Button>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut", delay: 0.25 }}
+          className="flex flex-col items-center justify-end gap-[8px]"
+        >
+          <p className="text-white/60 text-right w-full italic text-[12px]">
+            Pastikan data yang diisi sudah benar!{" "}
+          </p>
+          <div className="flex items-center justify-end gap-[8px] w-full">
+            {" "}
+            <RevealButton
+              label="batal"
+              type="button"
+              variant="ghost"
+              bgAfter="bg-red-500"
+              textAfter="text-white"
+              onClick={() => navigate("/store")}
+              className="rounded-none"
+            ></RevealButton>
+            <RevealButton
+              label={isPending ? "Menyimpan..." : "Buat Toko"}
+              type="submit"
+              disable={isPending}
+              bgBefore="bg-[#C0FE04]"
+              bgAfter="bg-white"
+              textBefore="text-[#1e1e1e]"
+              className="rounded-none"
+            >
+              {isPending ? "Menyimpan..." : "Buat Toko"}
+            </RevealButton>
+          </div>
+        </motion.div>
       </form>
+
+      {/* Komponen Cropper akan menutupi layer ketika state imageSrc tidak null */}
+      <ImageCropperModal
+        imageSrc={pendingLogoSrc}
+        onCancel={() => setPendingLogoSrc(null)}
+        onConfirm={handleCropConfirm}
+        isUploading={false}
+        cropShape="round"
+      />
     </div>
   );
 }

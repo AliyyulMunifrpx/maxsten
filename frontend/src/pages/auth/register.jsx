@@ -1,115 +1,111 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion"; // ✅ IMPORT MOTION
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useRegister } from "../../hooks/auth.js";
-import toast from "react-hot-toast"; // 1. Import toast
+import toast from "react-hot-toast";
+import { RevealButton } from "../../components/reveal-button.jsx";
+import { useDocumentTitle } from "../../hooks/use-document-title.js";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const { mutate, isPending } = useRegister();
   const navigate = useNavigate();
 
+  useDocumentTitle("Daftar Akun");
+
   function handleSubmit(e) {
     e.preventDefault();
     mutate(form, {
       onSuccess: (data) => {
-        // 2. Tambahkan toast sukses
         toast.success("Registrasi berhasil! Silakan cek email kamu.");
         console.log("Registration successful:", data);
 
-        navigate("/verify-email", { state: { email: form.email, startTimer: true } });
+        navigate("/verify-email", {
+          state: { email: form.email, startTimer: true },
+        });
       },
       onError: (err) => {
-       
         toast.error(err.message || "Gagal mendaftar, silakan coba lagi.");
       },
     });
   }
 
   return (
-    // p-8 = 32px
-    // rounded-2xl = 16px
-    <div className="w-full rounded-2xl bg-white p-8 ">
-      {/* text-2xl = 24px, mb-3 = 12px (Batas minimum) */}
-      <h1 className="mb-3 text-center text-2xl font-semibold">Daftar Akun</h1>
+    // ✅ GANTI DIV JADI MOTION.DIV DENGAN ANIMASI
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="w-full rounded-2xl p-4"
+    >
+      {/* JUDUL — 24px */}
+      <h1 className="mb-3 text-center text-white text-[24px] font-semibold">
+        Selamat datang{" "}
+      </h1>
 
-      {/* text-base = 16px, mb-6 = 24px */}
-      <p className="mb-6 text-center text-base text-muted-foreground">
-        Buat akun buat mulai pakai Maxsten
+      {/* 16px */}
+      <p className="mb-6 text-center text-[16px] text-muted-foreground">
+        Antrean digital untuk UMKM.
       </p>
 
-      {/* space-y-6 = 24px (Jarak antar grup input form) */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* space-y-3 = 12px */}
-        <div className="space-y-3">
-          <Label htmlFor="name" className="text-base">
-            Nama
-          </Label>
-          <Input
-            id="name"
-            name="name"
-            type="text"
-            placeholder="Nama lengkap"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-            // h-12 = 48px, text-base = 16px, px-4 = 16px
-            className="h-12 px-4 text-base"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* NAMA — 16px */}
+        <Input
+          id="name"
+          name="name"
+          type="text"
+          placeholder="Nama Lengkap"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          required
+          className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
+        />
 
-        <div className="space-y-3">
-          <Label htmlFor="email" className="text-base">
-            Email
-          </Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="nama@email.com"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            required
-            className="h-12 px-4 text-base"
-          />
-        </div>
+        {/* EMAIL — 16px */}
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          placeholder="Email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          required
+          className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
+        />
 
-        <div className="space-y-3">
-          <Label htmlFor="password" className="text-base">
-            Password
-          </Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="Minimal 8 karakter"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            minLength={8}
-            required
-            className="h-12 px-4 text-base"
-          />
-        </div>
+        {/* PASSWORD — 16px */}
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          placeholder="Password (Min. 8 Karakter)"
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          minLength={8}
+          required
+          className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
+        />
 
-        {/* h-12 = 48px, text-base = 16px */}
-        <Button
+        {/* BUTTON — 16px */}
+        <RevealButton
           type="submit"
-          className="h-12 w-full text-base"
-          disabled={isPending}
-        >
-          {isPending ? "Mendaftar..." : "Daftar"}
-        </Button>
+          className="w-full rounded-full text-[16px]"
+          disable={isPending}
+          label={isPending ? "Mendaftar..." : "Daftar"}
+          bgBefore="bg-white"
+          textBefore="text-[#1e1e1e]"
+        />
       </form>
 
-      {/* mt-6 = 24px, text-base = 16px */}
-      <p className="mt-6 text-center text-base text-muted-foreground">
+      {/* 16px */}
+      <p className="mt-6 text-center text-[16px] text-muted-foreground">
         Udah punya akun?{" "}
-        <Link to="/login" className="text-foreground underline">
+        <Link to="/login" className="font-medium text-white">
           Masuk
         </Link>
       </p>
-    </div>
+    </motion.div>
   );
 }

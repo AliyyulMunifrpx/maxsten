@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { ArrowUp, ArrowDown, Minus } from "lucide-react";
 
 export default function MetricCard({
@@ -7,26 +9,24 @@ export default function MetricCard({
   trend,
   color,
   format,
-  inverseTrend = false, // Bisa dilempar dari parent jika butuh manual
+  inverseTrend = false,
+  index = 0,
 }) {
+  const navigate = useNavigate();
   const isUp = trend > 0;
   const isDown = trend < 0;
 
-  // Deteksi otomatis metrik negatif dari nama (kalau mengandung kata cancel/batal)
   const nameLower = name?.toLowerCase() || "";
   const isNegativeMetric =
     inverseTrend || nameLower.includes("cancel") || nameLower.includes("batal");
 
   const TrendIcon = isUp ? ArrowUp : isDown ? ArrowDown : Minus;
 
-  // Logic warna trend disesuaikan
   let trendColor = "text-gray-400";
   if (isUp) {
-    // Jika naik: metrik negatif jadi merah, metrik biasa jadi hijau
     trendColor = isNegativeMetric ? "text-red-400" : "text-green-500";
   } else if (isDown) {
-    // Jika turun: metrik negatif jadi hijau, metrik biasa jadi merah
-    trendColor = isNegativeMetric ? "text-green-500" : "text-red-500";
+    trendColor = isNegativeMetric ? "text-green-500" : "text-red-400";
   }
 
   const formattedValue =
@@ -60,19 +60,41 @@ export default function MetricCard({
   const theme = colorStyles[color] || colorStyles.yellow;
 
   return (
-    <div className="group relative w-full h-[128px] flex flex-col justify-center bg-white/5 border-1 border-white/10 p-[16px] overflow-hidden cursor-pointer">
+    <motion.div
+      // 1. Initial State: Posisi awal di bawah sedikit (16px) dan tembus pandang
+      initial={{ opacity: 0, y: 16 }}
+      // 2. Animate Reveal: Naik ke atas (y:0) DENGAN DELAY
+      animate={{
+        opacity: 1,
+        y: 0,
+        transition: { duration: 0.4, ease: "easeOut", delay: index * 0.1 },
+      }}
+      // 3. Animasi Hover: TANPA DELAY agar super responsif
+      whileHover={{
+        y: -5,
+        transition: { duration: 0.2, ease: "easeOut" },
+      }}
+      // 4. Animasi Tap: TANPA DELAY
+      whileTap={{
+        scale: 0.98,
+        transition: { duration: 0.1 },
+      }}
+      // HAPUS transisi global (transition={{...}}) yang lama
+      onClick={() => navigate("/analytics")}
+      className="group relative w-full h-[128px] flex flex-col justify-center bg-white/5 border-1 border-white/10 p-[16px] overflow-hidden cursor-pointer"
+    >
       <div
         className={`absolute inset-0 bg-gradient-to-r ${theme.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-out pointer-events-none`}
       ></div>
 
       <div className="relative z-10 flex gap-[16px] items-center mb-[16px]">
         <div
-          className={`h-[48px] w-[48px] ${theme.bg} rounded-md flex items-center justify-center shadow-inner`}
+          className={`h-[32px] w-[32px] lg:h-[48px] lg:w-[48px] ${theme.bg} rounded-md flex items-center justify-center shadow-inner`}
         >
-          {Icon && <Icon className={`h-[24px] w-[24px] ${theme.text}`} />}
+          {Icon && <Icon className={`h-[16px] w-[16px] lg:h-[24px] lg:w-[24px] ${theme.text}`} />}
         </div>
         <div className="flex flex-col text-white">
-          <p className="font-medium text-[16px] text-white/50 capitalize">
+          <p className="font-normal text-[12px] lg:text-[16px] text-white/50 capitalize">
             {name}
           </p>
           <p className="font-bold text-[24px] tracking-wide">
@@ -90,6 +112,6 @@ export default function MetricCard({
         </p>
         <p className="text-white/40 font-normal">vs Kemarin</p>
       </div>
-    </div>
+    </motion.div>
   );
 }
