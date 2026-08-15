@@ -14,7 +14,7 @@ function CustomTooltip({ active, payload, label }) {
   return (
     <div className="bg-[#1e1e1e] border border-white/10 rounded-md px-[10px] py-[6px]">
       <p className="text-[11px] text-white/50">{label}</p>
-      <p className="text-[13px] font-bold text-[#D99A25]">
+      <p className="text-[13px] font-bold text-[#C0FE04]">
         {payload[0].value} pesanan
       </p>
     </div>
@@ -30,11 +30,11 @@ export default function PeakHourChart({ hourlyTraffic = [], peakHour }) {
   const hasData = hourlyTraffic.some((count) => count > 0);
 
   return (
-    <div className="h-full w-full flex flex-col gap-[8px]">
+    <div className="aspect-[1/1] lg:h-full overflow-hidden w-full flex flex-col gap-[8px]">
       {peakHour && peakHour !== "-" && (
         <div className="flex items-center justify-between shrink-0">
           <p className="text-[12px] text-white/50">Jam Tersibuk</p>
-          <p className="text-[14px] font-bold text-[#D99A25]">{peakHour}</p>
+          <p className="text-[14px] font-bold text-[#C0FE04]">{peakHour}</p>
         </div>
       )}
 
@@ -47,8 +47,8 @@ export default function PeakHourChart({ hourlyTraffic = [], peakHour }) {
             >
               <defs>
                 <linearGradient id="peakHourFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#D99A25" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#D99A25" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#C0FE04" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#C0FE04" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
@@ -70,7 +70,7 @@ export default function PeakHourChart({ hourlyTraffic = [], peakHour }) {
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#D99A25"
+                stroke="#C0FE04"
                 strokeWidth={2}
                 fill="url(#peakHourFill)"
               />
@@ -78,9 +78,7 @@ export default function PeakHourChart({ hourlyTraffic = [], peakHour }) {
           </ResponsiveContainer>
         ) : (
           <div className="h-full w-full flex items-center justify-center">
-            <p className="text-[13px] text-white/30">
-              Belum ada transaksi hari ini
-            </p>
+            <p className="text-[13px] text-white/30">Tidak ada transaksi</p>
           </div>
         )}
       </div>

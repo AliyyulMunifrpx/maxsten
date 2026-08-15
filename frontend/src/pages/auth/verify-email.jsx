@@ -1,15 +1,18 @@
-import { useState, useEffect } from "react";
-import { useLocation, Navigate, Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, Navigate } from "react-router-dom";
+import { motion } from "framer-motion"; // ✅ IMPORT MOTION
 import { MailCheck } from "lucide-react";
 import { useResendEmail } from "../../hooks/auth.js";
 import toast from "react-hot-toast";
+import { RevealButton } from "../../components/reveal-button.jsx";
+import { useDocumentTitle } from "../../hooks/use-document-title.js";
 
 export default function VerifyEmailPage() {
   const location = useLocation();
   const email = location.state?.email;
-  // Tangkap tanda khusus dari halaman Register
   const startTimer = location.state?.startTimer;
+  const autoResend = location.state?.autoResend; // ✅ true kalau datang dari Login
+  useDocumentTitle("Verifikasi Email");
 
   const getInitialCountdown = () => {
     if (!email) return 0;
@@ -20,24 +23,21 @@ export default function VerifyEmailPage() {
       const timeLeft = Math.floor(
         (parseInt(storedExpiry, 10) - Date.now()) / 1000,
       );
-      // Kalau timer masih jalan, lanjutkan!
       if (timeLeft > 0) return timeLeft;
     }
 
-    // Kalau user datang langsung dari Register (sistem baru saja mengirim email)
     if (startTimer) {
       const newExpiry = Date.now() + 120 * 1000;
       localStorage.setItem(`resend_timer_${email}`, newExpiry.toString());
       return 120;
     }
 
-    // Kalau user datang dari Login (tidak ada flag startTimer) dan memori timer kosong,
-    // kembalikan angka 0 supaya tombol Kirim Ulang langsung aktif!
     return 0;
   };
 
   const [countdown, setCountdown] = useState(getInitialCountdown);
   const { mutate: resendEmail, isPending } = useResendEmail();
+  const hasAutoSentRef = useRef(false); // ✅ guard biar gak nembak 2x
 
   useEffect(() => {
     if (countdown <= 0) {
@@ -51,6 +51,23 @@ export default function VerifyEmailPage() {
 
     return () => clearInterval(timer);
   }, [countdown, email]);
+
+  // ✅ Auto-resend
+  useEffect(() => {
+    if (autoResend && email && countdown === 0 && !hasAutoSentRef.current) {
+      hasAutoSentRef.current = true;
+      resendEmail(email, {
+        onSuccess: () => {
+          const newExpiry = Date.now() + 120 * 1000;
+          localStorage.setItem(`resend_timer_${email}`, newExpiry.toString());
+          setCountdown(120);
+        },
+        onError: () => {
+          // Diem-diem aja kalau auto-send gagal
+        },
+      });
+    }
+  }, [autoResend, email, countdown, resendEmail]);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60)
@@ -67,11 +84,9 @@ export default function VerifyEmailPage() {
   const handleResend = () => {
     resendEmail(email, {
       onSuccess: () => {
-        // Saat tombol manual diklik, baru kita buat timer 120 detiknya
         const newExpiry = Date.now() + 120 * 1000;
         localStorage.setItem(`resend_timer_${email}`, newExpiry.toString());
         setCountdown(120);
-
         toast.success(
           "Email konfirmasi berhasil dikirim ulang! Coba cek inbox atau spam.",
         );
@@ -83,35 +98,54 @@ export default function VerifyEmailPage() {
   };
 
   return (
-    <div className="w-full rounded-2xl bg-white p-8 text-center">
-      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-        <MailCheck className="h-8 w-8 text-blue-600" />
-      </div>
+    // ✅ GANTI DIV JADI MOTION.DIV DENGAN ANIMASI
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="w-full rounded-2xl p-4 text-center"
+    >
+      
+      {/* JUDUL — 24px */}
+      <h1 className="mb-3 text-center text-[24px] font-semibold text-white">
+        Cek Email Kamu
+      </h1>
 
-      <h1 className="mb-3 text-2xl font-semibold">Cek Email Kamu</h1>
-      <p className="mb-6 text-base text-muted-foreground">
+      {/* 16px */}
+      <p className="mb-6 text-[16px] text-muted-foreground">
         Kami sudah mengirimkan link verifikasi ke <br />
-        <span className="font-medium text-foreground">{email}</span>
+        <span className="font-medium text-white">{email}</span>
       </p>
 
       <div className="space-y-4">
-        <Button className="h-12 w-full text-base" asChild>
-          <Link to="/login">Ke Halaman Login</Link>
-        </Button>
+        {/* BUTTON KEMBALI — 16px */}
+        <RevealButton
+          type="button"
+          className="w-full rounded-full text-[16px]"
+          label="Kembali ke halaman login"
+          bgBefore="bg-white"
+          textBefore="text-[#1e1e1e]"
+          path="/login"
+        />
 
-        <Button
-          variant="outline"
-          className="h-12 w-full text-base"
+        {/* BUTTON KIRIM ULANG — 16px */}
+        <RevealButton
+          type="button"
           onClick={handleResend}
-          disabled={isPending || countdown > 0}
-        >
-          {isPending
-            ? "Mengirim ulang..."
-            : countdown > 0
-              ? `Tunggu ${formatTime(countdown)} untuk kirim ulang`
-              : "Kirim Ulang Email"}
-        </Button>
+          className="w-full rounded-full text-[16px]"
+          disable={isPending || countdown > 0}
+          label={
+            isPending
+              ? "Mengirim ulang..."
+              : countdown > 0
+                ? `Tunggu ${formatTime(countdown)} untuk kirim ulang`
+                : "Kirim Ulang Email"
+          }
+          bgBefore="bg-white/10" // Sengaja dibedain dikit biar Button Utama (Kembali) lebih nonjol
+          textBefore="text-white"
+        />
       </div>
-    </div>
+    </motion.div>
   );
 }

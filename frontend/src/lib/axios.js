@@ -18,11 +18,42 @@ export const privateApi = axios.create({
 const errorMap = {
   "Incorrect email or password": "Email atau password salah",
   "not verified": "Email belum diverifikasi",
-  "User not found": "Akun tidak ditemukan",
-  "already exists": "Email sudah terdaftar",
-  Unauthorized: "Sesi kamu sudah berakhir, silakan login lagi",
+  "User not found": "Akun nggak ditemukan",
+  "That email address already exists": "Email ini sudah terdaftar",
+  Unauthorized: "Sesi kamu habis, silakan login lagi",
   "Store not found": "Toko tidak ditemukan",
-  "Product not found": "Produk tidak ditemukan",
+  "Product not found": "Produk nggak ditemukan",
+  "already have a store": "Kamu sudah punya toko",
+  "size: 2MB": "Maksimal ukuran file 2 MB",
+  " email address is already in use by another u":
+    "Email ini sudah dipakai. Coba email lain",
+  '"addons" must contain at least 1 items': "Minimal tambahkan 1 add-on",
+  "A cancellation reason with this text already exists.":
+    "Alasan ini sudah ada",
+  "Add-on names within a group must be unique": "Nama add-on harus berbeda",
+  "An add-on group with this name already exists":
+    "Nama grup add-on ini sudah ada",
+  '"price" must be a positive number': "Harga harus lebih dari 0",
+  "already exists in this store": "Nama produk ini sudah dipakai",
+  "Cannot change the status from SELESAI to SELESAI": 'Status sudah "SELESAI"',
+  "Cannot change the status from DIPROSES to DIPROSES":
+    'Status sudah "DIPROSES"',
+  "Variant names within a product must be unique": "Nama varian harus berbeda",
+  "The store cannot be deleted because there are still pending orders":
+    "Toko masih punya pesanan yang belum selesai",
+  "Cannot delete product with active orders in progress":
+    "Produk masih punya pesanan yang sedang berjalan",
+  "This product has an active order in progress. Only the name and description can be updated.":
+    "Produk sedang dipesan. Hanya nama dan deskripsi yang bisa diubah",
+  "selection is not valid":
+    "Pilihan add-on tersebut tidak berlaku untuk produk ini",
+  "Cannot edit this add-on group because a product using it is currently in an active queue.":
+    "Grup add-on tidak bisa diedit karena sedang digunakan produk dalam antrian aktif",
+  "Cannot delete this add-on group because a product using it is currently in an active queue.":
+    "Grup add-on tidak bisa dihapus karena digunakan produk dalam antrian aktif",
+  "You cannot delete your account because your store still has active customer queues":
+    "Akun tidak bisa dihapus karena toko masih memiliki antrian aktif",
+    "Auth session missing!":"Sesi tidak ditemukan"
 };
 
 function translateError(originalMsg) {
@@ -72,17 +103,37 @@ const onSuccess = (response) => {
 
   return response;
 };
-
 const onError = (error) => {
-  const originalMsg = error.response?.data?.errors;
+  // 1. Ambil body response dari backend
+  const responseData = error.response?.data;
 
-  // Kalau session habis, bersihkan token
+  // 2. Gunakan 'let', dan cari pesan error di beberapa kemungkinan key (errors / error / message)
+  let originalMsg =
+    responseData?.errors || responseData?.error || responseData?.message;
+
+  // 3. Handle jika originalMsg berupa array
+  if (Array.isArray(originalMsg)) {
+    originalMsg = originalMsg[0];
+
+    // Jaga-jaga jika isi array-nya adalah object, contoh: [{ message: "Store not found" }]
+    if (typeof originalMsg === "object" && originalMsg !== null) {
+      originalMsg =
+        originalMsg.msg || originalMsg.message || JSON.stringify(originalMsg);
+    }
+  }
+
+  // 4. Kalau session habis, bersihkan token
   if (error.response?.status === 401) {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
   }
 
-  error.message = translateError(originalMsg);
+  // 5. Pastikan originalMsg adalah string sebelum dilempar ke translateError
+  // (karena translateError menggunakan method .toLowerCase() yang akan error jika bukan string)
+  const stringError = typeof originalMsg === "string" ? originalMsg : "";
+
+  // 6. Timpa message bawaan Axios dengan hasil terjemahan
+  error.message = translateError(stringError);
 
   return Promise.reject(error);
 };
