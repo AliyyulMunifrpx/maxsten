@@ -140,6 +140,17 @@ const deleteUser = async (req, res, next) => {
     next(e);
   }
 };
+const updateEmail = async (req, res, next) => {
+  try {
+    // req.user didapat dari authMiddleware yang udah lu bikin
+    const result = await userService.updateEmail(req.user, req.body);
+    res.status(200).json({
+      data: result,
+    });
+  } catch (e) {
+    next(e);
+  }
+};
 export default {
   register,
   login,
@@ -148,4 +159,5 @@ export default {
   syncEmailWebhook,
   logout,
   deleteUser,
+  updateEmail
 };

@@ -20,7 +20,10 @@ const calculateAvgWaitTime = (queues) => {
   queues.forEach((q) => {
     // Cuma hitung yang ada nilai processed_at dan completed_at (Data valid)
     if (q.processed_at && q.completed_at) {
-      const waitMs = q.completed_at.getTime() - q.processed_at.getTime();
+      const processedTime = new Date(q.processed_at).getTime();
+      const completedTime = new Date(q.completed_at).getTime();
+
+      const waitMs = completedTime - processedTime;
       if (waitMs >= 0) {
         totalWaitMs += waitMs;
         validCount++;
@@ -55,7 +58,7 @@ const getDashboard = async (request) => {
   const tz = store.timezone || "Asia/Jakarta";
 
   // ==========================================
-  // 2. SETUP WAKTU (KEBAL TIMEZONE SERVER)
+  // 2. SETUP WAKTU (APPLE-TO-APPLE)
   // ==========================================
   const nowUtc = new Date();
   const nowZoned = toZonedTime(nowUtc, tz);
@@ -97,21 +100,28 @@ const getDashboard = async (request) => {
   );
 
   // ==========================================
-  // 3. PARALLEL QUERIES (SUPER CEPAT)
+  // 3. PARALLEL QUERIES
   // ==========================================
   const [
     latestProducts,
     latestAddons,
     oldestActiveQueues,
     activeQueuesCount,
+
+    // ✅ Omzet/AOV/Pesanan Selesai — basis completed_at
     aggTodaySelesai,
-    aggTodayBatal,
-    todayCompletedQueues, // ✅ Ditambah select processed_at & completed_at
     aggYesterdaySelesai,
+    todayCompletedQueues, // buat avg wait time hari ini
+    yesterdayCompletedQueues, // buat avg wait time kemarin
+
+    // ✅ Pesanan batal — tetap basis created_at
+    aggTodayBatal,
     aggYesterdayBatal,
-    yesterdayCompletedQueues, // ✅ BARU: Buat ngitung trend waktu tunggu kemarin
+
+    // ✅ Peak hour — basis created_at, semua status KECUALI DIBATALKAN
+    todayTrafficQueues,
   ] = await Promise.all([
-    // ✅ 5 Produk Terbaru
+    // latestProducts
     prisma.product.findMany({
       where: { store_id: store.id, is_delete: false },
       orderBy: { created_at: "desc" },
@@ -126,7 +136,7 @@ const getDashboard = async (request) => {
       },
     }),
 
-    // ✅ 5 Addon Terbaru
+    // latestAddons
     prisma.addon.findMany({
       where: { addon_group: { store_id: store.id }, is_delete: false },
       orderBy: { created_at: "desc" },
@@ -134,7 +144,7 @@ const getDashboard = async (request) => {
       select: { id: true, name: true, price: true, addon_group_id: true },
     }),
 
-    // ✅ 5 Antrean Terlama yg masih aktif
+    // oldestActiveQueues (5 Antrean Terlama yg masih aktif)
     prisma.queue.findMany({
       where: {
         store_id: store.id,
@@ -152,7 +162,7 @@ const getDashboard = async (request) => {
       },
     }),
 
-    // ✅ Total count antrean aktif
+    // activeQueuesCount (Total count antrean aktif)
     prisma.queue.count({
       where: {
         store_id: store.id,
@@ -160,62 +170,76 @@ const getDashboard = async (request) => {
       },
     }),
 
-    // Agregasi HARI INI
+    // aggTodaySelesai (HARI INI - Selesai)
     prisma.queue.aggregate({
       where: {
         store_id: store.id,
         status: "SELESAI",
-        created_at: { gte: startOfTodayUtc, lt: nowUtc },
+        completed_at: { gte: startOfTodayUtc, lt: nowUtc },
       },
       _sum: { total_price: true },
       _count: true,
     }),
-    prisma.queue.aggregate({
-      where: {
-        store_id: store.id,
-        status: "DIBATALKAN",
-        created_at: { gte: startOfTodayUtc, lt: nowUtc },
-      },
-      _count: true,
-    }),
 
-    // 👇 FIX: Ambil created_at (buat chart jam) DAN waktu prosesnya (buat hitung lama nunggu)
-    prisma.queue.findMany({
-      where: {
-        store_id: store.id,
-        status: "SELESAI",
-        created_at: { gte: startOfTodayUtc, lt: nowUtc },
-      },
-      select: { created_at: true, processed_at: true, completed_at: true },
-    }),
-
-    // Agregasi KEMARIN
+    // aggYesterdaySelesai (KEMARIN - Selesai)
     prisma.queue.aggregate({
       where: {
         store_id: store.id,
         status: "SELESAI",
-        created_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
+        completed_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
       },
       _sum: { total_price: true },
       _count: true,
     }),
-    prisma.queue.aggregate({
-      where: {
-        store_id: store.id,
-        status: "DIBATALKAN",
-        created_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
-      },
-      _count: true,
-    }),
 
-    // 👇 BARU: Ambil data kemarin cuma buat ngitung rata-rata waktu prosesnya
+    // todayCompletedQueues (Data selesai hari ini buat avg wait time)
     prisma.queue.findMany({
       where: {
         store_id: store.id,
         status: "SELESAI",
-        created_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
+        completed_at: { gte: startOfTodayUtc, lt: nowUtc },
       },
       select: { processed_at: true, completed_at: true },
+    }),
+
+    // yesterdayCompletedQueues (Data selesai kemarin buat avg wait time)
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        completed_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
+
+    // aggTodayBatal (HARI INI - Batal)
+    prisma.queue.aggregate({
+      where: {
+        store_id: store.id,
+        status: "DIBATALKAN",
+        created_at: { gte: startOfTodayUtc, lt: nowUtc },
+      },
+      _count: true,
+    }),
+
+    // aggYesterdayBatal (KEMARIN - Batal)
+    prisma.queue.aggregate({
+      where: {
+        store_id: store.id,
+        status: "DIBATALKAN",
+        created_at: { gte: utcYesterdayStart, lt: utcYesterdayEndExclusive },
+      },
+      _count: true,
+    }),
+
+    // todayTrafficQueues (Semua queue yang MASUK hari ini, kecuali dibatalkan — buat jam tersibuk)
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: { not: "DIBATALKAN" },
+        created_at: { gte: startOfTodayUtc, lt: nowUtc },
+      },
+      select: { created_at: true },
     }),
   ]);
 
@@ -267,9 +291,9 @@ const getDashboard = async (request) => {
   const avgWaitTimeToday = calculateAvgWaitTime(todayCompletedQueues);
   const avgWaitTimeYesterday = calculateAvgWaitTime(yesterdayCompletedQueues);
 
-  // Peak Hour & Chart Jam
+  // ✅ Peak Hour & Chart Jam
   const hourlyCounts = Array(24).fill(0);
-  todayCompletedQueues.forEach((q) => {
+  todayTrafficQueues.forEach((q) => {
     const localHour = toZonedTime(q.created_at, tz).getHours();
     hourlyCounts[localHour]++;
   });

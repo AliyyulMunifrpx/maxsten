@@ -20,6 +20,7 @@ userRouter.use(authMiddleware);
 // ==========================================
 userRouter.get("/api/users/me", userController.getUser);
 userRouter.patch("/api/users/me", userController.updateUser); // Hapus /update
+userRouter.patch("/api/users/email", userController.updateEmail);
 userRouter.delete("/api/users/logout", userController.logout); // Hapus authMiddleware redudan
 userRouter.delete("/api/users/me", userController.deleteUser); // Hapus /delete & authMiddleware
 
