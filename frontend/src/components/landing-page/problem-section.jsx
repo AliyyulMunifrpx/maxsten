@@ -12,48 +12,41 @@ export default function ProblemSection() {
   const sectionRef = useRef(null);
   const [step, setStep] = useState(1);
 
-  const headlineParallaxRef = useRef(null); // Dipakai buat parallax & target GSAP Problem Headline
+  const headlineParallaxRef = useRef(null);
   const descParallaxRef = useRef(null);
   const quickSettersRef = useRef([]);
 
-  // Ref buat tirai ungu (Kanan ke Kiri)
+  // Ref buat tirai
   const div1Ref = useRef(null);
   const div2Ref = useRef(null);
   const div3Ref = useRef(null);
-
-  // Ref buat tirai hijau (Kiri ke Kanan)
   const green1Ref = useRef(null);
   const green2Ref = useRef(null);
   const green3Ref = useRef(null);
 
-  // Ref buat Solution Headline
   const solutionHeadlineRef = useRef(null);
 
   // ==========================================
-  // GSAP PINNING & TIMELINE
+  // GSAP RESPONSIVE ENGINE (MatchMedia)
   // ==========================================
   useLayoutEffect(() => {
-    const ctx = gsap.context(() => {
-      const purpleSlides = [div1Ref.current, div2Ref.current, div3Ref.current];
-      const greenSlides = [
-        green1Ref.current,
-        green2Ref.current,
-        green3Ref.current,
-      ];
+    let mm = gsap.matchMedia();
+    
+    // Ambil elemen teks buat dianimasikan
+    const probWords = headlineParallaxRef.current.querySelectorAll(".prob-word");
+    const solWords = solutionHeadlineRef.current.querySelectorAll(".sol-word");
 
-      // Setup awal elemen-elemen GSAP
+    // ----------------------------------------------------
+    // 1. ENGINE DESKTOP (Animasi Berat, Pin, & Tirai)
+    // ----------------------------------------------------
+    mm.add("(min-width: 1024px)", () => {
+      const purpleSlides = [div1Ref.current, div2Ref.current, div3Ref.current];
+      const greenSlides = [green1Ref.current, green2Ref.current, green3Ref.current];
+
       gsap.set(purpleSlides, { xPercent: 100 });
       gsap.set(greenSlides, { xPercent: -100 });
       gsap.set(descParallaxRef.current, { opacity: 0, y: 10 });
-
-      // Setup Problem Headline (Sembunyikan & Blur di awal)
-      const probWords =
-        headlineParallaxRef.current.querySelectorAll(".prob-word");
       gsap.set(probWords, { opacity: 0, y: 15, filter: "blur(12px)" });
-
-      // Setup Solution Headline (Sembunyikan & Blur di awal)
-      const solWords =
-        solutionHeadlineRef.current.querySelectorAll(".sol-word");
       gsap.set(solutionHeadlineRef.current, { opacity: 0 });
       gsap.set(solWords, { opacity: 0, y: 15, filter: "blur(12px)" });
 
@@ -65,104 +58,74 @@ export default function ProblemSection() {
           scrub: true,
           pin: true,
           anticipatePin: 1,
-          invalidateOnRefresh: true,
         },
       });
 
-      // --- PHASE 1: PROBLEM HEADLINE REVEAL DENGAN SCRUB ---
-      tl.to(
-        probWords,
-        {
-          opacity: 1,
-          filter: "blur(0px)",
-          y: 0,
-          stagger: 0.15,
-          duration: 0.8,
-          ease: "power2.out",
-        },
-        0,
-      );
+      // Phase 1: Problem Reveal
+      tl.to(probWords, { opacity: 1, filter: "blur(0px)", y: 0, stagger: 0.15, duration: 0.8, ease: "power2.out" }, 0);
+      
+      // Phase 2: Tirai Ungu
+      tl.to(div1Ref.current, { xPercent: 0, duration: 1.5, ease: "power2.inOut" }, 1.0);
+      tl.to(div2Ref.current, { xPercent: 0, duration: 1.25, ease: "power2.inOut" }, 1.25);
+      tl.to(div3Ref.current, { xPercent: 0, duration: 1.0, ease: "power2.inOut" }, 1.5);
 
-      // --- PHASE 2: TIRAI UNGU MASUK (Target Selesai Bareng di detik 2.5) ---
-      // Mulai di 1.0 -> butuh durasi 1.5 detik buat nyampe di 2.5
-      tl.to(
-        div1Ref.current,
-        { xPercent: 0, duration: 1.5, ease: "power2.inOut" },
-        1.0,
-      );
-      // Mulai di 1.25 -> butuh durasi 1.25 detik buat nyampe di 2.5
-      tl.to(
-        div2Ref.current,
-        { xPercent: 0, duration: 1.25, ease: "power2.inOut" },
-        1.25,
-      );
-      // Mulai di 1.5 -> butuh durasi 1.0 detik buat nyampe di 2.5 (Paling ngebut)
-      tl.to(
-        div3Ref.current,
-        { xPercent: 0, duration: 1.0, ease: "power2.inOut" },
-        1.5,
-      );
+      // Phase 3: Deskripsi
+      tl.to(descParallaxRef.current, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 2.5);
 
-      // --- PHASE 3: DESKRIPSI MASUK ---
-      tl.to(
-        descParallaxRef.current,
-        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-        2.5, // Pas banget tirai ungu selesai, teks muncul
-      );
+      // Phase 4: Tirai Hijau
+      tl.to(green3Ref.current, { xPercent: 0, duration: 1.5, ease: "power2.inOut" }, 3.5);
+      tl.to(green2Ref.current, { xPercent: 0, duration: 1.25, ease: "power2.inOut" }, 3.75);
+      tl.to(green1Ref.current, { xPercent: 0, duration: 1.0, ease: "power2.inOut" }, 4.0);
 
-      // --- PHASE 4: TIRAI HIJAU MASUK (Target Selesai Bareng di detik 5.0) ---
-      // Mulai di 3.5 -> durasi 1.5
-      tl.to(
-        green3Ref.current,
-        { xPercent: 0, duration: 1.5, ease: "power2.inOut" },
-        3.5,
-      );
-      // Mulai di 3.75 -> durasi 1.25
-      tl.to(
-        green2Ref.current,
-        { xPercent: 0, duration: 1.25, ease: "power2.inOut" },
-        3.75,
-      );
-      // Mulai di 4.0 -> durasi 1.0 (Paling ngebut)
-      tl.to(
-        green1Ref.current,
-        { xPercent: 0, duration: 1.0, ease: "power2.inOut" },
-        4.0,
-      );
-
-      // --- PHASE 5: SOLUTION HEADLINE MUNCUL ---
-      // Mundurin start-nya dari 4.0 ke 5.0 biar pas tirai hijau nutup full, teksnya baru nongol
+      // Phase 5: Solution Reveal
       tl.set(solutionHeadlineRef.current, { opacity: 1 }, 5.0);
-      tl.to(
-        solWords,
-        {
-          opacity: 1,
-          y: 0,
-          filter: "blur(0px)",
-          stagger: 0.2,
-          duration: 0.8,
-          ease: "easeOut",
-        },
-        5.0,
-      );
-    }, sectionRef);
+      tl.to(solWords, { opacity: 1, y: 0, filter: "blur(0px)", stagger: 0.2, duration: 0.8, ease: "easeOut" }, 5.0);
+    });
 
-    return () => ctx.revert();
+    // ----------------------------------------------------
+    // 2. ENGINE MOBILE (Scroll Normal, Reveal Elegan)
+    // ----------------------------------------------------
+    mm.add("(max-width: 1023px)", () => {
+      // Set awal sebelum ke-scroll
+      gsap.set(probWords, { opacity: 0, y: 20 });
+      gsap.set(descParallaxRef.current, { opacity: 0, y: 20 });
+      gsap.set(solutionHeadlineRef.current, { opacity: 1 }); // Contianernya nyala, teksnya yg ngumpet
+      gsap.set(solWords, { opacity: 0, y: 20 });
+
+      // Animasi pas Problem Headline masuk layar
+      gsap.to(probWords, {
+        scrollTrigger: { trigger: headlineParallaxRef.current, start: "top 80%" },
+        opacity: 1, y: 0, stagger: 0.1, duration: 0.6, ease: "power2.out"
+      });
+
+      // Animasi pas Deskripsi masuk layar
+      gsap.to(descParallaxRef.current, {
+        scrollTrigger: { trigger: descParallaxRef.current, start: "top 85%" },
+        opacity: 1, y: 0, duration: 0.6, ease: "power2.out"
+      });
+
+      // Animasi pas Solution Headline masuk layar
+      gsap.to(solWords, {
+        scrollTrigger: { trigger: solutionHeadlineRef.current, start: "top 80%" },
+        opacity: 1, y: 0, stagger: 0.1, duration: 0.6, ease: "power2.out"
+      });
+    });
+
+    return () => mm.revert();
   }, []);
 
   // ==========================================
-  // PARALLAX MOUSE EFFECT
+  // PARALLAX MOUSE EFFECT (Cuma Nyala Kalau Ada Mouse)
   // ==========================================
   useEffect(() => {
     const section = sectionRef.current;
     const isFinePointer = window.matchMedia("(pointer: fine)").matches;
     if (!section || !isFinePointer) return;
 
-    // Menambahkan solutionHeadlineRef ke array layers
     const layers = [
       { el: headlineParallaxRef.current, strength: 30 },
       { el: descParallaxRef.current, strength: 15 },
-      { el: solutionHeadlineRef.current, strength: 30 }, // <-- Ini tambahannya
+      { el: solutionHeadlineRef.current, strength: 30 },
     ].filter((l) => l.el);
 
     quickSettersRef.current = layers.map(({ el, strength }) => ({
@@ -198,60 +161,38 @@ export default function ProblemSection() {
     };
   }, []);
 
-  const handleToggle = () => {
-    setStep((prev) => (prev === 1 ? 2 : 1));
-  };
+  const handleToggle = () => setStep((prev) => (prev === 1 ? 2 : 1));
 
   return (
     <div
       ref={sectionRef}
-      className="relative h-[100vh] lg:h-[100dvh] pointer-events-auto w-full flex flex-col items-center justify-center gap-12 overflow-hidden bg-white"
+      // Di Mobile: min-h-screen & auto height. Di Desktop: fix 100dvh dan hidden overflow
+      className="relative flex min-h-screen w-full flex-col items-center justify-center gap-16 bg-white py-24 lg:h-[100dvh] lg:gap-0 lg:overflow-hidden lg:py-0 pointer-events-auto"
     >
       {/* ==========================================
-        PURPLE CURTAIN (Z-20, Menutupi Headline)
-    ========================================== */}
-      <div className="pointer-events-none absolute inset-0 z-20 grid grid-cols-[0.1fr_1fr_1fr_1fr_0.1fr] grid-rows-3">
-        <div
-          ref={div1Ref}
-          className="col-start-1 col-end-6 row-start-1 h-full w-full bg-[#4105F7]"
-        />
-        <div
-          ref={div2Ref}
-          className="col-start-1 col-end-6 row-start-2 h-full w-full bg-[#4105F7]"
-        />
-        <div
-          ref={div3Ref}
-          className="col-start-1 col-end-6 row-start-3 h-full w-full bg-[#4105F7]"
-        />
+          PURPLE & GREEN CURTAINS (Cuma muncul di Desktop lg ke atas)
+      ========================================== */}
+      <div className="pointer-events-none absolute inset-0 z-20 hidden lg:grid grid-cols-[0.1fr_1fr_1fr_1fr_0.1fr] grid-rows-3">
+        <div ref={div1Ref} className="col-start-1 col-end-6 row-start-1 h-full w-full bg-[#4105F7]" />
+        <div ref={div2Ref} className="col-start-1 col-end-6 row-start-2 h-full w-full bg-[#4105F7]" />
+        <div ref={div3Ref} className="col-start-1 col-end-6 row-start-3 h-full w-full bg-[#4105F7]" />
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 z-40 hidden lg:grid grid-cols-[0.1fr_1fr_1fr_1fr_0.1fr] grid-rows-3">
+        <div ref={green1Ref} className="col-start-1 col-end-6 row-start-1 h-full w-full bg-[#C0FE04]" />
+        <div ref={green2Ref} className="col-start-1 col-end-6 row-start-2 h-full w-full bg-[#C0FE04]" />
+        <div ref={green3Ref} className="col-start-1 col-end-6 row-start-3 h-full w-full bg-[#C0FE04]" />
       </div>
 
       {/* ==========================================
-        GREEN CURTAIN (Z-40, Menutupi Ungu & Deskripsi)
-    ========================================== */}
-      <div className="pointer-events-none absolute inset-0 z-40 grid grid-cols-[0.1fr_1fr_1fr_1fr_0.1fr] grid-rows-3">
-        <div
-          ref={green1Ref}
-          className="col-start-1 col-end-6 row-start-1 h-full w-full bg-[#C0FE04]"
-        />
-
-        <div
-          ref={green2Ref}
-          className="col-start-1 col-end-6 row-start-2 h-full w-full bg-[#C0FE04]"
-        />
-        <div
-          ref={green3Ref}
-          className="col-start-1 col-end-6 row-start-3 h-full w-full bg-[#C0FE04]"
-        />
-      </div>
-
-      {/* ==========================================
-        PROBLEM HEADLINE (Z-10)
-    ========================================== */}
+          1. PROBLEM HEADLINE 
+      ========================================== */}
       <div
         ref={headlineParallaxRef}
-        className="z-10 flex w-full flex-col items-center justify-center px-4 pointer-events-none"
+        // Di mobile: relative ikut flow doc. Di desktop: absolute nempel di tengah
+        className="pointer-events-none relative z-10 flex w-full flex-col items-center justify-center px-4 lg:absolute lg:inset-0"
       >
-        <h2 className="font-science text-4xl md:text-5xl text-center font-bold text-[#4105F7] leading-tight">
+        <h2 className="text-center font-science text-4xl font-bold leading-tight text-[#4105F7] md:text-5xl">
           <span className="prob-word inline-block">Warung Rame</span>{" "}
           <span className="prob-word inline-block font-light text-[#1e1e1e]">
             Emang Bikin Seneng,
@@ -265,13 +206,14 @@ export default function ProblemSection() {
       </div>
 
       {/* ==========================================
-        DESKRIPSI (Z-30, Menimpa Ungu, Ditimpa Hijau)
-    ========================================== */}
+          2. DESKRIPSI & TOMBOL TOGGLE
+      ========================================== */}
       <div
         ref={descParallaxRef}
-        className="absolute pointer-events-auto z-30 flex w-[90%] max-w-xl flex-col items-center justify-center text-center md:w-[60%]"
+        className="pointer-events-auto relative z-30 flex w-[90%] max-w-xl flex-col items-center justify-center text-center md:w-[60%] lg:absolute"
       >
-        <div className="flex min-h-[100px] items-center justify-center">
+        {/* Supaya di mobile background tulisannya kebaca kalau ditimpa desain lain, gue kasih BG hitam khusus mobile, transparan di desktop */}
+        <div className="flex min-h-[160px] items-center justify-center rounded-2xl bg-[#1e1e1e] p-6 lg:min-h-[100px] lg:bg-transparent lg:p-0">
           <AnimatePresence mode="wait">
             <motion.p
               key={step}
@@ -279,7 +221,8 @@ export default function ProblemSection() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.3 }}
-              className="font-science text-sm leading-relaxed text-white/80 md:text-base"
+              // Warna teks dibikin putih bersih biar kontras sama box hitam di mobile
+              className="font-science text-sm leading-relaxed text-white/90 md:text-base lg:text-[#1e1e1e]"
             >
               {step === 1
                 ? "Pembeli yang udah sabar nunggu malah nggak ke-notice, sementara yang baru datang malah dilayanin dulu. Ujung-ujungnya? Pelanggan lu kecewa, ngerasa nggak dihargai, dan kapok balik lagi."
@@ -293,55 +236,35 @@ export default function ProblemSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
           onClick={handleToggle}
-          className="
-    group mt-8 flex cursor-pointer items-center gap-2
-    font-science text-sm font-bold tracking-widest uppercase
-    bg-[linear-gradient(to_right,#C0FE04_50%,white_50%)]
-    bg-[length:200%_100%]
-    bg-[position:100%_0]
-    bg-clip-text text-transparent
-    transition-[background-position]
-    duration-500
-    ease-out
-    hover:bg-[position:0_0]
-  "
+          className="group mt-8 flex cursor-pointer items-center gap-2 font-science text-sm font-bold uppercase tracking-widest bg-[linear-gradient(to_right,#C0FE04_50%,#4105F7_50%)] lg:bg-[linear-gradient(to_right,#C0FE04_50%,white_50%)] bg-[length:200%_100%] bg-[position:100%_0] bg-clip-text text-transparent transition-[background-position] duration-500 ease-out hover:bg-[position:0_0]"
         >
           <span>{step === 1 ? "selanjutnya" : "kembali"}</span>
 
           <motion.span
-            animate={{
-              rotate: step === 1 ? 0 : -90,
-            }}
-            whileHover={{
-              x: 4,
-              y: -4,
-            }}
-            transition={{
-              duration: 0.4,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-            className="flex"
+            animate={{ rotate: step === 1 ? 0 : -90 }}
+            whileHover={{ x: 4, y: -4 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            className="flex rounded-full bg-[#4105F7] p-1 lg:bg-transparent lg:p-0"
           >
             <ArrowUpRight
               size={16}
               strokeWidth={2}
-              // Hapus stroke-current, ganti dengan warna statis + efek transisi grup
-              className="text-white transition-colors duration-500 ease-out group-hover:text-[#C0FE04]"
+              className="text-white transition-colors duration-500 ease-out group-hover:text-[#1e1e1e] lg:group-hover:text-[#C0FE04]"
             />
           </motion.span>
         </motion.button>
       </div>
 
       {/* ==========================================
-        SOLUTION HEADLINE (Z-50 Paling Atas)
-    ========================================== */}
+          3. SOLUTION HEADLINE
+      ========================================== */}
       <div
         ref={solutionHeadlineRef}
-        className="absolute inset-0 z-50 flex w-full flex-col items-center justify-center px-4 pointer-events-none"
+        className="pointer-events-none relative z-50 flex w-full flex-col items-center justify-center px-4 lg:absolute lg:inset-0"
       >
-        <h2 className="text-4xl font-science md:text-xl lg:text-5xl font-bold text-center leading-tight">
+        <h2 className="text-center font-science text-4xl font-bold leading-tight md:text-xl lg:text-5xl">
           <span className="sol-word inline-block text-[#4105F7]">Maxsten</span>{" "}
-          <span className="sol-word text-black font-light">
+          <span className="sol-word font-light text-black">
             Ambil Alih Ribetnya, <br className="hidden md:block" />
             Lu Tinggal{" "}
           </span>
