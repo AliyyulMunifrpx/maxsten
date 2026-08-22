@@ -97,7 +97,7 @@ export default function MetricCard({
           <p className="font-normal text-[12px] lg:text-[16px] text-white/50 capitalize">
             {name}
           </p>
-          <p className="font-bold text-[24px] tracking-wide">
+          <p className="font-bold text-[16px] lg:text-[24px] tracking-wide">
             {formattedValue}
           </p>
         </div>

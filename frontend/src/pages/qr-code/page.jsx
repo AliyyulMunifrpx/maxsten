@@ -80,7 +80,7 @@ export default function StoreQrPage() {
 
           <div className="relative z-10 w-full flex items-center justify-center gap-[8px]">
             <img
-              src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/MEWA.webp"
+              src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/munivy.svg"
               alt="Maxsten Logo"
               className="h-[16px] w-[16px] object-contain brightness-0"
             />

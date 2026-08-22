@@ -88,7 +88,7 @@ export function AppSidebar() {
           >
             <div className="relative h-[32px] w-[32px] flex-shrink-0">
               <img
-                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/MEWA.webp"
+                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/munivy.svg"
                 alt="Maxsten Logo"
                 className="h-[32px] w-[32px] object-contain transition-opacity group-data-[collapsible=icon]:group-hover/logo:opacity-0"
               />

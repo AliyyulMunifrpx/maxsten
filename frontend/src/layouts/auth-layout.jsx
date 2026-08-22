@@ -32,14 +32,16 @@ export default function AuthLayout() {
             "
           >
             {/* LOGO */}
-            <div className="absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-4 text-white">
+            <div className="absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 text-white">
               <img
-                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/MEWA.webp"
+                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/munivy.svg"
                 alt="Maxsten Logo"
                 className="h-10 w-10 object-contain"
               />
 
-              <p className="text-2xl font-bold">MAXSTEN</p>
+              <p className="text-4xl font-sans text-[#c0fe04] pb-2 font-bold">
+                max<span className="text-white font-light">sten</span>
+              </p>
             </div>
 
             {/* DOT FIELD */}
@@ -65,7 +67,7 @@ export default function AuthLayout() {
                   bulgeOnly
                   gradientFrom="#C0FE04"
                   gradientTo="#C0FE04"
-                  glowColor="#1e1e1e"
+                  glowColor="#1e1e1e02"
                 />
               </div>
             </div>
@@ -120,7 +122,7 @@ export default function AuthLayout() {
             {/* MOBILE LOGO */}
             <div className="absolute left-1/2 top-8 z-10 flex -translate-x-1/2 items-center gap-3 md:hidden">
               <img
-                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/MEWA.webp"
+                src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/munivy.svg"
                 alt="Maxsten Logo"
                 className="h-10 w-10 object-contain"
               />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion"; // ✅ IMPORT MOTION
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,13 @@ export default function LoginPage() {
   const { mutate, isPending } = useLogin();
 
   useDocumentTitle("Masuk");
-
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      // replace: true bikin user nggak bisa pencet tombol "Back" ke halaman login lagi
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
   function handleSubmit(e) {
     e.preventDefault();
 
@@ -60,7 +66,7 @@ export default function LoginPage() {
 
       {/* 16px */}
       <p className="mb-6  text-center text-[16px] text-muted-foreground">
-       Antrean digital untuk UMKM.
+        Antrean digital untuk UMKM.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
