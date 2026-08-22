@@ -284,15 +284,23 @@ export default function SolutionSection() {
       <div className="xl:hidden flex flex-col w-full px-6 py-20 min-h-screen">
         
         {/* HEADLINE MOBILE */}
-        <div className="mb-16">
-          <h2 className="font-science text-3xl md:text-4xl font-bold text-[#C0FE04] leading-tight">
-            <span className="mobile-prob-word inline-block font-light text-white">Gimana</span>{" "}
-            <span className="mobile-prob-word inline-block">Maxsten Bikin </span>
-            <br />
-            <span className="mobile-prob-word inline-block font-light text-white">Kerjaan Lu </span>{" "}
-            <span className="mobile-prob-word inline-block">Makin Gampang?</span>
-          </h2>
-        </div>
+      <div className="mb-16 text-center">
+  <h2 className="font-science text-3xl font-bold leading-tight text-[#C0FE04] md:text-4xl">
+    <span className="mobile-prob-word inline-block font-light text-white">
+      Gimana
+    </span>{" "}
+    <span className="mobile-prob-word inline-block">
+      Maxsten Bikin
+    </span>
+    <br />
+    <span className="mobile-prob-word inline-block font-light text-white">
+      Kerjaan Lu
+    </span>{" "}
+    <span className="mobile-prob-word inline-block">
+      Makin Gampang?
+    </span>
+  </h2>
+</div>
 
         {/* LIST STEP MOBILE (Timeline Vertikal) */}
         <div className="flex flex-col gap-10">
