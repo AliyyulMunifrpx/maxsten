@@ -62,7 +62,7 @@ export default function SolutionSection() {
   const logoRef = useRef(null);
   const logoIconRef = useRef(null);
   const logoTextMaskRef = useRef(null);
-  const stRef = useRef(null); // Menyimpan referensi ScrollTrigger untuk kalkulasi tombol
+  const stRef = useRef(null);
 
   const titleRefs = useRef([]);
   const captionRefs = useRef([]);
@@ -70,21 +70,20 @@ export default function SolutionSection() {
   const captionsWrapperRef = useRef(null);
   const stepScreenRefs = useRef([]);
 
-  // State khusus buat HP biar tombol tau lagi di step berapa
   const [activeStep, setActiveStep] = useState(-1);
 
-  // Constants untuk kalkulasi jarak scroll
   const STEP_SCROLL_LENGTH = 1200;
   const DESKTOP_BOOT = 1500;
-  const MOBILE_BOOT = 800; // Di mobile lebih cepet karena ga ada intro HP
+  const MOBILE_BOOT = 800;
 
   // ==========================================
-  // PARALLAX MOUSE EFFECT (Hanya Desktop)
+  // PARALLAX MOUSE EFFECT (Hanya XL ke atas — nyambung sama kemunculan HP)
   // ==========================================
   useEffect(() => {
     const section = sectionRef.current;
     const isFinePointer = window.matchMedia("(pointer: fine)").matches;
-    if (!section || !isFinePointer) return;
+    const isXlUp = window.matchMedia("(min-width: 1280px)").matches;
+    if (!section || !isFinePointer || !isXlUp) return;
 
     const layers = [
       { el: titlesWrapperRef.current, strength: 30 },
@@ -133,9 +132,9 @@ export default function SolutionSection() {
     const words = gsap.utils.toArray(".prob-word");
 
     // ----------------------------------------------------
-    // 1. TIMELINE DESKTOP (Layar Lebar) - Ada HP & Blur
+    // 1. TIMELINE DENGAN HP (Cuma XL ke atas)
     // ----------------------------------------------------
-    mm.add("(min-width: 768px)", () => {
+    mm.add("(min-width: 1280px)", () => {
       gsap.set(words, { opacity: 0, filter: "blur(10px)", y: 20 });
       gsap.set(phoneWrapperRef.current, { opacity: 0, scale: 0.7, y: 50 });
       gsap.set(logoIconRef.current, { opacity: 0 });
@@ -259,16 +258,15 @@ export default function SolutionSection() {
     });
 
     // ----------------------------------------------------
-    // 2. TIMELINE MOBILE (HP) - Super Ringan, Teks Doang
+    // 2. TIMELINE TANPA HP (Semua di bawah XL, termasuk tablet/md)
     // ----------------------------------------------------
-    mm.add("(max-width: 767px)", () => {
-      // Setup ringan tanpa blur
+    mm.add("(max-width: 1279px)", () => {
       gsap.set(words, { opacity: 0, y: 20, filter: "none" });
       gsap.set(titleRefs.current, { opacity: 0, y: 20 });
       gsap.set(captionRefs.current, { opacity: 0, y: 20 });
 
       const totalLengthMobile = MOBILE_BOOT + STEPS.length * STEP_SCROLL_LENGTH;
-      let currentStepLocal = -1; // Mencegah React re-render gila-gilaan
+      let currentStepLocal = -1;
 
       const master = gsap.timeline({
         scrollTrigger: {
@@ -279,7 +277,6 @@ export default function SolutionSection() {
           pin: true,
           anticipatePin: 1,
           onUpdate: (self) => {
-            // Kalkulasi matematis untuk ngatur tombol navigasi
             const scrollY = self.scroll();
             const start = self.start + MOBILE_BOOT;
             let newStep = -1;
@@ -289,7 +286,6 @@ export default function SolutionSection() {
               newStep = Math.min(Math.max(0, newStep), STEPS.length - 1);
             }
 
-            // Cuma update state kalau beneran pindah step (Optimasi Performa)
             if (newStep !== currentStepLocal) {
               currentStepLocal = newStep;
               setActiveStep(newStep);
@@ -298,10 +294,8 @@ export default function SolutionSection() {
         },
       });
 
-      // Simpan referensi ScrollTrigger buat dipakai tombol
       stRef.current = master.scrollTrigger;
 
-      // Animasi Judul Awal
       master.to(
         words,
         { opacity: 1, y: 0, stagger: 0.05, ease: "power2.out", duration: 0.8 },
@@ -320,7 +314,7 @@ export default function SolutionSection() {
       );
 
       master.addLabel("bootDone");
-      const stepFraction = 1; // Satuan waktu generik buat stagger Mobile
+      const stepFraction = 1;
 
       STEPS.forEach((step, i) => {
         const stepStart = `bootDone+=${i * stepFraction}`;
@@ -373,12 +367,11 @@ export default function SolutionSection() {
   }, []);
 
   // ==========================================
-  // FUNGSI TOMBOL NAVIGASI MOBILE (Pakai Lenis)
+  // FUNGSI TOMBOL NAVIGASI (Sekarang muncul di semua layar < XL)
   // ==========================================
   const handleNext = () => {
     if (!stRef.current || !window.lenis) return;
 
-    // Kalau udah di step terakhir, lempar user ke section berikutnya
     if (activeStep >= STEPS.length - 1) {
       window.lenis.scrollTo(stRef.current.end, { duration: 1.2 });
       return;
@@ -386,7 +379,6 @@ export default function SolutionSection() {
 
     const start = stRef.current.start + MOBILE_BOOT;
     const targetStep = activeStep < 0 ? 0 : activeStep + 1;
-    // Tambah 400px biar berhenti pas di tengah-tengah teksnya
     const targetScroll = start + targetStep * STEP_SCROLL_LENGTH + 400;
 
     window.lenis.scrollTo(targetScroll, { duration: 1.2 });
@@ -396,7 +388,6 @@ export default function SolutionSection() {
     if (!stRef.current || !window.lenis) return;
 
     if (activeStep <= 0) {
-      // Balik ke judul utama
       window.lenis.scrollTo(stRef.current.start, { duration: 1.2 });
     } else {
       const start = stRef.current.start + MOBILE_BOOT;
@@ -415,7 +406,7 @@ export default function SolutionSection() {
       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-6 pointer-events-none">
         <h2
           ref={headlineRef}
-          className="font-science text-3xl md:text-5xl text-center font-bold text-[#C0FE04] leading-tight"
+          className="font-science text-3xl xl:text-5xl text-center font-bold text-[#C0FE04] leading-tight"
         >
           <span className="prob-word inline-block font-light text-white">
             Gimana
@@ -430,9 +421,9 @@ export default function SolutionSection() {
       </div>
 
       {/* ==========================================
-          FRAME HP & SCREEN (SEKARANG CUMA MUNCUL DI DESKTOP: hidden md:flex)
+          FRAME HP & SCREEN (Cuma muncul di XL ke atas)
       ========================================== */}
-      <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center pointer-events-none">
+      <div className="absolute inset-0 z-20 hidden xl:flex items-center justify-center pointer-events-none">
         <div
           ref={phoneWrapperRef}
           className="relative h-[80%] max-h-[800px] inline-block"
@@ -449,7 +440,7 @@ export default function SolutionSection() {
           >
             <div
               ref={phoneScreenRef}
-              className="relative h-[65%] lg:h-full w-[50%] rounded-[20px] flex items-center justify-center overflow-hidden bg-[#1e1e1e]"
+              className="relative h-full w-[50%] rounded-[20px] flex items-center justify-center overflow-hidden bg-[#1e1e1e]"
             >
               {/* LOGO BOOT MAXSTEN */}
               <div
@@ -493,14 +484,14 @@ export default function SolutionSection() {
       </div>
 
       {/* ==========================================
-          JUDUL & CAPTION (Ditumpuk di CSS Grid biar rapi)
+          JUDUL & CAPTION
       ========================================== */}
 
-      {/* JUDUL (Kiri di Desktop, Atas-Tengah di Mobile) */}
-      <div className="absolute top-[35%] md:top-1/2 left-0 md:left-24 -translate-y-1/2 w-full md:w-[25%] px-6 md:px-0 pointer-events-none z-30 flex justify-center md:justify-start">
+      {/* JUDUL (Kiri di XL, Atas-Tengah di bawah XL) */}
+      <div className="absolute top-[35%] xl:top-1/2 left-0 xl:left-24 -translate-y-1/2 w-full xl:w-[25%] px-6 xl:px-0 pointer-events-none z-30 flex justify-center xl:justify-start">
         <div
           ref={titlesWrapperRef}
-          className="relative grid w-full place-items-center md:place-items-start"
+          className="relative grid w-full place-items-center xl:place-items-start"
         >
           {STEPS.map((step, i) => {
             const number = i + 1 < 10 ? `0${i + 1}` : i + 1;
@@ -508,9 +499,9 @@ export default function SolutionSection() {
               <h3
                 key={`title-${i}`}
                 ref={(el) => (titleRefs.current[i] = el)}
-                className="col-start-1 row-start-1 font-science text-white text-2xl md:text-3xl font-bold leading-snug text-center md:text-left"
+                className="col-start-1 row-start-1 font-science text-white text-2xl xl:text-3xl font-bold leading-snug text-center xl:text-left"
               >
-                <span className="text-[#C0FE04] block text-xl md:text-2xl mb-2">
+                <span className="text-[#C0FE04] block text-xl xl:text-2xl mb-2">
                   {number}.
                 </span>
                 {step.title}
@@ -520,17 +511,17 @@ export default function SolutionSection() {
         </div>
       </div>
 
-      {/* CAPTION (Kanan di Desktop, Bawah-Tengah di Mobile) */}
-      <div className="absolute top-[60%] md:top-1/2 right-0 md:right-24 -translate-y-1/2 w-full md:w-[25%] px-6 md:px-0 pointer-events-none z-30 flex justify-center md:justify-start">
+      {/* CAPTION (Kanan di XL, Bawah-Tengah di bawah XL) */}
+      <div className="absolute top-[60%] xl:top-1/2 right-0 xl:right-24 -translate-y-1/2 w-full xl:w-[25%] px-6 xl:px-0 pointer-events-none z-30 flex justify-center xl:justify-start">
         <div
           ref={captionsWrapperRef}
-          className="relative grid w-full place-items-center md:place-items-start"
+          className="relative grid w-full place-items-center xl:place-items-start"
         >
           {STEPS.map((step, i) => (
             <p
               key={`caption-${i}`}
               ref={(el) => (captionRefs.current[i] = el)}
-              className="col-start-1 row-start-1 font-science text-white/70 text-base md:text-lg leading-relaxed text-center md:text-left"
+              className="col-start-1 row-start-1 font-science text-white/70 text-base xl:text-lg leading-relaxed text-center xl:text-left"
             >
               {step.caption}
             </p>
@@ -539,9 +530,9 @@ export default function SolutionSection() {
       </div>
 
       {/* ==========================================
-          TOMBOL NAVIGASI KHUSUS MOBILE
+          TOMBOL NAVIGASI (Sekarang muncul di semua layar di bawah XL)
       ========================================== */}
-      <div className="absolute bottom-12 left-0 right-0 z-50 flex items-center justify-center gap-4 md:hidden px-6">
+      <div className="absolute bottom-12 left-0 right-0 z-50 flex items-center justify-center gap-4 xl:hidden px-6">
         <button
           onClick={handlePrev}
           className="w-1/2 rounded-full py-4 font-science text-sm font-medium text-white/60 bg-white/5 border border-white/10 active:bg-white/10 transition-colors"
