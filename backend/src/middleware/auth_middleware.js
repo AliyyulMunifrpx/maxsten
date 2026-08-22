@@ -2,18 +2,26 @@ import { prisma } from "../application/database.js";
 import { supabase } from "../application/supabase.js";
 
 export const authMiddleware = async (req, res, next) => {
-  let accessToken = req.cookies.access_token;
-  const refreshToken = req.cookies.refresh_token;
+  // 1. CARI ACCESS TOKEN: Coba dari Header (React) dulu, kalau kosong ambil dari Cookie (Vitest)
+  let accessToken = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.split(" ")[1]
+    : req.cookies.access_token;
+
+  // 2. CARI REFRESH TOKEN: Coba dari Custom Header (opsional untuk React) atau Cookie (Vitest)
+  let refreshToken =
+    req.headers["x-refresh-token"] || req.cookies.refresh_token;
 
   if (!accessToken && !refreshToken) {
     return res.status(401).json({ errors: "Unauthorized" }).end();
   }
 
+  // 3. Validasi token ke Supabase
   let {
     data: { user },
     error,
   } = await supabase.auth.getUser(accessToken);
 
+  // 4. Jika Access Token Expired, TAPI ada Refresh Token (Fitur Auto-Refresh)
   if (error && refreshToken) {
     const { data: refreshData, error: refreshError } =
       await supabase.auth.refreshSession({
@@ -21,6 +29,7 @@ export const authMiddleware = async (req, res, next) => {
       });
 
     if (refreshError || !refreshData.session) {
+      // Hapus cookie (buat Vitest)
       res.clearCookie("access_token");
       res.clearCookie("refresh_token");
       return res
@@ -29,30 +38,41 @@ export const authMiddleware = async (req, res, next) => {
         .end();
     }
 
+    // Update token baru
     accessToken = refreshData.session.access_token;
+
+    // (TETAP ADA BUAT VITEST): Set cookie ulang dengan token baru
     res.cookie("access_token", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      path: "/",
       maxAge: 1000 * 60 * 60,
     });
     res.cookie("refresh_token", refreshData.session.refresh_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "none",
+      path: "/",
       maxAge: 1000 * 60 * 60 * 24 * 30,
     });
+
+    // (TAMBAHAN BUAT REACT): Kirim token baru lewat Response Header.
+    // Nanti Axios di React bisa nangkep header ini buat nge-update localStorage.
+    res.setHeader("x-new-access-token", accessToken);
+    res.setHeader("x-new-refresh-token", refreshData.session.refresh_token);
 
     user = refreshData.user;
     error = null;
   }
 
+  // 5. Kalau gagal semuanya, tendang!
   if (error || !user) {
     return res.status(401).json({ errors: "Unauthorized" }).end();
   }
 
   // ==========================================
-  // PERUBAHAN DI SINI: Pake supabase_id sebagai validasi utama
+  // Validasi user database
   // ==========================================
   const prismaUser = await prisma.user.findUnique({
     where: { supabase_id: user.id },

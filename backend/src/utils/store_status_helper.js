@@ -19,8 +19,8 @@ function resolveTimeZone(timezone) {
 // konvensi JS Date#getDay(): 0(Minggu)..6(Sabtu), tanpa perlu round-trip
 // parse ulang lewat toLocaleString/new Date seperti versi sebelumnya.
 function getZonedDayOfWeek(date, timeZone) {
-  const isoDay = Number(formatInTimeZone(date, timeZone, "i"));
-  return isoDay % 7;
+  const isoDay = Number(formatInTimeZone(date, timeZone, "i")); // ISO: Senin=1 ... Minggu=7
+  return (isoDay - 1) % 7; // geser jadi Senin=0 ... Minggu=6, samain sama DAYS di FE
 }
 
 function getZonedDateString(date, timeZone) {

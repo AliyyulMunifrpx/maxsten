@@ -267,6 +267,7 @@ const updateStoreProfile = async (userId, request) => {
   });
   return await getStore(userId);
 };
+
 const getStoreHistory = async (
   userId,
   month,
@@ -292,10 +293,8 @@ const getStoreHistory = async (
   if (!store) throw new ResponseError(404, "Store not found");
 
   const tz = store.timezone || "Asia/Jakarta";
-
   const nowUtc = new Date();
   const nowZoned = toZonedTime(nowUtc, tz);
-
   const currentYear = nowZoned.getFullYear();
   const currentMonth = nowZoned.getMonth() + 1;
 
@@ -432,28 +431,101 @@ const getStoreHistory = async (
     String(i + 1).padStart(2, "0"),
   );
 
-  const aggSelesai = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    _sum: { total_price: true },
-    _count: true,
-  });
+  let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
+  if (status === "SELESAI") statusCondition = "SELESAI";
+  else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
 
-  const aggBatal = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "DIBATALKAN", ...dateCondition },
-    _count: true,
-  });
+  const skip = (pageNum - 1) * limitNum;
 
-  const aggSelesaiPrev = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "SELESAI", ...prevDateCondition },
-    _sum: { total_price: true },
-    _count: true,
-  });
+  // ==========================================
+  // PARALLEL QUERIES (PERFORMA MAKSIMAL)
+  // ==========================================
+  const [
+    aggSelesai,
+    aggBatal,
+    aggSelesaiPrev,
+    aggBatalPrev,
+    waitTimeRows,
+    waitTimeRowsPrev,
+    history,
+    revenueRows,
+    allTopSellingGroups,
+    allCompletedDetails,
+  ] = await Promise.all([
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      _sum: { total_price: true },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "DIBATALKAN", ...dateCondition },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "SELESAI", ...prevDateCondition },
+      _sum: { total_price: true },
+      _count: true,
+    }),
+    prisma.queue.aggregate({
+      where: { store_id: store.id, status: "DIBATALKAN", ...prevDateCondition },
+      _count: true,
+    }),
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        completed_at: { not: null },
+        processed_at: { not: null },
+        ...dateCondition,
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
+    prisma.queue.findMany({
+      where: {
+        store_id: store.id,
+        status: "SELESAI",
+        completed_at: { not: null },
+        processed_at: { not: null },
+        ...prevDateCondition,
+      },
+      select: { processed_at: true, completed_at: true },
+    }),
+    prisma.queue.findMany({
+      where: { store_id: store.id, status: statusCondition, ...dateCondition },
+      orderBy: { created_at: "desc" },
+      skip,
+      take: limitNum,
+      include: {
+        queueDetails: {
+          include: { product: true, variant: true },
+        },
+      },
+    }),
+    prisma.queue.findMany({
+      where: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      select: { created_at: true, total_price: true },
+      orderBy: { created_at: "asc" },
+    }),
+    prisma.queueDetail.groupBy({
+      by: ["product_id"],
+      where: {
+        queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
+      },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: "desc" } },
+    }),
+    prisma.queueDetail.findMany({
+      where: {
+        queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
+        selected_addons: { not: null },
+      },
+      select: { selected_addons: true, quantity: true },
+    }),
+  ]);
 
-  const aggBatalPrev = await prisma.queue.aggregate({
-    where: { store_id: store.id, status: "DIBATALKAN", ...prevDateCondition },
-    _count: true,
-  });
-
+  // ==========================================
+  // KALKULASI METRIK
+  // ==========================================
   const totalOmzet = aggSelesai._sum.total_price || 0;
   const totalPesananSelesai = aggSelesai._count || 0;
   const totalBatal = aggBatal._count || 0;
@@ -467,56 +539,68 @@ const getStoreHistory = async (
   const averageOrderValue =
     totalPesananSelesai > 0 ? Math.round(totalOmzet / totalPesananSelesai) : 0;
 
+  const totalOmzetPrev = aggSelesaiPrev._sum.total_price || 0;
+  const totalPesananSelesaiPrev = aggSelesaiPrev._count || 0;
+  const totalBatalPrev = aggBatalPrev._count || 0;
+
+  const totalTransactionsPrev = totalPesananSelesaiPrev + totalBatalPrev;
+  const cancellationRatePrev =
+    totalTransactionsPrev > 0
+      ? Number(((totalBatalPrev / totalTransactionsPrev) * 100).toFixed(2))
+      : 0;
+
+  const averageOrderValuePrev =
+    totalPesananSelesaiPrev > 0
+      ? Math.round(totalOmzetPrev / totalPesananSelesaiPrev)
+      : 0;
+
+  // Helper Waktu Tunggu Dapur
+  const calculateAvgWaitTime = (rows) => {
+    let totalWaitMs = 0;
+    let validCount = 0;
+    rows.forEach((row) => {
+      if (row.processed_at && row.completed_at) {
+        const waitMs =
+          new Date(row.completed_at).getTime() -
+          new Date(row.processed_at).getTime();
+        if (waitMs >= 0) {
+          totalWaitMs += waitMs;
+          validCount++;
+        }
+      }
+    });
+    return validCount === 0 ? 0 : Math.round(totalWaitMs / validCount / 60000);
+  };
+
+  const averageWaitTimeMinutes = calculateAvgWaitTime(waitTimeRows);
+  const averageWaitTimeMinutesPrev = calculateAvgWaitTime(waitTimeRowsPrev);
+
   const calcTrend = (current, previous) => {
-    // 1. Jika bulan lalu 0 dan bulan ini juga 0 = Tidak ada perubahan (0%)
     if (previous === 0 && current === 0) return 0;
-
-    // 2. Jika bulan lalu 0, tapi bulan ini ada pemasukan = Naik 100% (karena dibagi 0 itu error/infinity)
     if (previous === 0 && current > 0) return 100;
-
-    // 3. Jika datanya normal, hitung persentase kenaikan/penurunan
     return Number((((current - previous) / previous) * 100).toFixed(1));
   };
 
   const trend = {
-    omzet: calcTrend(totalOmzet, aggSelesaiPrev._sum.total_price || 0),
-    pesanan: calcTrend(totalPesananSelesai, aggSelesaiPrev._count),
-    batal: calcTrend(totalBatal, aggBatalPrev._count),
+    omzet: calcTrend(totalOmzet, totalOmzetPrev),
+    pesanan: calcTrend(totalPesananSelesai, totalPesananSelesaiPrev),
+    batal: calcTrend(totalBatal, totalBatalPrev),
+    cancellationRate: calcTrend(cancellationRate, cancellationRatePrev),
+    averageOrderValue: calcTrend(averageOrderValue, averageOrderValuePrev),
+    averageWaitTime: calcTrend(
+      averageWaitTimeMinutes,
+      averageWaitTimeMinutesPrev,
+    ),
   };
-
-  let statusCondition = { in: ["SELESAI", "DIBATALKAN"] };
-  if (status === "SELESAI") statusCondition = "SELESAI";
-  else if (status === "DIBATALKAN") statusCondition = "DIBATALKAN";
-
-  const skip = (pageNum - 1) * limitNum;
-  const history = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: statusCondition,
-      ...dateCondition,
-    },
-    orderBy: { created_at: "desc" },
-    skip,
-    take: limitNum,
-    include: {
-      queueDetails: {
-        include: { product: true, variant: true },
-      },
-    },
-  });
 
   let totalRows = totalPesananSelesai + totalBatal;
   if (status === "SELESAI") totalRows = totalPesananSelesai;
   if (status === "DIBATALKAN") totalRows = totalBatal;
   const totalPages = Math.ceil(totalRows / limitNum);
 
-  // --- DATA UNTUK CHART ---
-  const revenueRows = await prisma.queue.findMany({
-    where: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    select: { created_at: true, total_price: true },
-    orderBy: { created_at: "asc" },
-  });
-
+  // ==========================================
+  // DATA UNTUK CHART & RANKING
+  // ==========================================
   const overallHourlyCounts = Array(24).fill(0);
   const dailyCounts = Array(7).fill(0);
   const dayNames = [
@@ -557,7 +641,6 @@ const getStoreHistory = async (
   });
 
   const revenueChartData = labelOrder.map((label) => revenueChartMap[label]);
-
   const dailyChartData = dailyCounts.map((count, index) => ({
     label: dayNames[index],
     pesanan: count,
@@ -574,37 +657,7 @@ const getStoreHistory = async (
   const peakDayIndex = dailyCounts.indexOf(maxDailyCount);
   const peakDayName = maxDailyCount > 0 ? dayNames[peakDayIndex] : "-";
 
-  // --- DATA TAMBAHAN ---
-  const waitTimeRows = await prisma.queue.findMany({
-    where: {
-      store_id: store.id,
-      status: "SELESAI",
-      completed_at: { not: null },
-      ...dateCondition,
-    },
-    select: { created_at: true, completed_at: true },
-  });
-
-  const averageWaitTimeMinutes = waitTimeRows.length
-    ? Math.round(
-        waitTimeRows.reduce((sum, row) => {
-          const createdAt = new Date(row.created_at);
-          const completedAt = new Date(row.completed_at);
-          return sum + (completedAt - createdAt) / 60000;
-        }, 0) / waitTimeRows.length,
-      )
-    : 0;
-
-  // Top Selling Products (Cuma tabel ranking)
-  const allTopSellingGroups = await prisma.queueDetail.groupBy({
-    by: ["product_id"],
-    where: {
-      queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    },
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: "desc" } },
-  });
-
+  // Top Selling Products
   const totalTopSellingRows = allTopSellingGroups.length;
   const skipTop = (topPageNum - 1) * topLimitNum;
   const topSellingGroups = allTopSellingGroups.slice(
@@ -630,16 +683,7 @@ const getStoreHistory = async (
   }));
 
   // Top Addons
-  const allCompletedDetails = await prisma.queueDetail.findMany({
-    where: {
-      queue: { store_id: store.id, status: "SELESAI", ...dateCondition },
-      selected_addons: { not: null },
-    },
-    select: { selected_addons: true, quantity: true },
-  });
-
   const addonSalesMap = {};
-
   allCompletedDetails.forEach((detail) => {
     let addons = detail.selected_addons;
     if (typeof addons === "string") {
@@ -667,6 +711,9 @@ const getStoreHistory = async (
     .sort((a, b) => b.totalQuantity - a.totalQuantity)
     .slice(0, 10);
 
+  // ==========================================
+  // FINAL RESPONSE
+  // ==========================================
   return {
     meta: {
       selectedMonth,
@@ -714,6 +761,7 @@ const getStoreHistory = async (
     topAddons: topSellingAddons,
   };
 };
+
 const getOperationalHours = async (userId) => {
   const store = await prisma.store.findFirst({
     where: {
@@ -789,6 +837,8 @@ const getStore = async (request) => {
       postal_code: true,
       logo_url: true,
       timezone: true,
+      latitude: true,
+      longitude: true,
       manual_status: true,
       manual_updated_at: true,
       operational_hours: { orderBy: { day: "asc" } },
@@ -807,57 +857,70 @@ const getStore = async (request) => {
     is_open: isStoreOpen,
   };
 };
-
 const deleteStore = async (userId) => {
-  // 1. Ambil id DAN logo_url dari store
-  const store = await prisma.store.findFirst({
-    where: {
-      user_id: userId,
-      is_delete: false,
-    },
-    select: {
-      id: true,
-      logo_url: true,
-    },
+  const deletedStore = await prisma.$transaction(async (tx) => {
+    // 1. Ambil id DAN logo_url dari store pake transaksi (tx)
+    const store = await tx.store.findFirst({
+      where: {
+        user_id: userId,
+        is_delete: false,
+      },
+      select: {
+        id: true,
+        logo_url: true,
+      },
+    });
+
+    if (!store) {
+      throw new ResponseError(404, "Store not found");
+    }
+
+    // 2. Cek apakah ada antrean aktif pake transaksi (tx)
+    const hasActiveOrders = await tx.queue.findFirst({
+      where: {
+        store_id: store.id,
+        status: {
+          in: ["BELUM_BAYAR", "DIPROSES"],
+        },
+      },
+    });
+
+    if (hasActiveOrders) {
+      throw new ResponseError(
+        400,
+        "The store cannot be deleted because there are still pending orders",
+      );
+    }
+
+    // 3. Soft delete toko di database pake transaksi (tx)
+    await tx.store.update({
+      where: {
+        id: store.id,
+      },
+      data: {
+        is_delete: true,
+        user_id: null, // PASTIKAN di schema.prisma field ini "Int?" atau "String?" (Boleh Null)
+      },
+    });
+
+    // Return data toko buat dipakai di luar transaksi
+    return store;
   });
 
-  if (!store) {
-    throw new ResponseError(404, "Store not found");
-  }
+  if (deletedStore.logo_url && deletedStore.logo_url.includes("supabase.co")) {
+    try {
+      const parts = deletedStore.logo_url.split("/store-logos/");
 
-  // 2. Soft delete toko di database terlebih dahulu
-  await prisma.store.update({
-    where: {
-      id: store.id,
-    },
-    data: {
-      is_delete: true,
-      user_id: null, // Opsional: lepas relasi user agar user bisa buat store baru
-    },
-  });
-
-  // 3. Hapus file logo dari Supabase jika toko punya logo
-  if (store.logo_url) {
-    if (store.logo_url.includes("supabase.co")) {
-      try {
-        // Ekstrak nama file dari Public URL Supabase
-        // Contoh URL: https://[project].supabase.co/storage/v1/object/public/store-logos/images/logo-123.jpg
-        // Hasil split index [1]: "images/logo-123.jpg"
-        const parts = store.logo_url.split("/store-logos/");
-
-        if (parts.length > 1) {
-          const fileName = parts[1];
-          // Panggil utility hapus bucket
-          await deleteImageFromSupabase(fileName, "store-logos");
-        }
-      } catch (error) {
-        // Log error saja tanpa throw, agar API tetap merespons sukses (200 OK)
-        // karena dari sisi database, tokonya sudah berhasil dihapus.
-        console.error(
-          `[deleteStore] Failed to delete the logo file from Supabase for store ${store.id}:`,
-          error.message,
-        );
+      if (parts.length > 1) {
+        const fileName = parts[1];
+        await deleteImageFromSupabase(fileName, "store-logos");
       }
+    } catch (error) {
+      // Log error saja tanpa throw
+      console.error(
+        `[deleteStore] Failed to delete the logo file from Supabase for store ${deletedStore.id}:`,
+        error.message,
+      );
     }
   }
 };

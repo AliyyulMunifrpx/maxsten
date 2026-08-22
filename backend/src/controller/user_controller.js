@@ -7,7 +7,7 @@ const register = async (req, res, next) => {
       data: result, // result dari service cuma ngembaliin email & name
     });
   } catch (e) {
-        console.error("REGISTER CONTROLLER ERROR:", e);
+    console.error("REGISTER CONTROLLER ERROR:", e);
 
     next(e);
   }
@@ -38,6 +38,8 @@ const login = async (req, res, next) => {
       data: {
         email: result.email,
         name: result.name,
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
       },
     });
   } catch (e) {
@@ -79,24 +81,27 @@ const syncEmailWebhook = async (req, res, next) => {
 };
 const logout = async (req, res, next) => {
   try {
-    // 1. Ambil token dari cookie (asumsi lu pakai library cookie-parser)
-    // Atau ambil dari Header Authorization jika FE mengirimkannya via Header
+    // 1. Ambil token dari cookie atau Header (Ini udah cakep banget logikanya!)
     const accessToken =
       req.cookies?.access_token || req.headers.authorization?.split(" ")[1];
 
     // 2. Lempar token ke service untuk dihanguskan di Supabase
-    await userService.logout(accessToken);
+    if (accessToken) {
+      await userService.logout(accessToken);
+    }
 
-    // 3. Bersihkan cookie di browser user (wajib secure: true untuk sameSite: none)
+    // 3. Bersihkan cookie (Tambahin path: "/")
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: true,
       sameSite: "none",
+      path: "/", // <--- INI WAJIB ADA
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
       secure: true,
       sameSite: "none",
+      path: "/", // <--- INI WAJIB ADA
     });
 
     // 4. Kasih respons sukses
@@ -108,25 +113,39 @@ const logout = async (req, res, next) => {
     next(e);
   }
 };
+
 const deleteUser = async (req, res, next) => {
   try {
     await userService.deleteUser(req.user.id, req.user.supabase_id);
 
-    // Otomatis logout-in usernya (buang cookie)
+    // Otomatis logout-in usernya (Tambahin path: "/")
     res.clearCookie("access_token", {
       httpOnly: true,
       secure: true,
       sameSite: "none",
+      path: "/", // <--- INI WAJIB ADA
     });
     res.clearCookie("refresh_token", {
       httpOnly: true,
       secure: true,
       sameSite: "none",
+      path: "/", // <--- INI WAJIB ADA
     });
 
     res.status(200).json({
       data: "OK",
       message: "Account permanently deleted",
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+const updateEmail = async (req, res, next) => {
+  try {
+    // req.user didapat dari authMiddleware yang udah lu bikin
+    const result = await userService.updateEmail(req.user, req.body);
+    res.status(200).json({
+      data: result,
     });
   } catch (e) {
     next(e);
@@ -140,4 +159,5 @@ export default {
   syncEmailWebhook,
   logout,
   deleteUser,
+  updateEmail
 };

@@ -22,12 +22,16 @@ io.use(socketAuth);
 
 // Simpan 'io' ke dalam Express (variabel web), biar nanti Controller lu bisa manggil req.app.get('socketio')
 web.set("socketio", io);
-
 io.on("connection", (socket) => {
   logger.info(`${socket.user.name} connected`);
 
-  registerSellerEvents(socket);
+  // Jika token sempat di-refresh oleh middleware socketAuth,
+  // kirim token baru tersebut ke klien agar mereka bisa meng-update localStorage / Cookie
+  if (socket.newTokens) {
+    socket.emit("token_refreshed", socket.newTokens);
+  }
 
+  registerSellerEvents(socket);
   registerBuyerEvents(socket);
 
   socket.on("disconnect", () => {

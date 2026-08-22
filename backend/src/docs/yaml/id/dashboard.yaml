@@ -65,6 +65,11 @@ components:
         data:
           type: object
           properties:
+            server_time:
+              type: string
+              format: date-time
+              description: Waktu server saat ini dalam UTC. FE harus menghitung countdown relatif terhadap nilai ini, bukan jam device user.
+              example: "2026-08-08T00:25:17.000Z"
             store:
               $ref: "#/components/schemas/DashboardStore"
             lists:
@@ -108,6 +113,11 @@ components:
               name:
                 type: string
                 example: "Es Teh"
+              description:
+                type: string
+                nullable: true
+                description: Deskripsi dari produk.
+                example: "Es teh manis segar dengan gula tebu asli."
               price:
                 type: integer
                 example: 5000
@@ -117,6 +127,10 @@ components:
               is_available:
                 type: boolean
                 example: true
+              total_sold:
+                type: integer
+                description: Total jumlah produk ini yang sudah terjual.
+                example: 154
         latest_addons:
           type: array
           description: Maksimal 5 add-on terbaru.
@@ -137,6 +151,10 @@ components:
                 type: string
                 description: Memudahkan FE mengetahui add-on ini ada di dalam grup mana.
                 example: "addon-group-uuid-1"
+        active_queues_count:
+          type: integer
+          description: Jumlah total antrean yang sedang aktif (BELUM_BAYAR atau DIPROSES) untuk badge notifikasi.
+          example: 12
         oldest_active_queues:
           type: array
           description: Maksimal 5 antrean dengan status BELUM_BAYAR/DIPROSES yang paling lama menunggu penanganan.
@@ -158,7 +176,12 @@ components:
               created_at:
                 type: string
                 format: date-time
-                example: "2026-07-27T10:00:00.000Z"
+                example: "2026-08-08T00:10:00.000Z"
+              expired_at:
+                type: string
+                format: date-time
+                description: Batas waktu maksimal sebelum antrean dianggap kadaluarsa.
+                example: "2026-08-08T00:25:00.000Z"
 
     DashboardMetric:
       type: object
