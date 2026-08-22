@@ -86,19 +86,31 @@ export default function Navbar() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 + index * 0.1, duration: 0.5 }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setIsMobileOpen(false);
+                   onClick={(e) => {
+  e.preventDefault();
+  setIsMobileOpen(false); // Tutup menu mobile kalau lagi kebuka
 
-                      // Panggil dari window!
-                      if (window.lenis) {
-                        window.lenis.scrollTo(item.link, {
-                          duration: 1.2,
-                          easing: (t) =>
-                            Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-                        });
-                      }
-                    }}
+  // 1. Cari elemen tujuan di HTML (misal: <div id="solusi">)
+  const targetElement = document.querySelector(item.link);
+  if (!targetElement) return;
+
+  // 2. Cek apakah engine Lenis asli lagi nyala (Desktop)
+  // Cara ngeceknya: Lenis asli pasti punya fungsi bawaan bernama "on" atau "raf"
+  if (window.lenis && typeof window.lenis.on === "function") {
+    
+    // DESKTOP: Jalankan animasi Lenis yang mahal dan mulus
+    window.lenis.scrollTo(item.link, {
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    });
+
+  } else {
+    
+    // MOBILE: Pakai fungsi native browser (Super ringan, no-lag!)
+    targetElement.scrollIntoView({ behavior: "smooth" });
+    
+  }
+}}
                     className={`font-science text-2xl tracking-wider ${
                       isActive ? "text-[#C0FE04]" : "text-white"
                     }`}
@@ -171,18 +183,31 @@ export default function Navbar() {
                 key={item.label}
                 href={item.link}
                 // ======== TAMBAHIN ONCLICK DI SINI ========
-                onClick={(e) => {
-                  e.preventDefault();
-                  setIsMobileOpen(false);
+               onClick={(e) => {
+  e.preventDefault();
+  setIsMobileOpen(false); // Tutup menu mobile kalau lagi kebuka
 
-                  // Panggil dari window!
-                  if (window.lenis) {
-                    window.lenis.scrollTo(item.link, {
-                      duration: 1.2,
-                      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-                    });
-                  }
-                }}
+  // 1. Cari elemen tujuan di HTML (misal: <div id="solusi">)
+  const targetElement = document.querySelector(item.link);
+  if (!targetElement) return;
+
+  // 2. Cek apakah engine Lenis asli lagi nyala (Desktop)
+  // Cara ngeceknya: Lenis asli pasti punya fungsi bawaan bernama "on" atau "raf"
+  if (window.lenis && typeof window.lenis.on === "function") {
+    
+    // DESKTOP: Jalankan animasi Lenis yang mahal dan mulus
+    window.lenis.scrollTo(item.link, {
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    });
+
+  } else {
+    
+    // MOBILE: Pakai fungsi native browser (Super ringan, no-lag!)
+    targetElement.scrollIntoView({ behavior: "smooth" });
+    
+  }
+}}
                 // ==========================================
                 initial={{ opacity: 0, y: -10, filter: "blur(6px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
