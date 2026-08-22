@@ -1,41 +1,23 @@
-// src/App.jsx
-
-import { useEffect } from "react";
+import { useEffect, Suspense, lazy } from "react"; // <-- Tambahin Suspense dan lazy
 import { Routes, Route, Outlet, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-// ============================================================
-// LAYOUT
-// ============================================================
+import MaxstenLoader from "../loading-state/maxsten-loader.jsx";
+
+// ... (Layout & Context tetep import normal) ...
 import AuthLayout from "./layouts/auth-layout";
 import DashboardLayout from "./layouts/dashboard-layout";
-
-// ============================================================
-// GUARD
-// ============================================================
 import ProtectedRoute from "./pages/auth/protected-route";
-
-// ============================================================
-// CONTEXT
-// ============================================================
+import LandingPageLayout from "./layouts/landing-page-layout.jsx";
 import { CartProvider } from "./context/cart-context";
-
-// ============================================================
-// HOOKS
-// ============================================================
 import { useSocket } from "./hooks/socket.js";
-
-// ============================================================
-// ROUTES
-// ============================================================
 import { ROUTES } from "./routes/paths";
 
 // ============================================================
-// PUBLIC PAGES
+// HALAMAN RINGAN (TETAP IMPORT NORMAL)
 // ============================================================
 import HomePage from "./pages/landing-page/home-page.jsx";
-
 import LoginPage from "./pages/auth/login";
 import RegisterPage from "./pages/auth/register";
 import VerifyEmailPage from "./pages/auth/verify-email";
@@ -43,23 +25,18 @@ import ForgotPasswordPage from "./pages/auth/forgot-password";
 import UpdatePasswordPage from "./pages/auth/update-password";
 
 // ============================================================
-// BUYER PAGES
+// HALAMAN BERAT (UBAH JADI LAZY IMPORT)
 // ============================================================
-import StoreCatalogPage from "./pages/buyer/catalog.jsx";
-
-// ============================================================
-// DASHBOARD PAGES
-// ============================================================
-import DashboardPage from "./pages/dashboard/dashboard";
-import StorePage from "./pages/store/page";
-import CreateStorePage from "./pages/store/create";
-import ProductPage from "./pages/product/page";
-import AddonsPage from "./pages/addons/page";
-import OrderPage from "./pages/order/page";
-import AnalyticsPage from "./pages/analytics/page";
-import CancelReasonsPage from "./pages/cancel-reason/page.jsx";
-import StoreQrPage from "./pages/qr-code/page.jsx";
-import LandingPageLayout from "./layouts/landing-page-layout.jsx";
+const StoreCatalogPage = lazy(() => import("./pages/buyer/catalog.jsx"));
+const DashboardPage = lazy(() => import("./pages/dashboard/dashboard"));
+const StorePage = lazy(() => import("./pages/store/page"));
+const CreateStorePage = lazy(() => import("./pages/store/create"));
+const ProductPage = lazy(() => import("./pages/product/page"));
+const AddonsPage = lazy(() => import("./pages/addons/page"));
+const OrderPage = lazy(() => import("./pages/order/page"));
+const AnalyticsPage = lazy(() => import("./pages/analytics/page"));
+const CancelReasonsPage = lazy(() => import("./pages/cancel-reason/page.jsx"));
+const StoreQrPage = lazy(() => import("./pages/qr-code/page.jsx"));
 
 // ============================================================
 // BUYER STORE LAYOUT
@@ -128,7 +105,7 @@ export default function App() {
   return (
     <>
       <Toaster position="top-center" />
-
+<Suspense fallback={<MaxstenLoader text="Menyiapkan data..." />}>
       <Routes>
         {/* ======================================================
             PUBLIC
@@ -243,6 +220,7 @@ export default function App() {
           </Route>
         </Route>
       </Routes>
+  </Suspense>
     </>
   );
 }
