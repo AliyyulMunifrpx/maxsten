@@ -150,7 +150,7 @@ export default function Navbar() {
           className="z-50 flex items-center pointer-events-auto" // Kembalikan pointer-events di elemen yg bisa di-klik
         >
           <img
-            src="https://rqoypwfpsiyvrkhqzfwm.supabase.co/storage/v1/object/public/maxsten%20logo/munivy.svg"
+            src="https:/image/munivy.svg"
             alt="Maxsten"
             className="w-8"
           />
