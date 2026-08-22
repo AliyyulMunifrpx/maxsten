@@ -3,8 +3,7 @@ import { Routes, Route, Outlet, useParams } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-import MaxstenLoader from "../loading-state/maxsten-loader.jsx";
-
+import MaxstenLoader from "./pages/loading-state/maxsten-loading.jsx";
 // ... (Layout & Context tetep import normal) ...
 import AuthLayout from "./layouts/auth-layout";
 import DashboardLayout from "./layouts/dashboard-layout";
