@@ -11,6 +11,7 @@ export default function Footer() {
       link: "https://www.linkedin.com/in/aliyyul-munif-253b76312?utm_source=share_via&utm_content=profile&utm_medium=member_android",
     },
   ];
+
   return (
     <div className="relative flex flex-col justify-between bg-[#1e1e1e] min-h-[50dvh] xl:min-h-0 xl:h-[75dvh] w-full pt-12 sm:pt-16 xl:pt-20 overflow-hidden">
       {/* ==========================================
@@ -82,12 +83,22 @@ export default function Footer() {
                   href={targetId}
                   onClick={(e) => {
                     e.preventDefault();
-                    if (window.lenis) {
+
+                    // 1. Cari elemennya dulu di DOM
+                    const targetElement = document.querySelector(targetId);
+                    if (!targetElement) return;
+
+                    // 2. Cek apakah ini Desktop (Lenis jalan) atau Mobile (Lenis mati)
+                    if (window.lenis && typeof window.lenis.on === "function") {
+                      // Desktop: Pakai Lenis biar animasinya "mahal"
                       window.lenis.scrollTo(targetId, {
                         duration: 1.2,
                         easing: (t) =>
                           Math.min(1, 1.001 - Math.pow(2, -10 * t)),
                       });
+                    } else {
+                      // Mobile: Pakai scroll bawaan HTML biar enteng & presisi
+                      targetElement.scrollIntoView({ behavior: "smooth" });
                     }
                   }}
                   whileHover={{ x: 5 }}
