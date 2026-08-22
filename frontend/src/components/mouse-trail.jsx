@@ -1,4 +1,3 @@
-// components/MouseTrail.jsx
 import { useEffect, useRef, useState, useCallback } from "react";
 
 const TRAIL_COLOR = "#ffffff";
@@ -7,54 +6,66 @@ const MAX_WIDTH = 2; // Tebal ekor awal
 const SMOOTHING = 0.5;
 
 export default function MouseTrail() {
+  // ==========================================
+  // STATE PENYELAMAT PERFORMA
+  // ==========================================
+  const [hasMouse, setHasMouse] = useState(false);
+
   const pointsRef = useRef([]);
   const cursorPos = useRef({ x: -100, y: -100 });
   const smoothPos = useRef({ x: -100, y: -100 });
   const pathRef = useRef(null);
-
-  // Ref untuk bagian kepala (bulatan 10px) dan ring hover
   const headRef = useRef(null);
   const ringRef = useRef(null);
   const rafRef = useRef(null);
 
-  // State buat ngatur apakah lagi hover tombol/link atau nggak
   const [isHovering, setIsHovering] = useState(false);
+
+  // ==========================================
+  // DETEKSI HARDWARE MOUSE / POINTER PRESISI
+  // ==========================================
+  useEffect(() => {
+    // any-pointer: fine bakal bernilai TRUE kalau ada mouse/trackpad yang konek
+    const mediaQuery = window.matchMedia("(any-pointer: fine)");
+    
+    // Set status awal pas komponen dimuat
+    setHasMouse(mediaQuery.matches);
+
+    // Listener ini ngebaca kalau user tiba-tiba nyolok/nyabut mouse di tengah jalan
+    const handlePointerChange = (e) => setHasMouse(e.matches);
+    mediaQuery.addEventListener("change", handlePointerChange);
+
+    return () => mediaQuery.removeEventListener("change", handlePointerChange);
+  }, []);
 
   const handleMouseMove = useCallback((e) => {
     cursorPos.current = { x: e.clientX, y: e.clientY };
   }, []);
 
-  // Mengecek apakah elemen yang di-hover adalah interaktif
   const handleMouseOver = useCallback((e) => {
-    // Cari tahu apakah elemen target atau parent-nya adalah link/button
-    const target = e.target.closest(
-      "a, button, [role='button'], .cursor-pointer",
-    );
-    if (target) {
-      setIsHovering(true);
-    }
+    const target = e.target.closest("a, button, [role='button'], .cursor-pointer");
+    if (target) setIsHovering(true);
   }, []);
 
   const handleMouseOut = useCallback((e) => {
-    const target = e.target.closest(
-      "a, button, [role='button'], .cursor-pointer",
-    );
-    if (target) {
-      setIsHovering(false);
-    }
+    const target = e.target.closest("a, button, [role='button'], .cursor-pointer");
+    if (target) setIsHovering(false);
   }, []);
 
+  // ==========================================
+  // ENGINE ANIMASI (Cuma nyala kalau hasMouse == true)
+  // ==========================================
   useEffect(() => {
+    // Kalau nggak ada mouse, stop eksekusi di sini! (Hemat CPU & RAM)
+    if (!hasMouse) return;
+
     window.addEventListener("mousemove", handleMouseMove);
-    // Pasang listener di dokumen buat deteksi hover secara global
     document.addEventListener("mouseover", handleMouseOver);
     document.addEventListener("mouseout", handleMouseOut);
 
     const tick = () => {
-      smoothPos.current.x +=
-        (cursorPos.current.x - smoothPos.current.x) * SMOOTHING;
-      smoothPos.current.y +=
-        (cursorPos.current.y - smoothPos.current.y) * SMOOTHING;
+      smoothPos.current.x += (cursorPos.current.x - smoothPos.current.x) * SMOOTHING;
+      smoothPos.current.y += (cursorPos.current.y - smoothPos.current.y) * SMOOTHING;
 
       pointsRef.current.unshift({ ...smoothPos.current });
       if (pointsRef.current.length > MAX_POINTS) {
@@ -71,9 +82,9 @@ export default function MouseTrail() {
       window.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseover", handleMouseOver);
       document.removeEventListener("mouseout", handleMouseOut);
-      cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [handleMouseMove, handleMouseOver, handleMouseOut]);
+  }, [handleMouseMove, handleMouseOver, handleMouseOut, hasMouse]); // <- hasMouse ditambahin ke dependency array
 
   const drawTail = () => {
     const pts = pointsRef.current;
@@ -105,17 +116,11 @@ export default function MouseTrail() {
       "M " +
       leftSide.map((p) => `${p.x},${p.y}`).join(" L ") +
       " L " +
-      rightSide
-        .slice()
-        .reverse()
-        .map((p) => `${p.x},${p.y}`)
-        .join(" L ") +
+      rightSide.slice().reverse().map((p) => `${p.x},${p.y}`).join(" L ") +
       " Z";
 
     pathRef.current.setAttribute("d", pathData);
 
-    // Posisikan Custom Cursor (Kepala dan Cincin) mengikuti mouse
-    // Gue ngambilnya dari cursorPos.current (posisi instan) biar ring-nya nggak kerasa ngelag pas nge-klik
     if (headRef.current && ringRef.current) {
       headRef.current.setAttribute("cx", cursorPos.current.x);
       headRef.current.setAttribute("cy", cursorPos.current.y);
@@ -123,6 +128,11 @@ export default function MouseTrail() {
       ringRef.current.setAttribute("cy", cursorPos.current.y);
     }
   };
+
+  // ==========================================
+  // RENDER PINTAR (Bypass DOM kalau layar sentuh)
+  // ==========================================
+  if (!hasMouse) return null; // Elemen SVG sama sekali nggak dikirim ke HTML!
 
   return (
     <svg
@@ -135,26 +145,14 @@ export default function MouseTrail() {
         </filter>
       </defs>
 
-      {/* Badan ekor komet, meruncing halus */}
-      <path
-        ref={pathRef}
-        fill={TRAIL_COLOR}
-        opacity="0.4"
-        filter="url(#cometBlur)"
-      />
+      <path ref={pathRef} fill={TRAIL_COLOR} opacity="0.4" filter="url(#cometBlur)" />
 
-      {/* 
-        RING HOVER: Muncul melingkari cursor kalau isHovering = true.
-        Jari-jari (r): Karena cursor r=5, jarak 5px, berarti cincinnya r=10.
-        Tebal garis (strokeWidth): 3px.
-      */}
       <circle
         ref={ringRef}
         r="10"
         fill="transparent"
         stroke={TRAIL_COLOR}
         strokeWidth="3"
-        // CSS Transition buat bikin efek cincin mekar masuk dan nge-zoom out pas hilang
         className="transition-all duration-300 ease-out origin-center"
         style={{
           opacity: isHovering ? 1 : 0,
@@ -163,16 +161,7 @@ export default function MouseTrail() {
         }}
       />
 
-      {/* 
-        KURSOR CUSTOM (Bulatan 10px): Menggantikan panah mouse.
-        Radius r=5 artinya diameter 10px.
-      */}
-      <circle
-        ref={headRef}
-        r="5"
-        fill={TRAIL_COLOR}
-        style={{ filter: `drop-shadow(0 0 4px ${TRAIL_COLOR})` }}
-      />
+      <circle ref={headRef} r="5" fill={TRAIL_COLOR} style={{ filter: `drop-shadow(0 0 4px ${TRAIL_COLOR})` }} />
     </svg>
   );
 }
