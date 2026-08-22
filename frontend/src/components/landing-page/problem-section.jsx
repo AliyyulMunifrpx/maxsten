@@ -219,7 +219,7 @@ export default function ProblemSection() {
       ref={sectionRef}
       // Mobile: flow normal, gak dipaksa min-h-screen — biar spacing antar
       // section proporsional sama isinya, gak ada gap ngambang.
-      className="relative flex w-full flex-col items-center gap-12 py-20 sm:gap-16 sm:py-24 lg:h-[100dvh] bg-white lg:min-h-screen lg:justify-center lg:gap-0 lg:overflow-hidden lg:py-0 pointer-events-auto"
+      className="relative flex w-full flex-col h-[100vh] justify-center items-center gap-12 py-20 sm:gap-16 sm:py-24 lg:h-[100dvh] bg-white lg:min-h-screen lg:justify-center lg:gap-0 lg:overflow-hidden lg:py-0 pointer-events-auto"
     >
       {/* TIRAI — TIDAK DIUBAH */}
       <div className="pointer-events-none absolute inset-0 z-20 hidden lg:grid grid-cols-[0.1fr_1fr_1fr_1fr_0.1fr] grid-rows-3">
