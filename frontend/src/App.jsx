@@ -22,6 +22,7 @@ import RegisterPage from "./pages/auth/register";
 import VerifyEmailPage from "./pages/auth/verify-email";
 import ForgotPasswordPage from "./pages/auth/forgot-password";
 import UpdatePasswordPage from "./pages/auth/update-password";
+import NotFound from "./pages/not-found/not-found.jsx";
 
 // ============================================================
 // HALAMAN BERAT (UBAH JADI LAZY IMPORT)
@@ -104,122 +105,126 @@ export default function App() {
   return (
     <>
       <Toaster position="top-center" />
-<Suspense fallback={<MaxstenLoader text="Menyiapkan data..." />}>
-      <Routes>
-        {/* ======================================================
+      <Suspense fallback={<MaxstenLoader text="Menyiapkan data..." />}>
+        <Routes>
+          {/* ======================================================
             PUBLIC
         ====================================================== */}
 
-        {/* Landing Page */}
+          {/* Landing Page */}
 
-        <Route element={<LandingPageLayout></LandingPageLayout>}>
-          {" "}
-          <Route path={ROUTES.public.home.path} element={<HomePage />} />
-        </Route>
-        {/* Authentication */}
-        <Route element={<AuthLayout />}>
-          <Route path={ROUTES.public.login.path} element={<LoginPage />} />
+          <Route element={<LandingPageLayout></LandingPageLayout>}>
+            {" "}
+            <Route path={ROUTES.public.home.path} element={<HomePage />} />
+          </Route>
+          {/* Authentication */}
+          <Route element={<AuthLayout />}>
+            <Route path={ROUTES.public.login.path} element={<LoginPage />} />
 
-          <Route
-            path={ROUTES.public.register.path}
-            element={<RegisterPage />}
-          />
+            <Route
+              path={ROUTES.public.register.path}
+              element={<RegisterPage />}
+            />
 
-          <Route
-            path={ROUTES.public.verifyEmail.path}
-            element={<VerifyEmailPage />}
-          />
+            <Route
+              path={ROUTES.public.verifyEmail.path}
+              element={<VerifyEmailPage />}
+            />
 
-          <Route
-            path={ROUTES.public.forgotPassword.path}
-            element={<ForgotPasswordPage />}
-          />
+            <Route
+              path={ROUTES.public.forgotPassword.path}
+              element={<ForgotPasswordPage />}
+            />
 
-          <Route
-            path={ROUTES.public.updatePassword.path}
-            element={<UpdatePasswordPage />}
-          />
-        </Route>
+            <Route
+              path={ROUTES.public.updatePassword.path}
+              element={<UpdatePasswordPage />}
+            />
+          </Route>
 
-        {/* ======================================================
+          {/* ======================================================
             BUYER
         ====================================================== */}
 
-        <Route path={ROUTES.buyer.catalog.path} element={<StoreLayout />}>
-          <Route index element={<StoreCatalogPage />} />
-        </Route>
+          <Route path={ROUTES.buyer.catalog.path} element={<StoreLayout />}>
+            <Route index element={<StoreCatalogPage />} />
+          </Route>
 
-        {/* ======================================================
+          {/* ======================================================
             PROTECTED
         ====================================================== */}
 
-        <Route element={<ProtectedRoute />}>
-          <Route element={<ProtectedLayout />}>
-            <Route element={<DashboardLayout />}>
-              {/* ------------------------------------------------
+          <Route element={<ProtectedRoute />}>
+            <Route element={<ProtectedLayout />}>
+              <Route element={<DashboardLayout />}>
+                {/* ------------------------------------------------
                   DASHBOARD
               ------------------------------------------------ */}
-              <Route
-                path={ROUTES.dashboard.home.path}
-                element={<DashboardPage />}
-              />
+                <Route
+                  path={ROUTES.dashboard.home.path}
+                  element={<DashboardPage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   STORE
               ------------------------------------------------ */}
-              <Route path={ROUTES.store.list.path} element={<StorePage />} />
+                <Route path={ROUTES.store.list.path} element={<StorePage />} />
 
-              <Route
-                path={ROUTES.store.create.path}
-                element={<CreateStorePage />}
-              />
+                <Route
+                  path={ROUTES.store.create.path}
+                  element={<CreateStorePage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   PRODUCT
               ------------------------------------------------ */}
-              <Route
-                path={ROUTES.product.list.path}
-                element={<ProductPage />}
-              />
+                <Route
+                  path={ROUTES.product.list.path}
+                  element={<ProductPage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   ADD-ONS
               ------------------------------------------------ */}
-              <Route path={ROUTES.addons.list.path} element={<AddonsPage />} />
+                <Route
+                  path={ROUTES.addons.list.path}
+                  element={<AddonsPage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   ORDERS
               ------------------------------------------------ */}
-              <Route path={ROUTES.orders.list.path} element={<OrderPage />} />
+                <Route path={ROUTES.orders.list.path} element={<OrderPage />} />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   ANALYTICS
               ------------------------------------------------ */}
-              <Route
-                path={ROUTES.analytics.list.path}
-                element={<AnalyticsPage />}
-              />
+                <Route
+                  path={ROUTES.analytics.list.path}
+                  element={<AnalyticsPage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   CANCEL REASONS
               ------------------------------------------------ */}
-              <Route
-                path={ROUTES.cancelReason.list.path}
-                element={<CancelReasonsPage />}
-              />
+                <Route
+                  path={ROUTES.cancelReason.list.path}
+                  element={<CancelReasonsPage />}
+                />
 
-              {/* ------------------------------------------------
+                {/* ------------------------------------------------
                   QR CODE
               ------------------------------------------------ */}
-              <Route
-                path={ROUTES.qrCode.print.path}
-                element={<StoreQrPage />}
-              />
+                <Route
+                  path={ROUTES.qrCode.print.path}
+                  element={<StoreQrPage />}
+                />
+              </Route>
             </Route>
           </Route>
-        </Route>
-      </Routes>
-  </Suspense>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }
