@@ -4,8 +4,11 @@ import Footer from "../../components/landing-page/footer.jsx";
 import MainSection from "../../components/landing-page/main-section.jsx";
 import ProblemSection from "../../components/landing-page/problem-section.jsx";
 import SolutionSection from "../../components/landing-page/solution-section.jsx";
+import { useDocumentTitle } from './../../hooks/use-document-title';
 
 export default function HomePage() {
+    useDocumentTitle("Maxsten");
+  
   return (
     <main className="cursor-none">
       {/* Z-0: Paling bawah, diam ditimpa Problem */}
