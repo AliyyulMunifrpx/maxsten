@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion"; // ✅ IMPORT MOTION
+import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { useRegister } from "../../hooks/auth.js";
 import toast from "react-hot-toast";
@@ -8,7 +8,12 @@ import { RevealButton } from "../../components/reveal-button.jsx";
 import { useDocumentTitle } from "../../hooks/use-document-title.js";
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
   const { mutate, isPending } = useRegister();
   const navigate = useNavigate();
 
@@ -16,6 +21,12 @@ export default function RegisterPage() {
 
   function handleSubmit(e) {
     e.preventDefault();
+
+    if (form.password !== form.confirmPassword) {
+      toast.error("Password dan konfirmasi password tidak sama.");
+      return;
+    }
+
     mutate(form, {
       onSuccess: (data) => {
         toast.success("Registrasi berhasil! Silakan cek email kamu.");
@@ -32,7 +43,6 @@ export default function RegisterPage() {
   }
 
   return (
-    // ✅ GANTI DIV JADI MOTION.DIV DENGAN ANIMASI
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -40,18 +50,15 @@ export default function RegisterPage() {
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="w-full rounded-2xl p-4"
     >
-      {/* JUDUL — 24px */}
       <h1 className="mb-3 text-center text-white text-[24px] font-semibold">
         Selamat datang{" "}
       </h1>
 
-      {/* 16px */}
       <p className="mb-6 text-center text-[16px] text-muted-foreground">
         Antrean digital untuk UMKM.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* NAMA — 16px */}
         <Input
           id="name"
           name="name"
@@ -63,7 +70,6 @@ export default function RegisterPage() {
           className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
         />
 
-        {/* EMAIL — 16px */}
         <Input
           id="email"
           name="email"
@@ -75,7 +81,6 @@ export default function RegisterPage() {
           className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
         />
 
-        {/* PASSWORD — 16px */}
         <Input
           id="password"
           name="password"
@@ -88,7 +93,20 @@ export default function RegisterPage() {
           className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
         />
 
-        {/* BUTTON — 16px */}
+        <Input
+          id="confirmPassword"
+          name="confirmPassword"
+          type="password"
+          placeholder="Konfirmasi Password"
+          value={form.confirmPassword}
+          onChange={(e) =>
+            setForm({ ...form, confirmPassword: e.target.value })
+          }
+          minLength={8}
+          required
+          className="h-12 rounded-full border-none bg-white/5 px-4 text-[16px] text-white"
+        />
+
         <RevealButton
           type="submit"
           className="w-full rounded-full text-[16px]"
@@ -99,7 +117,6 @@ export default function RegisterPage() {
         />
       </form>
 
-      {/* 16px */}
       <p className="mt-6 text-center text-[16px] text-muted-foreground">
         Udah punya akun?{" "}
         <Link to="/login" className="font-medium text-white">
