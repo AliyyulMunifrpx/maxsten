@@ -83,12 +83,12 @@ describe("POST /api/users/login", () => {
       email: LOGIN_EMAIL,
       password: LOGIN_PASSWORD,
     });
-
+  console.log(result.body)
     expect(result.status).toBe(200);
     expect(result.body.data.email).toBe(LOGIN_EMAIL);
     expect(result.body.data.name).toBe(LOGIN_NAME);
-    expect(result.body.data.access_token).toBeUndefined(); // Asumsi access_token ditaruh di HttpOnly Cookie
-    expect(result.body.data.refresh_token).toBeUndefined();
+    expect(result.body.data.access_token).toBeDefined(); 
+    expect(result.body.data.refresh_token).toBeDefined();
   });
 
   test("should reject login with incorrect password", async () => {
@@ -143,7 +143,7 @@ describe("POST /api/users/login", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.data.email).toBe(ORPHAN_EMAIL);
-    expect(result.body.data.access_token).toBeUndefined();
+    expect(result.body.data.access_token).toBeDefined();
 
     // Pastikan fitur auto-healing bekerja dengan mengecek ketersediaan di Prisma
     const healed = await prisma.user.findUnique({

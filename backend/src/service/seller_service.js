@@ -7,7 +7,7 @@ import {
 } from "../validation/seller_validation.js";
 import { validate } from "../validation/validation.js";
 
-import { formatInTimeZone } from "date-fns-tz";
+
 const getAllQueue = async (request) => {
   const req = validate(getAllQueueValidation, request);
   const pageNum = req.page || 1;

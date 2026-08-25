@@ -15,12 +15,9 @@ function resolveTimeZone(timezone) {
   }
 }
 
-// ISO day-of-week token 'i' = 1(Senin)..7(Minggu). Mod 7 mengubahnya jadi
-// konvensi JS Date#getDay(): 0(Minggu)..6(Sabtu), tanpa perlu round-trip
-// parse ulang lewat toLocaleString/new Date seperti versi sebelumnya.
 function getZonedDayOfWeek(date, timeZone) {
   const isoDay = Number(formatInTimeZone(date, timeZone, "i")); // ISO: Senin=1 ... Minggu=7
-  return (isoDay - 1) % 7; // geser jadi Senin=0 ... Minggu=6, samain sama DAYS di FE
+  return isoDay === 7 ? 0 : isoDay; // Minggu jadi 0, Senin tetap 1
 }
 
 function getZonedDateString(date, timeZone) {
@@ -66,7 +63,11 @@ export const calculateStoreStatus = (store, operationalHours) => {
   //    misal buka 20:00 dan baru tutup 02:00 dini hari besok)
   const todaySchedule = operationalHours.find((h) => h.day === currentDay);
 
-  if (todaySchedule?.is_active) {
+  if (
+    todaySchedule?.is_active &&
+    todaySchedule.open_time &&
+    todaySchedule.close_time
+  ) {
     const { open_time, close_time } = todaySchedule;
     const isOvernight = close_time < open_time;
 

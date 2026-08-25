@@ -222,7 +222,8 @@ describe("GET /api/stores/dashboard", () => {
         guest_id: guest.id,
         total_price: opts.totalPrice ?? 0,
         created_at: opts.createdAt ?? new Date(),
-        completed_at: opts.completedAt ?? null,
+        processed_at: opts.processedAt ?? opts.processed_at ?? null,
+        completed_at: opts.completedAt ?? opts.completed_at ?? null,
       },
     });
   }
@@ -242,7 +243,7 @@ describe("GET /api/stores/dashboard", () => {
 
   test("should return 200 with store info and open status", async () => {
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
-
+    console.log(result.body);
     expect(result.status).toBe(200);
     expect(result.body.data.store.public_id).toBe(store.public_id);
     expect(result.body.data.store.name).toBe(store.name);
@@ -376,61 +377,102 @@ describe("GET /api/stores/dashboard", () => {
     expect(today.aov).toEqual({ value: 0, trend: 0 });
   }, 20000);
 
-  test("should compute today's metric cards (omzet, pesanan_selesai, pesanan_batal, AOV) against yesterday at the same time", async () => {
+  test("should compute today's metric cards apple-to-apple against yesterday", async () => {
     const minutesAgo = (min) => new Date(Date.now() - min * 60 * 1000);
 
-    // Today: 2 completed orders (40000 + 60000), 1 cancelled.
+    // ==========================================
+    // 1. DATA HARI INI
+    // Omzet: 100.000 | Selesai: 2 | Batal: 1
+    // ==========================================
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 40000,
       createdAt: minutesAgo(40),
+      processed_at: minutesAgo(35), // 👈 Wajib ditambahin
+      completed_at: minutesAgo(30), // 👈 Wajib ditambahin biar kehitung omzet!
     });
+
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 60000,
       createdAt: minutesAgo(30),
+      processed_at: minutesAgo(25), // 👈 Wajib ditambahin
+      completed_at: minutesAgo(20), // 👈 Wajib ditambahin
     });
+
     await createQueueDirect(store.id, "DIBATALKAN", {
       createdAt: minutesAgo(20),
+      // Batal nggak butuh completed_at karena kuerinya pakai created_at
     });
 
-    // Yesterday
-    const nz = nowZoned();
+    // Setup Waktu
+    const nz = nowZoned(); // (Asumsi ini helper timezone lu)
     const y = nz.getFullYear();
-    const m = nz.getMonth() + 1;
+    const m = nz.getMonth() + 1; // Hati-hati, Date javascript month itu 0-11
     const yesterdayD = nz.getDate() - 1;
 
+    // ==========================================
+    // 2. DATA KEMARIN (VALID APPLE-TO-APPLE)
+    // Terjadi jam 00:01 pagi -> HARUS KEHITUNG
+    // Omzet Kemarin: 50.000 | Selesai: 1 | Batal: 2
+    // ==========================================
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 50000,
       createdAt: zonedTime(y, m, yesterdayD, 0, 1),
+      processed_at: zonedTime(y, m, yesterdayD, 0, 5), // 👈 Tambahin
+      completed_at: zonedTime(y, m, yesterdayD, 0, 10), // 👈 Tambahin
     });
+
     await createQueueDirect(store.id, "DIBATALKAN", {
       createdAt: zonedTime(y, m, yesterdayD, 0, 2),
     });
+
     await createQueueDirect(store.id, "DIBATALKAN", {
       createdAt: zonedTime(y, m, yesterdayD, 0, 3),
     });
 
+    // ==========================================
+    // 3. DATA KEMARIN (JEBAKAN OUT OF RANGE / BUKAN APPLE TO APPLE)
+    // Terjadi jam 23:59 malam -> HARUS DIABAIKAN OLEH API
+    // ==========================================
+    await createQueueDirect(store.id, "SELESAI", {
+      totalPrice: 999999, // Bakal ngerusak rata-rata kalau API lu salah hitung
+      createdAt: zonedTime(y, m, yesterdayD, 23, 50),
+      processed_at: zonedTime(y, m, yesterdayD, 23, 55),
+      completed_at: zonedTime(y, m, yesterdayD, 23, 59),
+    });
+
+    // ==========================================
+    // 4. NEMBAK API & VALIDASI
+    // ==========================================
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
 
     expect(result.status).toBe(200);
     const { today } = result.body.data;
 
+    // Tes Omzet & Tren
     expect(today.omzet.value).toBe(100000);
     expect(today.omzet.trend).toBe(calcTrend(100000, 50000));
 
-    expect(today.aov.value).toBe(50000); // 100000 / 2
-    expect(today.aov.trend).toBe(calcTrend(50000, 50000)); // both AOV = 50000 -> 0
+    // Tes AOV
+    expect(today.aov.value).toBe(50000);
+    expect(today.aov.trend).toBe(calcTrend(50000, 50000));
 
+    // Tes Jumlah Pesanan
     expect(today.pesanan_selesai.value).toBe(2);
     expect(today.pesanan_selesai.trend).toBe(calcTrend(2, 1));
 
     expect(today.pesanan_batal.value).toBe(1);
     expect(today.pesanan_batal.trend).toBe(calcTrend(1, 2));
+
+    // Tes Rata-rata Waktu Tunggu (Kalo dihitung dari dummy data di atas)
+    // Hari ini = 5 menit dan 5 menit -> Rata-rata 5 menit
+    expect(today.avg_wait_time.value).toBe(5);
   }, 20000);
 
   test("should report a 100% trend when yesterday had zero orders but today has some", async () => {
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 30000,
       createdAt: new Date(Date.now() - 10 * 60 * 1000),
+      completed_at: new Date(Date.now() - 5 * 60 * 1000), // 👈 Tambahin ini biar omzetnya nggak nol
     });
 
     const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
@@ -439,7 +481,6 @@ describe("GET /api/stores/dashboard", () => {
     expect(result.body.data.today.omzet.trend).toBe(100);
     expect(result.body.data.today.pesanan_selesai.trend).toBe(100);
   }, 20000);
-
   test("should NOT count yesterday's orders that happened later in the day than 'now' (fair same-time-of-day comparison)", async () => {
     const nz = nowZoned();
     const y = nz.getFullYear();
