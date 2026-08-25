@@ -71,14 +71,14 @@ describe("GET /api/stores/:storeId/queues", () => {
     createdStoreIds.push(store.public_id);
 
     // 7. Setup Jadwal Buka (Senin, day 1, 08:00 - 20:00)
-    await prisma.storeOperationalHour.create({
-      data: {
+    await prisma.storeOperationalHour.createMany({
+      data: Array.from({ length: 7 }, (_, day) => ({
         store_id: store.id,
-        day: 1, // Senin
-        open_time: "08:00",
-        close_time: "20:00",
+        day: day, // Otomatis ngisi 0 sampai 6
+        open_time: "00:00",
+        close_time: "23:59",
         is_active: true,
-      },
+      })),
     });
 
     // 8. Setup Master Data (Guest & Product)
@@ -243,18 +243,38 @@ describe("GET /api/stores/:storeId/queues", () => {
   }, 20000);
 
   // --- TEST CASE 3: STORE STATUS (DI LUAR JAM OPERASIONAL) ---
+  // --- TEST CASE 3: STORE STATUS (DI LUAR JAM OPERASIONAL) ---
   test("should return storeStatus.is_open = false if checked outside working hours", async () => {
-    // Majuin waktu ke jam 22:00 WIB (Toko tutup)
+    // 1. Wajib nyalain fake timers dulu biar vi.setSystemTime mempan!
+    vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-27T22:00:00+07:00"));
 
+    // 2. Sapu Bersih: Update SEMUA hari (tanpa peduli day berapa)
+    // biar buka jam 08:00 dan tutup jam 20:00 khusus buat tes ini.
+    await prisma.storeOperationalHour.updateMany({
+      where: {
+        store_id: store.id,
+      },
+      data: {
+        open_time: "08:00",
+        close_time: "20:00",
+      },
+    });
+
+    // 3. Tembak API-nya
     const result = await supertest(web)
       .get(`/api/stores/${store.public_id}/queues?page=1`)
       .set("Cookie", cookies);
 
+    // 4. BALIKIN WAKTU KE NORMAL biar test di bawahnya nggak ikut error!
+    vi.useRealTimers();
+
     expect(result.status).toBe(200);
+
+    // Sekarang PASTI dapet false (Toko Tutup)
     expect(result.body.data.storeStatus.is_open).toBe(false);
 
-    // Kasir tetap bisa ngeliat antrean meskipun toko udah tutup!
+    // Kasir tetap bisa ngeliat sisa antrean meskipun toko udah tutup
     expect(result.body.data.currentPage.length).toBeGreaterThan(0);
   }, 20000);
 

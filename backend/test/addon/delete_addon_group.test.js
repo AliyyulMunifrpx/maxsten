@@ -101,34 +101,22 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   }, 20000);
 
   // =================================================================
-  // ⚡ RESET LOKAL: Database Prisma Cepat Kilat (Tanpa Internet)
+  // ⚡ RESET LOKAL: Sapu Bersih Tanpa Pusing Relasi
   // =================================================================
   beforeEach(async () => {
-    const activeUserIds = [userId, hackerUserId].filter(Boolean);
+    // 1. Sapu bersih dari anak paling bawah sampai induk paling atas
+    await prisma.queueDetail.deleteMany({});
+    await prisma.queue.deleteMany({});
+    await prisma.productAddonGroup.deleteMany({});
+    await prisma.product.deleteMany({});
+    await prisma.addon.deleteMany({});
+    await prisma.addonGroup.deleteMany({});
 
-    // 1. Bersihkan sisa data test sebelumnya (Targeted Cleanup)
-    await prisma.queueDetail.deleteMany({
-      where: { queue: { store: { user_id: { in: activeUserIds } } } },
-    });
-    await prisma.queue.deleteMany({
-      where: { store: { user_id: { in: activeUserIds } } },
-    });
-    await prisma.productAddonGroup.deleteMany({
-      where: { product: { store: { user_id: { in: activeUserIds } } } },
-    });
-    await prisma.product.deleteMany({
-      where: { store: { user_id: { in: activeUserIds } } },
-    });
-    await prisma.addon.deleteMany({
-      where: { addon_group: { store: { user_id: { in: activeUserIds } } } },
-    });
-    await prisma.addonGroup.deleteMany({
-      where: { store: { user_id: { in: activeUserIds } } },
-    });
-    await prisma.store.deleteMany({
-      where: { user_id: { in: activeUserIds } },
-    });
-    await prisma.guest.deleteMany({}); // Guest bebas dihapus semua krn gak punya parent
+    // 🔥 INI TAMBAHANNYA: Hapus template cancel reason SEBELUM hapus toko
+    await prisma.cancelReasonTemplate.deleteMany({});
+
+    await prisma.store.deleteMany({});
+    await prisma.guest.deleteMany({});
 
     // 2. Buatkan Toko Aktif (User Utama)
     const store = await prisma.store.create({
@@ -187,31 +175,18 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   }, 20000);
 
   afterEach(async () => {
-    // Bersihkan data Toko & Addon setiap selesai 1 test case
-    const activeUserIds = [userId, hackerUserId].filter(Boolean);
-    if (activeUserIds.length > 0) {
-      await prisma.queueDetail.deleteMany({
-        where: { queue: { store: { user_id: { in: activeUserIds } } } },
-      });
-      await prisma.queue.deleteMany({
-        where: { store: { user_id: { in: activeUserIds } } },
-      });
-      await prisma.productAddonGroup.deleteMany({
-        where: { product: { store: { user_id: { in: activeUserIds } } } },
-      });
-      await prisma.product.deleteMany({
-        where: { store: { user_id: { in: activeUserIds } } },
-      });
-      await prisma.addon.deleteMany({
-        where: { addon_group: { store: { user_id: { in: activeUserIds } } } },
-      });
-      await prisma.addonGroup.deleteMany({
-        where: { store: { user_id: { in: activeUserIds } } },
-      });
-      await prisma.store.deleteMany({
-        where: { user_id: { in: activeUserIds } },
-      });
-    }
+    // Bersihkan lagi semuanya tiap kelar 1 test case biar nggak bocor
+    await prisma.queueDetail.deleteMany({});
+    await prisma.queue.deleteMany({});
+    await prisma.productAddonGroup.deleteMany({});
+    await prisma.product.deleteMany({});
+    await prisma.addon.deleteMany({});
+    await prisma.addonGroup.deleteMany({});
+
+    // 🔥 TAMBAHAN DI SINI JUGA
+    await prisma.cancelReasonTemplate.deleteMany({});
+
+    await prisma.store.deleteMany({});
     await prisma.guest.deleteMany({});
   }, 20000);
 
