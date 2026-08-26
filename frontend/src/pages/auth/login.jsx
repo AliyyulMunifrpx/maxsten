@@ -15,9 +15,31 @@ export default function LoginPage() {
 
   useDocumentTitle("Masuk");
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
-      // replace: true bikin user nggak bisa pencet tombol "Back" ke halaman login lagi
+    const accessToken = localStorage.getItem("access_token");
+
+    const supabaseKey = Object.keys(localStorage).find(
+      (key) => key.startsWith("sb-") && key.endsWith("-auth-token"),
+    );
+
+    const rawSupabaseSession = supabaseKey
+      ? localStorage.getItem(supabaseKey)
+      : null;
+
+    let hasAccessToken = !!accessToken;
+
+    if (rawSupabaseSession) {
+      try {
+        const session = JSON.parse(rawSupabaseSession);
+
+        if (session?.access_token) {
+          hasAccessToken = true;
+        }
+      } catch (error) {
+        console.error("Failed to parse Supabase session:", error);
+      }
+    }
+
+    if (hasAccessToken) {
       navigate("/dashboard", { replace: true });
     }
   }, [navigate]);

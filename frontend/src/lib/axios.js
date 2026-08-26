@@ -69,9 +69,12 @@ function translateError(originalMsg) {
 // =======================================
 // REQUEST INTERCEPTOR
 // =======================================
-
 privateApi.interceptors.request.use((config) => {
-  const rawSession = localStorage.getItem("sb-rqoypwfpsiyvrkhqzfwm-auth-token");
+  const supabaseKey = Object.keys(localStorage).find(
+    (key) => key.startsWith("sb-") && key.endsWith("-auth-token"),
+  );
+
+  const rawSession = supabaseKey ? localStorage.getItem(supabaseKey) : null;
 
   let supabaseSession = null;
 
