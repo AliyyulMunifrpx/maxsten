@@ -1,83 +1,28 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Seller Cancel Reasons API
-  description: API for managing cancellation reason templates that sellers can reuse when canceling a queue.
+  title: Maxsten API - Seller (Cancel Reasons)
   version: 1.0.0
+  description: Dokumentasi API untuk mengelola template "Alasan Pembatalan" (Cancel Reasons) pesanan agar kasir tidak perlu mengetik ulang alasan yang sama berulang kali.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Cancel Reasons
-    description: Management of cancellation reason templates by the seller
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
 paths:
   /api/seller/cancel-reasons:
-    post:
-      tags:
-        - Cancel Reasons
-      summary: Create Cancellation Reason Template
-      description: |
-        Create a cancellation reason template that sellers can reuse when canceling a queue (for example, "Out of stock") instead of typing the reason manually each time.
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CancelReasonInput"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/CancelReason"
-        "400":
-          description: Bad Request (reason is missing or exceeds 255 characters)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized (Not authenticated or session has expired)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Unauthorized"
-        "404":
-          description: Not Found (The authenticated user does not have a store)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Store not found"
-        "409":
-          description: Conflict (A template with the same reason already exists)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "A cancellation reason with this text already exists."
-
     get:
       tags:
-        - Cancel Reasons
-      summary: List Cancellation Reason Templates
+        - Seller / Cancel Reasons
+      summary: Get All Cancel Reasons
       description: |
-        Retrieve all cancellation reason templates belonging to the authenticated user's store.
+        Mengambil daftar seluruh template alasan pembatalan yang dimiliki oleh toko (Store).
 
-        **Notes:**
-        - This endpoint does not support pagination. All active templates are returned in a single response.
-        - Templates are sorted by **newest first**.
-      security:
-        - cookieAuth: []
+        **Catatan Pengurutan & Pagination:**
+        - Data diurutkan berdasarkan `created_at` secara **DESCENDING** (terbaru di atas).
+        - Endpoint ini **tidak menggunakan pagination** karena jumlah template alasan pembatalan umumnya sedikit, sehingga lebih efisien jika dikembalikan sekaligus secara keseluruhan (return full list).
       responses:
         "200":
           description: OK
@@ -89,42 +34,70 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/CancelReason"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                      $ref: "#/components/schemas/CancelReasonItem"
         "404":
-          description: Not Found (User does not have a store)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Not Found (Toko tidak ditemukan)
 
-  /api/seller/cancel-reasons/{reasonId}:
-    patch:
+    post:
       tags:
-        - Cancel Reasons
-      summary: Update Cancellation Reason Template
-      description: Update the text of an existing cancellation reason template.
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: reasonId
-          in: path
-          required: true
-          description: The UUID of the cancellation reason template.
-          schema:
-            type: string
-            format: uuid
+        - Seller / Cancel Reasons
+      summary: Create Cancel Reason
+      description: |
+        Membuat template alasan pembatalan baru.
+
+        **Business Logic (Catatan Frontend):**
+        - **Auto-Trim:** Spasi berlebih di awal atau akhir string otomatis dibersihkan oleh *backend*.
+        - **Anti-Duplikat:** Jika membuat alasan yang teksnya sama persis dengan yang sudah ada di toko ini, *backend* akan menolak dengan status `409 Conflict`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CancelReasonInput"
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  example: "Stok bahan baku habis"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CancelReasonItem"
+        "409":
+          description: Conflict (Alasan pembatalan dengan teks tersebut sudah ada)
+
+  /api/seller/cancel-reasons/{reasonId}:
+    patch:
+      tags:
+        - Seller / Cancel Reasons
+      summary: Update Cancel Reason
+      description: |
+        Mengubah teks alasan pembatalan. Terdapat perlindungan *Anti-Duplikat* yang sama seperti pada endpoint Create.
+      parameters:
+        - name: reasonId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  example: "Stok habis (diperbarui)"
       responses:
         "200":
           description: OK
@@ -134,54 +107,27 @@ paths:
                 type: object
                 properties:
                   data:
-                    $ref: "#/components/schemas/CancelReason"
-        "400":
-          description: Bad Request (reason is missing or exceeds 255 characters)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                    $ref: "#/components/schemas/CancelReasonItem"
         "404":
-          description: Not Found (Template not found, soft-deleted, or unauthorized)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Reason template not found or you do not have access"
+          description: Not Found (Template tidak ditemukan atau akses ditolak)
         "409":
-          description: Conflict (Another active template already uses this text)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "A cancellation reason with this text already exists."
+          description: Conflict (Teks alasan sudah dipakai)
 
     delete:
       tags:
-        - Cancel Reasons
-      summary: Delete Cancellation Reason Template
+        - Seller / Cancel Reasons
+      summary: Delete Cancel Reason (Soft Delete)
       description: |
-        Soft-delete a cancellation reason template.
+        Menghapus template alasan pembatalan.
 
-        **Note:** Deleting a template does not affect any existing cancellation history that previously used its text. The `cancellation_reason` stored in past queue records is a plain text snapshot.
-      security:
-        - cookieAuth: []
+        **Business Logic:**
+        - Menerapkan mekanisme **Soft Delete** (`is_delete: true`). Data fisik tidak dihapus dari *database* untuk menjaga integritas data pada *history* antrean/pesanan yang sebelumnya sudah pernah dibatalkan menggunakan alasan ini.
       parameters:
         - name: reasonId
           in: path
           required: true
-          description: The UUID of the cancellation reason template.
           schema:
             type: string
-            format: uuid
       responses:
         "200":
           description: OK
@@ -193,65 +139,19 @@ paths:
                   data:
                     type: string
                     example: "OK"
-        "400":
-          description: Bad Request (reasonId is not a valid UUID)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Not Found (Template not found, soft-deleted, or unauthorized)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Cancellation reason template not found"
+          description: Not Found
 
 components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
-      description: Cookie based authentication
-
   schemas:
-    CancelReasonInput:
-      type: object
-      required:
-        - reason
-      properties:
-        reason:
-          type: string
-          maxLength: 255
-          description: The text for the cancellation reason. Must be unique among the active cancellation reason templates in the same store.
-          example: "Out of raw ingredients"
-
-    CancelReason:
+    CancelReasonItem:
       type: object
       properties:
         id:
           type: string
-          format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
         reason:
           type: string
-          example: "Out of raw ingredients"
+          example: "Stok bahan baku habis"
         created_at:
           type: string
           format: date-time
-          example: "2026-07-27T10:00:00.000Z"
-
-    ErrorResponse:
-      type: object
-      properties:
-        errors:
-          type: string
-          example: "Error message from the server"

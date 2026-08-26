@@ -1,246 +1,101 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Buyer API (Catalog & Queues)
-  description: API untuk pembeli (guest/buyer) meliputi pengambilan katalog toko, detail produk, serta pembuatan dan manajemen antrean (checkout).
+  title: Maxsten API - Buyer & Queue (Public)
   version: 1.0.0
+  description: Dokumentasi API publik untuk interaksi pembeli dengan toko (melihat katalog, membuat antrean, dan melacak pesanan). Tanpa perlu login/register.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Buyer
-    description: Endpoint publik dan guest untuk pembeli
+
 paths:
   /api/stores/{storeId}/products:
     get:
       tags:
-        - Buyer
-      summary: Get Store Catalog (Buyer)
+        - Buyer / Store
+      summary: Get Store Catalog (Products)
       description: |
-        Ambil informasi detail toko beserta daftar produknya.
-        - **Public Endpoint**: Tidak butuh login.
-        - **Fuzzy Search**: Jika `keyword` diisi, pencarian akan mentoleransi salah ketik.
+        Menampilkan seluruh katalog produk milik toko (yang aktif/is_available).
+
+        **Business Logic:**
+        - **Fuzzy Search:** Jika parameter `keyword` diisi, pencarian akan mentoleransi salah ketik (typo). Contoh: "kpi" tetap memunculkan "kopi".
+        - Menggunakan *Prefetch Pagination* (mengembalikan `currentPage` dan `nextPage`).
       parameters:
         - name: storeId
           in: path
           required: true
-          description: public_id milik toko
           schema:
             type: string
-            format: uuid
         - name: page
           in: query
-          required: false
-          description: Halaman (20 produk per halaman). Default 1.
           schema:
             type: integer
-            minimum: 1
             default: 1
         - name: keyword
           in: query
-          required: false
-          description: Kata kunci pencarian nama produk (toleran typo)
           schema:
             type: string
+            description: Kata kunci pencarian nama produk
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StoreCatalogResponse"
-        "400":
-          description: Bad Request (storeId bukan UUID, atau page tidak valid)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (Toko tidak ditemukan)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /api/stores/{storeId}/products/{productId}:
     get:
       tags:
-        - Buyer
-      summary: Get Product Details (Buyer)
-      description: Ambil detail lengkap dari satu produk secara spesifik beserta varian dan add-on. Public endpoint.
+        - Buyer / Store
+      summary: Get Product Details
+      description: |
+        Mengambil detail produk secara spesifik, termasuk daftar Varian dan Add-on yang tersedia.
+        Sistem juga mengembalikan `total_sold` (akumulasi produk terjual).
       parameters:
         - name: storeId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
         - name: productId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/ProductDetail"
-        "400":
-          description: Bad Request (Parameter format tidak valid)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (Produk atau toko tidak ditemukan/dihapus)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /api/stores/{storeId}/queues:
     post:
       tags:
-        - Buyer
-      summary: Create Queue (Checkout)
+        - Buyer / Queue
+      summary: Create Order Queue
       description: |
-        Membuat antrean baru berdasarkan barang yang dipilih.
-        Sistem akan otomatis membuat `guest_id` jika pembeli belum memilikinya.
-      security:
-        - guestAuth: []
+        Membuat antrean pesanan baru.
+
+        **Business Logic (PENTING BUAT FRONTEND):**
+        - **Rate Limiter (Spam Protection):** Maksimal 2 kali pembuatan antrean dalam 10 menit untuk alamat IP yang sama. Jika lebih, akan melempar error `429 Too Many Requests`.
+        - **Guest ID (Sesi Pembeli):** Frontend sangat disarankan mengirim `guest-id` di *Header*. Jika tidak ada, backend akan men-generate UUID baru dan mengembalikannya melalui Cookie browser pembeli.
+        - **Satu Antrean Aktif:** Pembeli (dengan `guest-id` yang sama) **TIDAK BISA** membuat pesanan baru jika masih memiliki pesanan berstatus `BELUM_BAYAR` (belum *expired*) atau `DIPROSES`.
+        - **Socket.io:** Sukses membuat antrean akan mentrigger emit event `"NEW_QUEUE"` ke room `TOKO_{storeId}`.
       parameters:
         - name: storeId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+        - name: guest-id
+          in: header
+          required: false
+          schema:
+            type: string
+            description: UUID identitas pengunjung (Opsional pada request pertama)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateQueueRequest"
+              $ref: "#/components/schemas/CreateQueueInput"
       responses:
         "201":
           description: Created
-          headers:
-            Set-Cookie:
-              description: Mengembalikan session guest_id jika baru pertama kali.
-              schema:
-                type: string
-                example: guest_id=<uuid>; HttpOnly; Secure; SameSite=None; Max-Age=86400
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/QueueResponse"
-        "400":
-          description: Bad Request (Toko tutup, ada antrean aktif, stok habis, varian salah, dll)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (Toko atau produk tidak ditemukan)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/stores/{storeId}/queues/{queueId}:
-    get:
-      tags:
-        - Buyer
-      summary: Get Queue Details (Buyer)
-      description: |
-        Mengambil detail dari satu antrean spesifik milik pembeli.
-        Harus menggunakan `guest_id` cookie yang sama dengan yang membuat pesanan.
-      security:
-        - guestAuth: []
-      parameters:
-        - name: storeId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: queueId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/QueueResponse"
-        "400":
-          description: Bad Request (Parameter format salah)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized (Cookie guest_id tidak ada)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (Antrean tidak ditemukan atau bukan milik guest_id ini)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/stores/{storeId}/queues/{queueId}/cancel:
-    patch:
-      tags:
-        - Buyer
-      summary: Cancel Queue (Buyer)
-      description: |
-        Buyer membatalkan pesanan miliknya sendiri, selama masih berstatus `BELUM_BAYAR`.
-      security:
-        - guestAuth: []
-      parameters:
-        - name: storeId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: queueId
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-                  maxLength: 100
-                  description: Alasan pembatalan dari sisi buyer
-                  example: "Lama banget"
-      responses:
-        "200":
-          description: OK
           content:
             application/json:
               schema:
@@ -249,220 +104,105 @@ paths:
                   data:
                     type: object
                     properties:
-                      id:
-                        type: integer
-                        example: 42
-                      status:
+                      server_now:
                         type: string
-                        example: "DIBATALKAN"
-                      reason:
-                        type: string
-                        example: "Lama banget"
+                        format: date-time
+                        description: Waktu server. Gunakan selisih dengan `expired_at` untuk membuat UI hitung mundur (Countdown Timer).
         "400":
-          description: Bad Request (Sudah diproses, format salah, race condition)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                Processed:
-                  value:
-                    errors: "The order has been processed and cannot be canceled"
-                RaceCondition:
-                  value:
-                    errors: "Oh, someone beat you to it! Your order has just started being processed by the store"
+          description: Bad Request (Toko tutup, antrean masih ada, atau stok habis)
+        "429":
+          description: Too Many Requests (Rate limit terlampaui)
+
+  /api/stores/{storeId}/queues/{queueId}:
+    get:
+      tags:
+        - Buyer / Queue
+      summary: Track Queue Status
+      description: |
+        Digunakan oleh pembeli untuk melacak status pesanan mereka secara real-time.
+
+        **Otorisasi:**
+        - Endpoint ini mewajibkan keberadaan `guest_id` di *Cookie* atau *Header*. Jika ID tidak cocok dengan pemilik antrean, akses ditolak (`401 Unauthorized`).
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: queueId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: guest-id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
         "401":
-          description: Unauthorized (Cookie guest_id tidak ada)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Unauthorized (Bukan pemilik pesanan)
         "404":
-          description: Not Found (Antrean tidak ditemukan atau bukan milik guest_id ini)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Not Found
+
+  /api/stores/{storeId}/queues/{queueId}/cancel:
+    patch:
+      tags:
+        - Buyer / Queue
+      summary: Cancel Queue (By Buyer)
+      description: |
+        Pembeli membatalkan pesanannya sendiri.
+
+        **Business Logic:**
+        - Hanya pesanan berstatus `BELUM_BAYAR` yang bisa dibatalkan oleh pembeli. Jika sudah `DIPROSES` (sudah dimasak), aksi akan ditolak.
+        - **Hak Asasi Pembeli:** Pembeli tetap dapat membatalkan pesanan meskipun toko sudah dihapus/tutup (*soft delete*).
+        - **Socket.io:** Sukses membatalkan akan menembak event `"STATUS_UPDATED"` (dengan property `triggered_by: "buyer"`) ke room `ANTREAN_{queueId}` dan `TOKO_{storeId}`.
+      parameters:
+        - name: storeId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: queueId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: guest-id
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "Berubah pikiran"
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request (Pesanan sudah diproses atau keduluan diambil kasir)
 
 components:
-  securitySchemes:
-    guestAuth:
-      type: apiKey
-      in: cookie
-      name: guest_id
-      description: Cookie session untuk anonim buyer (di-_set_ otomatis saat Checkout)
-
   schemas:
-    StoreCatalogResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            store:
-              type: object
-              properties:
-                name:
-                  type: string
-                  example: "Warung Makan Enak"
-                description:
-                  type: string
-                  example: "Testing API Pembeli"
-                logo_url:
-                  type: string
-                  example: "/uploads/logo-123.png"
-                is_open:
-                  type: boolean
-                  example: true
-                street_address:
-                  type: string
-                  example: "Jl. Pembeli 1"
-                village:
-                  type: string
-                  example: "Desa"
-                district:
-                  type: string
-                  example: "Kecamatan"
-                city:
-                  type: string
-                  example: "Kota"
-                province:
-                  type: string
-                  example: "Provinsi"
-                postal_code:
-                  type: string
-                  example: "12345"
-                latitude:
-                  type: number
-                  example: -7.0
-                longitude:
-                  type: number
-                  example: 110.0
-            currentPage:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProductSummary"
-            nextPage:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProductSummary"
-            pagination:
-              type: object
-              properties:
-                currentPage:
-                  type: integer
-                  example: 1
-                limit:
-                  type: integer
-                  example: 20
-                totalRows:
-                  type: integer
-                  example: 22
-                totalPages:
-                  type: integer
-                  example: 2
-
-    ProductSummary:
-      type: object
-      properties:
-        id:
-          type: string
-          example: "prod-uuid-1"
-        name:
-          type: string
-          example: "Ayam Bakar Madu Spesial"
-        description:
-          type: string
-          example: "ayam bakar enak"
-        price:
-          type: integer
-          example: 25000
-        image_url:
-          type: string
-          nullable: true
-        is_available:
-          type: boolean
-          example: true
-        total_sold:
-          type: integer
-          example: 3
-
-    ProductDetail:
-      type: object
-      properties:
-        id:
-          type: string
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        name:
-          type: string
-          example: "Kopi Susu Gula Aren"
-        price:
-          type: integer
-          example: 18000
-        is_available:
-          type: boolean
-          example: true
-        total_sold:
-          type: integer
-          example: 150
-        description:
-          type: string
-          example: "Paduan espresso murni dengan gula aren asli nusantara."
-        image_url:
-          type: string
-          example: "https://example.com/images/kopi-susu.jpg"
-        variants:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                example: "var-uuid-123"
-              name:
-                type: string
-                example: "Normal Ice"
-              additional_price:
-                type: integer
-                example: 0
-        addon_groups:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                example: "ag-uuid-789"
-              name:
-                type: string
-                example: "Topping Pilihan"
-              addons:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                      example: "addon-uuid-001"
-                    name:
-                      type: string
-                      example: "Extra Boba"
-                    price:
-                      type: integer
-                      example: 3000
-
-    CreateQueueRequest:
+    CreateQueueInput:
       type: object
       required:
         - items
       properties:
         note:
           type: string
-          maxLength: 255
-          example: "Jangan pedes ya bang"
+          description: Catatan untuk dapur (Opsional)
         items:
           type: array
-          minItems: 1
           items:
             type: object
             required:
@@ -471,125 +211,14 @@ components:
             properties:
               product_id:
                 type: string
-                format: uuid
-                example: "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d"
+              variant_id:
+                type: string
+                description: UUID dari varian yang dipilih (Opsional)
               quantity:
                 type: integer
                 minimum: 1
-                maximum: 100
-                example: 2
-              variant_id:
-                type: string
-                format: uuid
-                example: "c9a5d102-18f3-4f68-b8d9-81a9424e8a1d"
               selected_addons:
                 type: array
+                description: Array of UUID dari add-on yang dipilih
                 items:
                   type: string
-                  format: uuid
-                example: ["c9a5d102-18f3-4f68-b8d9-81a9424e8a1d", "addon-101"]
-
-    QueueResponse:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 10
-        queue_number:
-          type: integer
-          example: 15
-        guest_id:
-          type: string
-          example: "11111111-2222-3333-4444-555555555555"
-        status:
-          type: string
-          example: "BELUM_BAYAR"
-        note:
-          type: string
-          example: "Jangan pedes ya bang"
-        total_price:
-          type: integer
-          example: 45000
-        created_at:
-          type: string
-          format: date-time
-          example: "2026-07-28T14:00:00.000Z"
-        expired_at:
-          type: string
-          format: date-time
-          example: "2026-07-28T14:30:00.000Z"
-        server_now:
-          type: string
-          format: date-time
-          example: "2026-07-28T14:05:00.000Z"
-        queueDetails:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                example: "detail-uuid-1"
-              product_id:
-                type: string
-                example: "prod-uuid-1"
-              variant_id:
-                type: string
-                example: "var-uuid-1"
-              quantity:
-                type: integer
-                example: 2
-              selected_addons:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                      example: "addon-uuid-1"
-                    name:
-                      type: string
-                      example: "Keju"
-                    price:
-                      type: integer
-                      example: 3000
-              product:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "prod-uuid-1"
-                  name:
-                    type: string
-                    example: "Mie Goreng"
-                  price:
-                    type: integer
-                    example: 15000
-                  image_url:
-                    type: string
-                    example: "https://example.com/mie.jpg"
-                  description:
-                    type: string
-                    example: "mie goreng khas jawa timur"
-                  is_available:
-                    type: boolean
-                    example: true
-              variant:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "var-uuid-1"
-                  name:
-                    type: string
-                    example: "Pedas Mampus"
-                  additional_price:
-                    type: integer
-                    example: 2000
-
-    ErrorResponse:
-      type: object
-      properties:
-        errors:
-          type: string
-          example: "Pesan error dari server"

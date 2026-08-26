@@ -1,309 +1,190 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Store Products API
-  description: API untuk mengelola produk di dalam toko (Store), termasuk varian, add-on, gambar, dan ketersediaan stok.
+  title: Maxsten API - Product Management
   version: 1.0.0
+  description: Dokumentasi API untuk mengelola Katalog Produk, Varian, ketersediaan, dan gambar produk.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Products
-    description: Manajemen produk, varian, dan keterkaitan dengan add-on
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
 paths:
-  /api/stores/products:
-    post:
-      tags:
-        - Products
-      summary: Create Product
-      description: |
-        Menambahkan produk baru ke toko milik user yang sedang login.
-        Dapat menggunakan `multipart/form-data` (jika ada gambar) atau `application/json`.
-
-        **Catatan:**
-        - Nama produk harus unik per toko.
-        - `name` dan `variants[].name` akan disimpan dalam bentuk huruf kecil (lowercase).
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-                - name
-                - price
-              properties:
-                name:
-                  type: string
-                  maxLength: 100
-                  description: Maksimal 100 karakter. Disimpan huruf kecil.
-                price:
-                  type: integer
-                  minimum: 1
-                  description: Harga dasar produk.
-                description:
-                  type: string
-                variants:
-                  type: string
-                  description: JSON string array (contoh `[{"name":"Pedas","additional_price":2000}]`)
-                addon_group_ids:
-                  type: string
-                  description: JSON string array of UUIDs (contoh `["uuid-1", "uuid-2"]`)
-                image:
-                  type: string
-                  format: binary
-                  description: File gambar produk.
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProductCreateInput"
-      responses:
-        "201":
-          description: Created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Product"
-        "400":
-          description: Bad Request (Validasi, duplicate variant name, format JSON invalid)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (User belum punya toko)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Conflict (Nama produk atau varian sudah dipakai)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/stores/{publicId}/products:
+  /api/stores/me/{publicId}/products:
     get:
       tags:
-        - Products
-      summary: Get All Products
+        - Product
+      summary: Get All Products (With Prefetch)
       description: |
-        Ambil semua produk dari 1 toko milik user yang sedang login, dengan pagination + prefetch halaman berikutnya.
-        `publicId` wajib milik toko user yang login.
-      security:
-        - cookieAuth: []
+        Mengambil daftar seluruh produk milik toko. Akses ini menggunakan `publicId` toko.
+        
+        **Catatan Khusus (Frontend):**
+        - **Prefetch Pagination:** Mengembalikan `currentPage` dan `nextPage` sekaligus. Saat di halaman 1, data halaman 2 sudah tersedia di `nextPage`. Panggil API untuk halaman 2 secara *background* hanya ketika *user* mulai melihat halaman 2.
+        - **Metrik total_sold:** Terdapat field `total_sold` di setiap produk yang dihitung *real-time* dari total pesanan berstatus `SELESAI`. Bisa digunakan untuk menampilkan label "Terjual: 150".
       parameters:
         - name: publicId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
         - name: page
           in: query
-          required: false
           schema:
             type: integer
             default: 1
-            minimum: 1
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      currentPage:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Product"
-                      nextPage:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Product"
-                      pagination:
-                        $ref: "#/components/schemas/PaginationMeta"
-        "400":
-          description: Bad Request (Format parameter salah)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ProductListResponse"
         "404":
-          description: Not Found (Toko tidak ditemukan / bukan milik user)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Not Found
+
+  /api/stores/products:
+    post:
+      tags:
+        - Product
+      summary: Create New Product
+      description: |
+        Menambahkan produk baru berserta gambar, varian, dan add-on.
+        
+        **Business Logic (PENTING BUAT FRONTEND):**
+        - **Multipart/Form-Data:** Wajib menggunakan format ini karena ada *upload* gambar (`image`).
+        - **Parsing Array:** Karena menggunakan form-data, *field* array seperti `variants` dan `addon_group_ids` **wajib diubah menjadi JSON string** (`JSON.stringify()`) sebelum dikirim. Backend akan melakukan `JSON.parse()` secara otomatis.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateProductInput"
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Bad Request (Format data salah atau add-on group tidak valid)
+        "409":
+          description: Conflict (Nama produk atau nama varian sudah ada)
 
   /api/stores/products/{productId}:
-    parameters:
-      - name: productId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
     get:
       tags:
-        - Products
+        - Product
       summary: Get Product Detail
-      description: Ambil detail 1 produk milik toko user yang sedang login.
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Product"
-        "400":
-          description: Bad Request (UUID salah)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (Produk tidak ditemukan / milik toko lain)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    patch:
-      tags:
-        - Products
-      summary: Update Product
-      description: |
-        Update data produk, varian, dan grup add-on (Partial payload, tapi full-replace untuk relasinya).
-
-        **Penting:** Jika produk sedang punya antrean aktif (BELUM_BAYAR/DIPROSES), field `price`, `variants`, dan `addon_group_ids` **TIDAK BOLEH** diubah.
-      security:
-        - cookieAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProductPatchInput"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Product"
-        "400":
-          description: Bad Request (Dilarang karena antrean aktif, nama duplikat, ID tidak valid)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Conflict (Nama bentrok atau Race condition)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    delete:
-      tags:
-        - Products
-      summary: Delete Product
-      description: |
-        Soft-delete produk beserta seluruh variannya.
-        Tidak bisa dilakukan jika produk masih memiliki antrean aktif (BELUM_BAYAR / DIPROSES).
-      security:
-        - cookieAuth: []
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: string
-                    example: "OK"
-        "400":
-          description: Bad Request (Sedang ada pesanan aktif)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Cannot delete product with active orders in progress"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/stores/products/{productId}/availability:
-    patch:
-      tags:
-        - Products
-      summary: Update Product Availability
-      description: Toggle status tersedia/habis untuk 1 produk. Boleh dilakukan kapan saja (meski ada antrean).
-      security:
-        - cookieAuth: []
+      description: Mengambil detail lengkap satu produk beserta varian, add-on, dan akumulasi `total_sold`.
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
-            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProductItem"
+        "404":
+          description: Not Found
+
+    patch:
+      tags:
+        - Product
+      summary: Update Product Information
+      description: |
+        Mengubah data produk (tanpa gambar).
+        
+        **Business Logic (FITUR FREEZE):**
+        - Jika produk ini sedang berada dalam **antrean aktif** (`BELUM_BAYAR` / `DIPROSES`), maka `price`, `variants`, dan `addon_group_ids` **TIDAK BISA DIUBAH** (akan melempar `400 Bad Request`).
+        - Dalam kondisi antrean aktif, hanya `name` dan `description` yang diizinkan untuk diubah.
+        - Terdapat *Pessimistic Locking* di sisi *backend* untuk mencegah bentrok data antar kasir.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductInput"
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request (Ditolak karena ada pesanan aktif)
+        "409":
+          description: Conflict (Nama sudah dipakai atau terjadi bentrok update)
+
+    delete:
+      tags:
+        - Product
+      summary: Delete Product (Soft Delete)
+      description: |
+        Menghapus produk dan seluruh variannya secara *soft delete* (`is_delete: true`).
+        File gambar di Supabase Storage akan dihapus permanen.
+        
+        **Business Logic (BLOCK DELETE):**
+        - Produk **TIDAK BISA DIHAPUS** jika masih terdapat antrean aktif (`BELUM_BAYAR` / `DIPROSES`) yang memesan produk ini. FE harus menampilkan peringatan kepada user.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request (Gagal dihapus karena ada antrean aktif)
+
+  /api/stores/products/{productId}/image:
+    patch:
+      tags:
+        - Product
+      summary: Update Product Image
+      description: Mengunggah dan mengganti gambar produk. Gambar lama di Supabase akan otomatis dihapus.
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OK
+
+  /api/stores/products/{productId}/availability:
+    patch:
+      tags:
+        - Product
+      summary: Toggle Product Availability
+      description: Menonaktifkan atau mengaktifkan ketersediaan produk (Habis/Tersedia). Sangat berguna bagi kasir untuk mematikan produk dengan cepat (Toggle).
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -319,153 +200,90 @@ paths:
       responses:
         "200":
           description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        example: "550e8400-e29b-41d4-a716-446655440000"
-                      name:
-                        type: string
-                        example: "Nasi Goreng Spesial"
-                      is_available:
-                        type: boolean
-                        example: false
-        "400":
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/stores/products/{productId}/image:
-    patch:
-      tags:
-        - Products
-      summary: Update Product Image
-      description: Mengganti file gambar produk. Gambar lama di server otomatis dihapus.
-      security:
-        - cookieAuth: []
-      parameters:
-        - name: productId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-                - image
-              properties:
-                image:
-                  type: string
-                  format: binary
-                  description: File gambar produk baru.
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        example: "550e8400-e29b-41d4-a716-446655440000"
-                      name:
-                        type: string
-                        example: "Nasi Goreng Spesial"
-                      image_url:
-                        type: string
-                        example: "/uploads/product-1721654321-987654321.png"
-        "400":
-          description: Bad Request (File tidak dikirim)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
 components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
-      description: Cookie based authentication
-
   schemas:
-    ProductVariantInput:
+    ProductListResponse:
       type: object
-      required:
-        - name
       properties:
-        name:
-          type: string
-          maxLength: 100
-          example: "Pedas"
-        additional_price:
-          type: integer
-          minimum: 0
-          default: 0
-          example: 2000
+        data:
+          type: object
+          properties:
+            currentPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductItem"
+            nextPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductItem"
+            pagination:
+              type: object
+              properties:
+                currentPage:
+                  type: integer
+                limit:
+                  type: integer
+                  example: 20
+                totalRows:
+                  type: integer
+                totalPages:
+                  type: integer
 
-    ProductVariantPatchInput:
+    ProductItem:
       type: object
-      required:
-        - name
       properties:
         id:
           type: string
-          description: Sertakan jika update varian lama, kosongkan jika buat baru.
-          example: "variant-lama-id"
         name:
           type: string
-          maxLength: 100
-          example: "Extra Pedas"
-        additional_price:
+        description:
+          type: string
+        price:
           type: integer
-          minimum: 0
-          default: 0
-          example: 4000
+        image_url:
+          type: string
+        is_available:
+          type: boolean
+        total_sold:
+          type: integer
+          description: Total akumulasi penjualan dari antrean SELESAI
+        variants:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              additional_price:
+                type: integer
+        productAddonGroups:
+          type: array
+          items:
+            type: object
+            properties:
+              addon_group:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  addons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        price:
+                          type: integer
 
-    ProductCreateInput:
+    CreateProductInput:
       type: object
       required:
         - name
@@ -473,145 +291,44 @@ components:
       properties:
         name:
           type: string
-          maxLength: 100
-          example: "Nasi Goreng Spesial"
-        price:
-          type: integer
-          minimum: 1
-          example: 20000
         description:
           type: string
-          example: "Nasi goreng dengan telur dan ayam"
+        price:
+          type: integer
+        image:
+          type: string
+          format: binary
+          description: File gambar produk
+        variants:
+          type: string
+          description: Array of objects (di-stringify). Format -> `[{"name": "Besar", "additional_price": 5000}]`
+        addon_group_ids:
+          type: string
+          description: Array of strings (di-stringify). Format -> `["uuid-addon-1", "uuid-addon-2"]`
+
+    UpdateProductInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: integer
         variants:
           type: array
+          description: Harus menggunakan JSON array (Bukan stringified karena ini `application/json`)
           items:
-            $ref: "#/components/schemas/ProductVariantInput"
+            type: object
+            properties:
+              id:
+                type: string
+                description: Isi jika mengupdate varian lama. Kosongkan jika varian baru.
+              name:
+                type: string
+              additional_price:
+                type: integer
         addon_group_ids:
           type: array
           items:
             type: string
-            format: uuid
-
-    ProductPatchInput:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 100
-          example: "Nasi Goreng Spesial (Baru)"
-        price:
-          type: integer
-          minimum: 1
-          example: 22000
-        description:
-          type: string
-          example: "Deskripsi baru"
-        variants:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProductVariantPatchInput"
-        addon_group_ids:
-          type: array
-          items:
-            type: string
-            format: uuid
-
-    ProductVariant:
-      type: object
-      properties:
-        id:
-          type: string
-          example: "variant-lama-id"
-        name:
-          type: string
-          example: "pedas"
-        additional_price:
-          type: integer
-          example: 2000
-
-    ProductAddonGroupLink:
-      type: object
-      properties:
-        addon_group:
-          type: object
-          properties:
-            id:
-              type: string
-              example: "550e8400-e29b-41d4-a716-446655440001"
-            name:
-              type: string
-              example: "level pedas"
-            addons:
-              type: array
-              items:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "addon-1"
-                  name:
-                    type: string
-                    example: "tidak pedas"
-                  price:
-                    type: integer
-                    example: 0
-
-    Product:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        name:
-          type: string
-          example: "nasi goreng spesial"
-        description:
-          type: string
-          nullable: true
-          example: "Nasi goreng dengan telur dan ayam"
-        price:
-          type: integer
-          example: 20000
-        image_url:
-          type: string
-          nullable: true
-          example: "/uploads/product-1234567890.png"
-        is_available:
-          type: boolean
-          example: true
-        total_sold:
-          type: integer
-          description: Dihitung secara dinamis dari pesanan SELESAI
-          example: 12
-        variants:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProductVariant"
-        productAddonGroups:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProductAddonGroupLink"
-
-    PaginationMeta:
-      type: object
-      properties:
-        currentPage:
-          type: integer
-          example: 1
-        limit:
-          type: integer
-          example: 20
-        totalRows:
-          type: integer
-          example: 45
-        totalPages:
-          type: integer
-          example: 3
-
-    ErrorResponse:
-      type: object
-      properties:
-        errors:
-          type: string
-          example: "Pesan error dari server"

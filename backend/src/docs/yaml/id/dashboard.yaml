@@ -1,63 +1,42 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Store Dashboard API
-  description: API untuk mengambil ringkasan cepat kondisi toko untuk halaman utama dashboard seller.
+  title: Maxsten API - Dashboard
   version: 1.0.0
+  description: Dokumentasi API untuk memuat data overview Dashboard toko, termasuk metrik hari ini, grafik traffic, dan status operasional.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Dashboard
-    description: Endpoint analitik dan ringkasan khusus halaman utama dashboard seller
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
 paths:
   /api/stores/dashboard:
     get:
       tags:
         - Dashboard
-      summary: Get Store Dashboard
+      summary: Get Dashboard Overview
       description: |
-        Mengambil ringkasan cepat kondisi toko — status buka/tutup, produk & add-on terbaru, antrean yang paling lama menunggu, dan metrik performa hari ini.
+        Mengambil seluruh data yang dibutuhkan untuk halaman utama Dashboard kasir/admin.
 
-        **Catatan:**
-        - `lists` selalu maksimal 5 item (tidak ada pagination karena ini murni ringkasan widget).
-        - `oldest_active_queues` hanya berisi status `BELUM_BAYAR` dan `DIPROSES`, diurutkan dari yang paling lama menunggu (ascending by date).
-        - Semua metrik di objek `today` dibandingkan dengan KEMARIN pada jam dan menit yang sama persis untuk menjaga akurasi tren data (perbandingan _apple-to-apple_).
-        - `aov.trend` dihitung dari nilai murni sebelum pembulatan (untuk mencegah persentase bias).
-        - `peak_hour` dan `hourly_traffic` (24 index/jam) hanya dihitung dari pesanan berstatus `SELESAI` pada hari berjalan.
-      security:
-        - cookieAuth: []
+        **Business Logic & Analytics (Penting untuk UI/UX):**
+        - **Apple-to-Apple Trend:** Nilai `trend` (persentase) membandingkan data hari ini dengan data hari kemarin **pada titik waktu yang sama persis** (misal: Hari ini jam 10:30 pagi akan dibandingkan dengan Kemarin dari jam 00:00 hingga 10:30 pagi).
+        - **Average Wait Time:** Metrik `avg_wait_time` dihitung dalam **Menit**. Ini adalah waktu murni dapur/persiapan, dihitung dari status `DIPROSES` hingga `SELESAI` (bukan dari saat pelanggan memesan).
+        - **Peak Hour & Traffic:** Puncak keramaian (`peak_hour`) dan grafik 24 jam (`hourly_traffic`) menghitung SEMUA pesanan yang masuk pada hari ini, **KECUALI** yang berstatus `DIBATALKAN`.
+        - **Timezone Lock:** Array `hourly_traffic` (index 0 - 23) sudah disesuaikan dengan zona waktu toko (Timezone). Frontend tidak perlu melakukan konversi waktu lokal lagi.
+        - **Active Queues:** Daftar `oldest_active_queues` memuat maksimal 5 antrean paling lama (FIFO) yang belum selesai (`BELUM_BAYAR` atau `DIPROSES`).
       responses:
         "200":
-          description: OK
+          description: OK (Berhasil memuat Dashboard)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardResponse"
-        "401":
-          description: Unauthorized (Tidak login / session expired)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Unauthorized"
         "404":
-          description: Not Found (User belum punya toko)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Store not found"
+          description: Not Found (Toko tidak ditemukan)
 
 components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
-      description: Cookie based authentication (membutuhkan `access_token` dan `refresh_token`).
-
   schemas:
     DashboardResponse:
       type: object
@@ -68,185 +47,141 @@ components:
             server_time:
               type: string
               format: date-time
-              description: Waktu server saat ini dalam UTC. FE harus menghitung countdown relatif terhadap nilai ini, bukan jam device user.
-              example: "2026-08-08T00:25:17.000Z"
+              description: Waktu UTC saat ini di server
             store:
-              $ref: "#/components/schemas/DashboardStore"
+              type: object
+              properties:
+                public_id:
+                  type: string
+                name:
+                  type: string
+                description:
+                  type: string
+                logo_url:
+                  type: string
+                  nullable: true
+                is_open:
+                  type: boolean
+                  description: Status buka/tutup toko saat ini (Real-time)
             lists:
-              $ref: "#/components/schemas/DashboardLists"
+              type: object
+              properties:
+                latest_products:
+                  type: array
+                  description: 5 Produk terbaru yang ditambahkan
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      price:
+                        type: integer
+                      image_url:
+                        type: string
+                      is_available:
+                        type: boolean
+                      total_sold:
+                        type: integer
+                        description: Akumulasi total terjual (Status SELESAI)
+                latest_addons:
+                  type: array
+                  description: 5 Add-on terbaru yang ditambahkan
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      price:
+                        type: integer
+                      addon_group_id:
+                        type: string
+                oldest_active_queues:
+                  type: array
+                  description: 5 Antrean terlama yang masih aktif (FIFO)
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      queue_number:
+                        type: string
+                      status:
+                        type: string
+                      total_price:
+                        type: integer
+                      created_at:
+                        type: string
+                        format: date-time
+                      expired_at:
+                        type: string
+                        format: date-time
+                active_queues_count:
+                  type: integer
+                  description: Total angka seluruh antrean yang sedang aktif
             today:
-              $ref: "#/components/schemas/DashboardToday"
+              type: object
+              description: Metrik performa hari ini dengan perbandingan Apple-to-Apple terhadap kemarin.
+              properties:
+                omzet:
+                  $ref: "#/components/schemas/MetricWithTrend"
+                pesanan_selesai:
+                  $ref: "#/components/schemas/MetricWithTrend"
+                pesanan_batal:
+                  $ref: "#/components/schemas/MetricWithTrend"
+                aov:
+                  $ref: "#/components/schemas/MetricWithTrend"
+                  description: Average Order Value (Rata-rata nilai per pesanan selesai)
+                avg_wait_time:
+                  $ref: "#/components/schemas/MetricWithTrend"
+                  description: Rata-rata waktu tunggu dapur (dalam Menit)
+                peak_hour:
+                  type: string
+                  example: "12:00 - 13:00"
+                  description: Rentang jam paling sibuk. Bernilai "-" jika belum ada pesanan.
+                hourly_traffic:
+                  type: array
+                  description: Array berukuran persis 24 (index 0=Jam 12 malam, index 23=Jam 11 malam) berisi jumlah pesanan masuk.
+                  items:
+                    type: integer
+                  example:
+                    [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      2,
+                      5,
+                      12,
+                      10,
+                      8,
+                      15,
+                      20,
+                      18,
+                      5,
+                      3,
+                      4,
+                      8,
+                      10,
+                      12,
+                      5,
+                      2,
+                      0,
+                      0,
+                    ]
 
-    DashboardStore:
-      type: object
-      properties:
-        public_id:
-          type: string
-          description: Public ID dari toko tersebut.
-          example: "8kd93jf82j"
-        name:
-          type: string
-          example: "Warung Sumber Rejeki"
-        description:
-          type: string
-          example: "Toko kelontong harian"
-        logo_url:
-          type: string
-          nullable: true
-          example: "/uploads/logo-123.png"
-        is_open:
-          type: boolean
-          example: true
-
-    DashboardLists:
-      type: object
-      properties:
-        latest_products:
-          type: array
-          description: Maksimal 5 produk terbaru yang ditambahkan ke sistem.
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                example: "prod-uuid-1"
-              name:
-                type: string
-                example: "Es Teh"
-              description:
-                type: string
-                nullable: true
-                description: Deskripsi dari produk.
-                example: "Es teh manis segar dengan gula tebu asli."
-              price:
-                type: integer
-                example: 5000
-              image_url:
-                type: string
-                nullable: true
-              is_available:
-                type: boolean
-                example: true
-              total_sold:
-                type: integer
-                description: Total jumlah produk ini yang sudah terjual.
-                example: 154
-        latest_addons:
-          type: array
-          description: Maksimal 5 add-on terbaru.
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                description: ID dari add-on (biasanya UUID atau integer berformat string).
-                example: "1"
-              name:
-                type: string
-                example: "Extra Gula"
-              price:
-                type: integer
-                example: 1000
-              addon_group_id:
-                type: string
-                description: Memudahkan FE mengetahui add-on ini ada di dalam grup mana.
-                example: "addon-group-uuid-1"
-        active_queues_count:
-          type: integer
-          description: Jumlah total antrean yang sedang aktif (BELUM_BAYAR atau DIPROSES) untuk badge notifikasi.
-          example: 12
-        oldest_active_queues:
-          type: array
-          description: Maksimal 5 antrean dengan status BELUM_BAYAR/DIPROSES yang paling lama menunggu penanganan.
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-                example: 42
-              queue_number:
-                type: integer
-                example: 3
-              status:
-                type: string
-                example: "BELUM_BAYAR"
-              total_price:
-                type: integer
-                example: 15000
-              created_at:
-                type: string
-                format: date-time
-                example: "2026-08-08T00:10:00.000Z"
-              expired_at:
-                type: string
-                format: date-time
-                description: Batas waktu maksimal sebelum antrean dianggap kadaluarsa.
-                example: "2026-08-08T00:25:00.000Z"
-
-    DashboardMetric:
+    MetricWithTrend:
       type: object
       properties:
         value:
-          type: number
-          description: Angka real atau nominal dari metrik hari ini.
-          example: 150000
+          type: integer
+          description: Nilai metrik saat ini
         trend:
           type: number
-          description: Persentase pertumbuhan/penurunan dibandingkan kemarin pada jam yang sama (contoh -50.0 atau 12.4).
-          example: 12.4
-
-    DashboardToday:
-      type: object
-      properties:
-        omzet:
-          $ref: "#/components/schemas/DashboardMetric"
-        pesanan_selesai:
-          $ref: "#/components/schemas/DashboardMetric"
-        pesanan_batal:
-          $ref: "#/components/schemas/DashboardMetric"
-        aov:
-          description: Average Order Value (Rata-rata nilai nominal per pesanan).
-          $ref: "#/components/schemas/DashboardMetric"
-        peak_hour:
-          type: string
-          description: Rentang 1 jam dengan jumlah transaksi selesai terbanyak hari ini.
-          example: "12:00 - 13:00"
-        hourly_traffic:
-          type: array
-          description: Array berisi persis 24 index angka integer yang mewakili traffic harian (jam 00:00 sampai 23:00).
-          items:
-            type: integer
-          example:
-            [
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              1,
-              2,
-              3,
-              4,
-              2,
-              3,
-              5,
-              4,
-              2,
-              1,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-            ]
-
-    ErrorResponse:
-      type: object
-      properties:
-        errors:
-          type: string
-          example: "Pesan error dari server"
+          format: float
+          description: Persentase kenaikan/penurunan (Bisa positif, negatif, atau 0).

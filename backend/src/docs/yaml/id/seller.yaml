@@ -1,46 +1,45 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Store Queues API (Seller)
-  description: API untuk mengelola daftar antrean (Live Antrean) toko dan memperbarui status antrean oleh kasir/penjual.
+  title: Maxsten API - Seller (Queue Management)
   version: 1.0.0
+  description: Dokumentasi API khusus untuk kasir/penjual dalam mengelola antrean secara real-time.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Store Queues
-    description: Manajemen antrean toko yang sedang berjalan
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
 paths:
   /api/stores/{storeId}/queues:
     get:
       tags:
-        - Store Queues
-      summary: Get Store Queues (Live Antrean)
+        - Seller / Queue
+      summary: Get All Active Queues (With Prefetch)
       description: |
-        Ambil daftar antrean aktif hari ini untuk toko, plus status buka/tutup toko saat ini. Dipakai untuk halaman kasir atau dashboard *live antrean*.
+        Mengambil daftar seluruh antrean aktif (`BELUM_BAYAR` dan `DIPROSES`) milik toko.
 
-        **Catatan:**
-        - Hanya antrean berstatus `BELUM_BAYAR` atau `DIPROSES` yang muncul (tidak termasuk yang sudah SELESAI/DIBATALKAN).
-        - Tidak ada batasan tanggal. Antrean dari sesi malam kemarin yang belum diselesaikan tetap muncul meskipun berganti hari.
-        - Data diurutkan secara **FIFO** (`created_at` ascending).
-        - `nextPage` adalah data prefetch untuk halaman berikutnya.
-        - Status `is_open` dari toko tidak memengaruhi kemunculan antrean (antrean aktif tetap tampil walaupun toko sedang tutup).
-      security:
-        - cookieAuth: []
+        **Aturan Pengurutan (Sort Order):**
+        - Data diurutkan berdasarkan `created_at` secara **ASCENDING (Terdahulu ke Terbaru)**.
+        - Menerapkan prinsip bisnis **FIFO (First In, First Out)** sehingga kasir memproses antrean terlama terlebih dahulu.
+
+        **Catatan Khusus UX (Prefetch Pagination):**
+        - Endpoint ini dirancang khusus untuk meminimalisir waktu *loading* di sisi UI. 
+        - Setiap *request* memuat 2 halaman sekaligus: `currentPage` (halaman yang sedang dilihat) dan `nextPage` (halaman berikutnya).
+        - Saat user berada di halaman 1, UI sudah mendapatkan data halaman 2. Sehingga saat tombol "Next" diklik, data halaman 2 bisa langsung di-*render* tanpa *loading state*.
+        - Baru setelah masuk ke halaman 2 secara visual, *Frontend* melempar *request* `page=2` di *background* untuk nge- *prefetch* data halaman 3.
       parameters:
         - name: storeId
           in: path
           required: true
-          description: public_id milik toko
           schema:
             type: string
-            format: uuid
+            description: Public ID dari toko
         - name: page
           in: query
-          required: false
-          description: Nomor halaman (20 antrean per halaman). Default 1.
           schema:
             type: integer
-            minimum: 1
             default: 1
       responses:
         "200":
@@ -48,256 +47,191 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      storeStatus:
-                        $ref: "#/components/schemas/StoreStatus"
-                      currentPage:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Queue"
-                      nextPage:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Queue"
-                      pagination:
-                        $ref: "#/components/schemas/PaginationMeta"
-        "401":
-          description: Unauthorized (Tidak login / session expired)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Unauthorized"
+                $ref: "#/components/schemas/QueueListResponse"
         "404":
-          description: Not Found (storeId tidak ditemukan / bukan milik user)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Store not found or you don't have access"
+          description: Not Found (Store tidak ditemukan atau akses ditolak)
 
   /api/stores/queues/{queueId}:
     patch:
       tags:
-        - Store Queues
-      summary: Update Queue Status
+        - Seller / Queue
+      summary: Edit Queue Status
       description: |
-        Ubah status sebuah antrean (proses, selesaikan, atau batalkan).
-        Perubahan status ini akan otomatis dikirim secara *real-time* ke pembeli melalui *Socket.IO* (`STATUS_UPDATED`).
+        Mengubah status pesanan/antrean (misal dari `BELUM_BAYAR` menjadi `DIPROSES`).
 
-        **State Machine (Transisi yang diperbolehkan):**
-        * `BELUM_BAYAR` -> `DIPROSES`, `DIBATALKAN`
-        * `DIPROSES` -> `SELESAI`, `DIBATALKAN`
-        * `SELESAI` -> *(status akhir)*
-        * `DIBATALKAN` -> *(status akhir)*
-      security:
-        - cookieAuth: []
+        **Aturan Transisi Status (State Machine):**
+        - `BELUM_BAYAR` hanya bisa diubah ke `DIPROSES` atau `DIBATALKAN`.
+        - `DIPROSES` hanya bisa diubah ke `SELESAI` atau `DIBATALKAN`.
+        - `SELESAI` dan `DIBATALKAN` adalah status final dan tidak bisa diubah lagi.
+
+        **Real-Time Trigger (Socket.io):**
+        - Jika berhasil, server akan melakukan *emit* ke dua *room* Socket.io: `ANTREAN_{queueId}` (untuk memberi tahu pembeli) dan `TOKO_{storeId}` (untuk sinkronisasi layar kasir lain).
       parameters:
         - name: queueId
           in: path
           required: true
-          description: ID antrean
           schema:
-            type: integer
-            example: 501
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QueueUpdateInput"
+              type: object
+              required:
+                - storeId
+                - status
+              properties:
+                storeId:
+                  type: string
+                status:
+                  type: string
+                  enum: [DIPROSES, SELESAI, DIBATALKAN]
+                reason:
+                  type: string
+                  description: Wajib diisi jika status = DIBATALKAN
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Queue"
+                $ref: "#/components/schemas/QueueDetailResponse"
         "400":
-          description: Bad Request (Validasi gagal, atau transisi status tidak diperbolehkan)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                InvalidTransition:
-                  value:
-                    errors: "Cannot change the status from BELUM_BAYAR to SELESAI"
-                ValidationError:
-                  value:
-                    errors: '"status" must be one of [DIPROSES, SELESAI, DIBATALKAN]'
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not Found (queueId tidak ditemukan / storeId bukan milik user)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Queue not found"
+          description: Bad Request (Transisi status tidak valid)
         "409":
-          description: Conflict (Race condition, status sudah terlanjur diubah oleh kasir lain)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "The queue status has changed"
+          description: Conflict (Status sudah diubah terlebih dahulu oleh kasir/perangkat lain - Race Condition OCC)
 
 components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
-      description: Cookie based authentication (membutuhkan `access_token` dan `refresh_token`).
-
   schemas:
-    StoreStatus:
+    QueueListResponse:
       type: object
       properties:
-        is_open:
-          type: boolean
-          example: true
-        timezone:
-          type: string
-          example: "Asia/Jakarta"
-
-    QueueUpdateInput:
-      type: object
-      required:
-        - storeId
-        - status
-      properties:
-        storeId:
-          type: string
-          format: uuid
-          description: public_id toko pemilik antrean
-          example: "8b053812-002e-4738-835d-3a1a11af35a5"
-        status:
-          type: string
-          enum: [DIPROSES, SELESAI, DIBATALKAN]
-          description: Status tujuan antrean
-          example: "DIBATALKAN"
-        reason:
-          type: string
-          maxLength: 100
-          description: Alasan pembatalan. Hanya relevan (dan opsional) jika status adalah DIBATALKAN.
-          example: "Stok habis"
-
-    QueueProduct:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: "Nasi Goreng"
-        price:
-          type: integer
-          example: 20000
-        image_url:
-          type: string
-          nullable: true
-
-    QueueDetail:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 900
-        quantity:
-          type: integer
-          example: 1
-        selected_addons:
-          type: array
-          nullable: true
-          items:
-            type: object
-        product:
-          $ref: "#/components/schemas/QueueProduct"
-        variant:
+        data:
           type: object
-          nullable: true
+          properties:
+            storeStatus:
+              type: object
+              properties:
+                is_open:
+                  type: boolean
+                timezone:
+                  type: string
+            currentPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/QueueItem"
+            nextPage:
+              type: array
+              items:
+                $ref: "#/components/schemas/QueueItem"
+            pagination:
+              type: object
+              properties:
+                currentPage:
+                  type: integer
+                limit:
+                  type: integer
+                  example: 20
+                totalRows:
+                  type: integer
+                totalPages:
+                  type: integer
 
-    Queue:
+    QueueItem:
       type: object
       properties:
         id:
-          type: integer
-          example: 501
+          type: string
         queue_number:
-          type: integer
-          example: 12
+          type: string
         total_price:
           type: integer
-          example: 15000
         status:
           type: string
-          example: "DIPROSES"
         created_at:
           type: string
           format: date-time
-          example: "2026-07-27T10:00:00.000Z"
         expired_at:
           type: string
           format: date-time
-          nullable: true
-          example: "2026-07-27T11:00:00.000Z"
-        completed_at:
-          type: string
-          format: date-time
-          nullable: true
-        cancellation_reason:
-          type: string
-          nullable: true
-          example: "Stok habis"
-        cancelled_by:
-          type: string
-          nullable: true
-          example: "seller"
         note:
           type: string
-          nullable: true
         queueDetails:
           type: array
           items:
-            $ref: "#/components/schemas/QueueDetail"
+            type: object
+            properties:
+              id:
+                type: string
+              quantity:
+                type: integer
+              selected_addons:
+                type: string
+                description: JSON string
+              product:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  price:
+                    type: integer
+                  image_url:
+                    type: string
+              variant:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  additional_price:
+                    type: integer
 
-    PaginationMeta:
+    QueueDetailResponse:
       type: object
       properties:
-        currentPage:
-          type: integer
-          example: 1
-        limit:
-          type: integer
-          example: 20
-        totalRows:
-          type: integer
-          example: 25
-        totalPages:
-          type: integer
-          example: 2
-
-    ErrorResponse:
-      type: object
-      properties:
-        errors:
-          type: string
-          example: "Pesan error dari server"
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+            queue_number:
+              type: string
+            status:
+              type: string
+            processed_at:
+              type: string
+              format: date-time
+            completed_at:
+              type: string
+              format: date-time
+            cancellation_reason:
+              type: string
+            cancelled_by:
+              type: string
+              example: "SELLER"
+            store_id:
+              type: string
+            queueDetails:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  quantity:
+                    type: integer
+                  product:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      price:
+                        type: integer
+                      image_url:
+                        type: string

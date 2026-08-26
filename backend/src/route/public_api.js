@@ -5,8 +5,8 @@ import rateLimit from "express-rate-limit";
 
 const publicRouter = express.Router();
 const queueLimiter = rateLimit({
-  windowMs: 1, // 10 menit
-  max: 1,
+  windowMs: 10 * 60 * 1000, // 10 menit (600.000 ms)
+  max: 2, // Maksimal 2 request per IP dalam 10 menit
   message: {
     errors: "Too many requests. Please try again in 10 minutes.",
   },

@@ -1,29 +1,33 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: User Authentication & Profile API
-  description: API untuk mengelola registrasi, autentikasi (login/logout), dan manajemen profil akun user.
+  title: Maxsten API - Authentication & User Profile
   version: 1.0.0
+  description: |
+    Dokumentasi API untuk sistem POS & Mini-ERP Maxsten.
+    Mencakup alur registrasi, autentikasi (login/logout), dan manajemen profil user.
 servers:
-  - url: https://example.com
+  - url: https://api.maxsten.com
     description: Production Server
-tags:
-  - name: Authentication
-    description: Endpoint publik untuk otentikasi (Register, Login, Logout)
-  - name: User Profile
-    description: Endpoint privat (membutuhkan login) untuk manajemen profil akun
+  - url: http://localhost:3000
+    description: Local Development
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+
 paths:
   /api/users:
     post:
       tags:
         - Authentication
       summary: Register User
+      security: [] # Public endpoint
       description: |
         Mendaftarkan akun user baru.
-        Setelah berhasil, user **wajib** melakukan konfirmasi melalui tautan yang dikirim ke email mereka sebelum bisa melakukan login.
 
         **Catatan Khusus (Frontend):**
-        - Jangan langsung arahkan ke Dashboard. Tampilkan pesan "Cek email Anda untuk konfirmasi".
-        - Untuk fitur "Kirim Ulang Email", gunakan SDK Supabase langsung: `supabase.auth.resend({ type: "signup", email })`.
+        - Setelah mendapat respons sukses (201), jangan langsung arahkan user ke Dashboard. Tampilkan pesan "Cek email Anda untuk konfirmasi".
+        - User **wajib** melakukan konfirmasi melalui link di email sebelum bisa login.
       requestBody:
         required: true
         content:
@@ -38,20 +42,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
         "400":
-          description: Bad Request (Email duplikat, format salah, atau ditolak sistem Auth)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                EmailExists:
-                  value:
-                    errors: "That email address already exists"
-                ValidationError:
-                  value:
-                    errors: '"password" length must be at least 8 characters long'
-        "500":
-          description: Internal Server Error (Gagal menyimpan ke database lokal)
+          description: Bad Request (Email duplikat atau format salah)
           content:
             application/json:
               schema:
@@ -61,13 +52,15 @@ paths:
     post:
       tags:
         - Authentication
-      summary: Login
+      summary: Login User
+      security: [] # Public endpoint
       description: |
-        Melakukan autentikasi menggunakan email dan password.
-        Sesi disimpan menggunakan dua cookie HTTP-Only: `access_token` dan `refresh_token`.
-        Oleh karena itu, endpoint ini *tidak* mengembalikan token di dalam JSON body.
+        Proses autentikasi user. 
 
-        **Self-healing:** Jika ada ketidakcocokan email antara database lokal dan sistem auth (misal user ganti email namun webhook gagal), sinkronisasi data akan otomatis terjadi di endpoint ini.
+        **Catatan Khusus:**
+        - Jika data user sudah ada di sistem Auth (Supabase) tapi belum ada di database lokal (Prisma), sistem akan otomatis membuatkannya dengan nama default "User".
+        - **Manajemen Token:** Endpoint ini mengembalikan `access_token` & `refresh_token` di dalam JSON Body **DAN** sekaligus menyimpannya ke dalam `Cookies` (Secure, HttpOnly, SameSite=None). 
+        - Jika Frontend dan Backend berada di root domain yang sama, sangat disarankan menggunakan Cookies agar terhindar dari masalah keamanan XSS dan blokir CORS.
       requestBody:
         required: true
         content:
@@ -77,52 +70,18 @@ paths:
       responses:
         "200":
           description: OK (Login berhasil)
-          headers:
-            Set-Cookie:
-              description: Mengembalikan dua cookie `access_token` dan `refresh_token` dengan konfigurasi `httpOnly`, `Secure`, dan `SameSite=None`.
-              schema:
-                type: string
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserResponse"
-        "400":
-          description: Bad Request (Format email salah / field kosong)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/LoginResponse"
         "401":
           description: Unauthorized (Email atau password salah)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Incorrect email or password"
         "403":
-          description: Forbidden (Email belum diverifikasi atau akun disuspend)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                NotVerified:
-                  value:
-                    errors: "Email not verified"
-                Suspended:
-                  value:
-                    errors: "Account suspended. Please contact support."
-        "409":
-          description: Conflict (Email digunakan oleh profil database lain / anomali langka)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "This email address is already in use by another user. Please contact the admin"
-        "500":
-          description: Internal Server Error (Kendala pada sistem autentikasi upstream)
+          description: Forbidden (Email belum diverifikasi atau akun diblokir)
           content:
             application/json:
               schema:
@@ -132,44 +91,29 @@ paths:
     delete:
       tags:
         - Authentication
-      summary: Logout
+      summary: Logout User
       description: |
-        Menghapus sesi pengguna saat ini. 
-        Endpoint ini menghapus cookie `access_token` dan `refresh_token` dari browser.
+        Menghapus sesi user.
 
-        **Catatan:** Endpoint ini didesain agar selalu mengembalikan respons `200 OK` tanpa memedulikan apakah token sudah *expired* atau invalid di *server side*. Hal ini untuk memastikan *cookie* di browser pengguna tetap dibersihkan.
-      security:
-        - cookieAuth: []
+        **Catatan Khusus (Frontend):**
+        - Backend akan otomatis menghapus `access_token` dan `refresh_token` dari Cookies.
+        - **PENTING:** Jika Frontend menyimpan token secara manual (misal di LocalStorage / State) karena tidak menggunakan Cookies, Frontend **wajib** menghapus token tersebut dari *client-side* saat menerima respons sukses dari endpoint ini.
       responses:
         "200":
-          description: OK (Logout selalu berhasil)
-          headers:
-            Set-Cookie:
-              description: Menghapus cookie `access_token` dan `refresh_token`.
-              schema:
-                type: string
+          description: OK (Logout berhasil)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: string
-                    example: "OK"
-                  message:
-                    type: string
-                    example: "Logout successful"
+                $ref: "#/components/schemas/SuccessResponse"
+        "500":
+          description: Internal Server Error
 
   /api/users/me:
     get:
       tags:
         - User Profile
-      summary: Get Current User
-      description: |
-        Ambil data profil user yang sedang login.
-        Jika `access_token` sudah *expired* namun `refresh_token` masih valid, sesi akan diperpanjang secara otomatis (*silent refresh*) dan cookie baru akan diset di *response headers*.
-      security:
-        - cookieAuth: []
+      summary: Get Current User Profile
+      description: Mengambil data profil user yang sedang login.
       responses:
         "200":
           description: OK
@@ -178,43 +122,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
         "401":
-          description: Unauthorized (Token tidak valid / expired atau mismatch dengan database lokal)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                SessionExpired:
-                  value:
-                    errors: "Session Expired. Please login again."
-                Mismatch:
-                  value:
-                    errors: "User database mismatch"
+          description: Unauthorized (Token tidak valid / expired)
 
     patch:
       tags:
         - User Profile
-      summary: Update User Profile
-      description: |
-        Mengubah profil akun (Saat ini hanya untuk field `name`).
-
-        **Catatan (Frontend):**
-        - Jangan gunakan endpoint ini untuk ganti Email / Password.
-        - Penggantian Email/Password harus dilakukan menggunakan SDK Supabase langsung di sisi client. Sinkronisasi perubahan Email ke sistem database backend akan berjalan otomatis melalui *webhook* di belakang layar.
-      security:
-        - cookieAuth: []
+      summary: Update User Name
+      description: Mengubah nama profil user.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - name
               properties:
                 name:
                   type: string
-                  description: Nama tampilan user
                   example: "Nama Baru"
       responses:
         "200":
@@ -230,117 +153,105 @@ paths:
                       name:
                         type: string
                         example: "Nama Baru"
-        "400":
-          description: Bad Request (Validasi field nama)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not Found (User tidak ditemukan)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "User not found"
-        "500":
-          description: Internal Server Error (Gagal update)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                errors: "Failed to update user profile"
 
     delete:
       tags:
         - User Profile
-      summary: Delete Account
+      summary: Delete Account (Permanently)
       description: |
-        **PERINGATAN: PENGHAPUSAN PERMANEN (HARD DELETE).**
-        Menghapus akun pengguna dari database (berbeda dari menghapus toko yang menggunakan mekanisme *soft-delete*).
+        Menghapus akun user secara **permanen** dari sistem (termasuk Supabase Auth).
+        Toko (*Store*) milik user akan di-*soft delete*, dan Logo toko di *cloud storage* akan dihapus.
 
-        Sistem akan menolak penghapusan (409) jika toko milik pengguna masih memiliki antrean aktif (`BELUM_BAYAR` / `DIPROSES`).
-
-        Saat berhasil, akun di Supabase Auth dan database lokal akan terhapus, lalu cookie auth akan dibersihkan (otomatis ter-logout).
-      security:
-        - cookieAuth: []
+        **Catatan Validasi:**
+        - Akun **TIDAK BISA DIHAPUS** jika toko masih memiliki antrean aktif (status `BELUM_BAYAR` atau `DIPROSES`).
+        - Jika berhasil dihapus, Cookies sesi akan otomatis dibersihkan (Otomatis Logout).
       responses:
         "200":
-          description: OK (Berhasil menghapus akun)
-          headers:
-            Set-Cookie:
-              description: Menghapus cookie otentikasi.
+          description: OK (Akun berhasil dihapus)
+          content:
+            application/json:
               schema:
-                type: string
+                $ref: "#/components/schemas/SuccessResponse"
+        "409":
+          description: Conflict (Ada antrean aktif atau masalah relasi data)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/email:
+    patch:
+      tags:
+        - User Profile
+      summary: Update User Email
+      description: Mengubah alamat email user. Akan ditolak jika email baru sudah terdaftar di sistem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "emailbaru@domain.com"
+      responses:
+        "200":
+          description: OK
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    type: string
-                    example: "OK"
-                  message:
-                    type: string
-                    example: "Account permanently deleted"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      name:
+                        type: string
+        "400":
+          description: Bad Request (Email kosong)
         "409":
-          description: Conflict (Penghapusan ditolak karena kondisi tertentu, misal ada transaksi aktif)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              examples:
-                ActiveQueues:
-                  value:
-                    errors: "You cannot delete your account because your store still has active customer queues."
-                RelationalData:
-                  value:
-                    errors: "We cannot delete the account because there is still data associated with it"
+          description: Conflict (Email sudah digunakan user lain)
 
 components:
   securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Masukkan access token di header Authorization (Bearer {token})
     cookieAuth:
       type: apiKey
       in: cookie
       name: access_token
-      description: Cookie based authentication (`access_token` dan `refresh_token`)
+      description: Autentikasi otomatis jika browser mengirimkan cookie `access_token`
 
   schemas:
     RegisterInput:
       type: object
       required:
+        - name
         - email
         - password
-        - name
       properties:
+        name:
+          type: string
+          example: "Aliyyul Gemini"
         email:
           type: string
           format: email
-          maxLength: 100
-          example: "user@example.com"
+          example: "aliyyulgemini@gmail.com"
         password:
           type: string
           minLength: 8
-          maxLength: 100
           example: "rahasia123"
-        name:
-          type: string
-          maxLength: 100
-          example: "Nama User"
 
     LoginInput:
       type: object
@@ -351,7 +262,7 @@ components:
         email:
           type: string
           format: email
-          example: "user@example.com"
+          example: "aliyyulgemini@gmail.com"
         password:
           type: string
           example: "rahasia123"
@@ -364,14 +275,43 @@ components:
           properties:
             email:
               type: string
-              example: "user@example.com"
+              example: "aliyyulgemini@gmail.com"
             name:
               type: string
-              example: "Nama User"
+              example: "Aliyyul Gemini"
+
+    LoginResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            email:
+              type: string
+              example: "aliyyulgemini@gmail.com"
+            name:
+              type: string
+              example: "Aliyyul Gemini"
+            access_token:
+              type: string
+              example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            refresh_token:
+              type: string
+              example: "abc123xyz..."
+
+    SuccessResponse:
+      type: object
+      properties:
+        data:
+          type: string
+          example: "OK"
+        message:
+          type: string
+          example: "Operation successful"
 
     ErrorResponse:
       type: object
       properties:
         errors:
           type: string
-          example: "Pesan error dari server"
+          example: "Pesan error spesifik akan muncul di sini"
