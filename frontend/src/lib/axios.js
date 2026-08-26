@@ -53,7 +53,7 @@ const errorMap = {
     "Grup add-on tidak bisa dihapus karena digunakan produk dalam antrian aktif",
   "You cannot delete your account because your store still has active customer queues":
     "Akun tidak bisa dihapus karena toko masih memiliki antrian aktif",
-    "Auth session missing!":"Sesi tidak ditemukan"
+  "Auth session missing!": "Sesi tidak ditemukan",
 };
 
 function translateError(originalMsg) {
@@ -71,8 +71,21 @@ function translateError(originalMsg) {
 // =======================================
 
 privateApi.interceptors.request.use((config) => {
-  const accessToken = localStorage.getItem("access_token");
-  const refreshToken = localStorage.getItem("refresh_token");
+  const rawSession = localStorage.getItem("sb-rqoypwfpsiyvrkhqzfwm-auth-token");
+
+  let supabaseSession = null;
+
+  try {
+    supabaseSession = rawSession ? JSON.parse(rawSession) : null;
+  } catch {
+    supabaseSession = null;
+  }
+
+  const accessToken =
+    localStorage.getItem("access_token") || supabaseSession?.access_token;
+
+  const refreshToken =
+    localStorage.getItem("refresh_token") || supabaseSession?.refresh_token;
 
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
