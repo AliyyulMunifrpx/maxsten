@@ -4,32 +4,21 @@ import { prisma } from "../application/database.js";
 export async function socketAuth(socket, next) {
   try {
     // 1. CARI ACCESS TOKEN, REFRESH TOKEN, & GUEST ID
-    // Coba dari `auth` payload (dari client/React) dulu, kalau kosong ambil dari Cookie
+    // Seller MURNI ngambil dari auth payload (karena cookie udah dihapus)
     let accessToken = socket.handshake.auth?.token;
     let refreshToken = socket.handshake.auth?.refreshToken;
+
+    // Buyer ngambil dari auth payload, ATAU fallback ke Cookie (karena guest_id masih pakai cookie)
     let guestId = socket.handshake.auth?.guestId;
 
     const cookieHeader = socket.handshake.headers.cookie;
 
-    if (cookieHeader) {
-      if (!accessToken) {
-        accessToken = cookieHeader
-          ?.split(";")
-          .find((c) => c.trim().startsWith("access_token="))
-          ?.split("=")[1];
-      }
-      if (!refreshToken) {
-        refreshToken = cookieHeader
-          ?.split(";")
-          .find((c) => c.trim().startsWith("refresh_token="))
-          ?.split("=")[1];
-      }
-      if (!guestId) {
-        guestId = cookieHeader
-          ?.split(";")
-          .find((c) => c.trim().startsWith("guest_id="))
-          ?.split("=")[1];
-      }
+    // CUKUP cari guest_id di cookie, token JWT udah nggak ada wujudnya di situ
+    if (!guestId && cookieHeader) {
+      guestId = cookieHeader
+        ?.split(";")
+        .find((c) => c.trim().startsWith("guest_id="))
+        ?.split("=")[1];
     }
 
     // 2. Jika tidak ada token sama sekali, anggap sebagai Guest
@@ -72,9 +61,8 @@ export async function socketAuth(socket, next) {
       error = null;
 
       // CATATAN PENTING UNTUK SOCKET:
-      // Karena di middleware Socket tidak ada objek `res` (response) untuk ngeset Cookie/Header,
+      // Karena di middleware Socket tidak ada objek `res` untuk ngeset Header,
       // kita simpan token baru ini di dalam objek `socket`.
-      // Nanti kita bisa kirim balik token ini ke frontend setelah koneksi berhasil.
       socket.newTokens = {
         accessToken: refreshData.session.access_token,
         refreshToken: refreshData.session.refresh_token,
@@ -89,7 +77,6 @@ export async function socketAuth(socket, next) {
     // ==========================================
     // 6. Validasi user database
     // ==========================================
-    // Samakan dengan authMiddleware: pakai supabase_id
     const prismaUser = await prisma.user.findUnique({
       where: { supabase_id: user.id },
       select: { id: true, supabase_id: true, email: true, name: true },

@@ -13,7 +13,6 @@ servers:
 
 security:
   - bearerAuth: []
-  - cookieAuth: []
 
 paths:
   /api/users:
@@ -59,8 +58,8 @@ paths:
 
         **Catatan Khusus:**
         - Jika data user sudah ada di sistem Auth (Supabase) tapi belum ada di database lokal (Prisma), sistem akan otomatis membuatkannya dengan nama default "User".
-        - **Manajemen Token:** Endpoint ini mengembalikan `access_token` & `refresh_token` di dalam JSON Body **DAN** sekaligus menyimpannya ke dalam `Cookies` (Secure, HttpOnly, SameSite=None). 
-        - Jika Frontend dan Backend berada di root domain yang sama, sangat disarankan menggunakan Cookies agar terhindar dari masalah keamanan XSS dan blokir CORS.
+        - **Manajemen Token (Bearer API):** Endpoint ini mengembalikan `access_token` & `refresh_token` MURNI di dalam JSON Body. 
+        - Frontend **WAJIB** menyimpan token ini (misalnya di LocalStorage atau State Management) dan menyertakannya di header `Authorization: Bearer <token>` pada setiap request API yang membutuhkan autentikasi.
       requestBody:
         required: true
         content:
@@ -93,11 +92,10 @@ paths:
         - Authentication
       summary: Logout User
       description: |
-        Menghapus sesi user.
+        Menghapus sesi user dari sistem backend.
 
         **Catatan Khusus (Frontend):**
-        - Backend akan otomatis menghapus `access_token` dan `refresh_token` dari Cookies.
-        - **PENTING:** Jika Frontend menyimpan token secara manual (misal di LocalStorage / State) karena tidak menggunakan Cookies, Frontend **wajib** menghapus token tersebut dari *client-side* saat menerima respons sukses dari endpoint ini.
+        - **PENTING:** Frontend **wajib** menghapus token dari memori lokal (LocalStorage/State) saat menerima respons sukses dari endpoint ini, agar UI kembali ke halaman Login.
       responses:
         "200":
           description: OK (Logout berhasil)
@@ -166,7 +164,7 @@ paths:
 
         **Catatan Validasi:**
         - Akun **TIDAK BISA DIHAPUS** jika toko masih memiliki antrean aktif (status `BELUM_BAYAR` atau `DIPROSES`).
-        - Jika berhasil dihapus, Cookies sesi akan otomatis dibersihkan (Otomatis Logout).
+        - Jika berhasil dihapus, Frontend wajib membersihkan token dari penyimpanan lokal (Otomatis Logout).
       responses:
         "200":
           description: OK (Akun berhasil dihapus)
@@ -227,11 +225,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Masukkan access token di header Authorization (Bearer {token})
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
-      description: Autentikasi otomatis jika browser mengirimkan cookie `access_token`
 
   schemas:
     RegisterInput:

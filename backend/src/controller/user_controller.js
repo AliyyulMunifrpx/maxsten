@@ -12,28 +12,11 @@ const register = async (req, res, next) => {
     next(e);
   }
 };
-
 const login = async (req, res, next) => {
   try {
     const result = await userService.login(req.body);
 
-    // Set Access Token ke Cookie
-    res.cookie("access_token", result.access_token, {
-      httpOnly: true, // Aman dari bacaan JavaScript (XSS)
-      secure: true, // Wajib true karena beda domain & sameSite "none"
-      sameSite: "none", // Syarat wajib beda domain (Cross-Origin)
-      maxAge: result.access_token_expires * 1000,
-    });
-
-    // Set Refresh Token ke Cookie
-    res.cookie("refresh_token", result.refresh_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 hari
-    });
-
-    // PENTING: Potong response. Jangan masukkan token ke JSON body!
+    // Murni mengembalikan token via JSON untuk digunakan sebagai Bearer Token
     res.status(200).json({
       data: {
         email: result.email,
@@ -81,30 +64,15 @@ const syncEmailWebhook = async (req, res, next) => {
 };
 const logout = async (req, res, next) => {
   try {
-    // 1. Ambil token dari cookie atau Header (Ini udah cakep banget logikanya!)
-    const accessToken =
-      req.cookies?.access_token || req.headers.authorization?.split(" ")[1];
+    // 1. Ambil token HANYA dari Header Authorization
+    const accessToken = req.headers.authorization?.split(" ")[1];
 
     // 2. Lempar token ke service untuk dihanguskan di Supabase
     if (accessToken) {
       await userService.logout(accessToken);
     }
 
-    // 3. Bersihkan cookie (Tambahin path: "/")
-    res.clearCookie("access_token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/", // <--- INI WAJIB ADA
-    });
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/", // <--- INI WAJIB ADA
-    });
-
-    // 4. Kasih respons sukses
+    // 3. Kasih respons sukses (Clear Cookie dihapus karena sudah tidak pakai cookie)
     res.status(200).json({
       data: "OK",
       message: "Logout successful",
@@ -118,20 +86,7 @@ const deleteUser = async (req, res, next) => {
   try {
     await userService.deleteUser(req.user.id, req.user.supabase_id);
 
-    // Otomatis logout-in usernya (Tambahin path: "/")
-    res.clearCookie("access_token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/", // <--- INI WAJIB ADA
-    });
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/", // <--- INI WAJIB ADA
-    });
-
+    // Clear Cookie dihapus karena sudah tidak pakai cookie
     res.status(200).json({
       data: "OK",
       message: "Account permanently deleted",
@@ -159,5 +114,5 @@ export default {
   syncEmailWebhook,
   logout,
   deleteUser,
-  updateEmail
+  updateEmail,
 };

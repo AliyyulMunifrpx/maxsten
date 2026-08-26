@@ -2,14 +2,13 @@ import { prisma } from "../application/database.js";
 import { supabase } from "../application/supabase.js";
 
 export const authMiddleware = async (req, res, next) => {
-  // 1. CARI ACCESS TOKEN: Coba dari Header (React) dulu, kalau kosong ambil dari Cookie (Vitest)
+  // 1. CARI ACCESS TOKEN: HANYA dari Header Authorization
   let accessToken = req.headers.authorization?.startsWith("Bearer ")
     ? req.headers.authorization.split(" ")[1]
-    : req.cookies.access_token;
+    : null;
 
-  // 2. CARI REFRESH TOKEN: Coba dari Custom Header (opsional untuk React) atau Cookie (Vitest)
-  let refreshToken =
-    req.headers["x-refresh-token"] || req.cookies.refresh_token;
+  // 2. CARI REFRESH TOKEN: HANYA dari Custom Header
+  let refreshToken = req.headers["x-refresh-token"];
 
   if (!accessToken && !refreshToken) {
     return res.status(401).json({ errors: "Unauthorized" }).end();
@@ -29,9 +28,7 @@ export const authMiddleware = async (req, res, next) => {
       });
 
     if (refreshError || !refreshData.session) {
-      // Hapus cookie (buat Vitest)
-      res.clearCookie("access_token");
-      res.clearCookie("refresh_token");
+      // Clear Cookie dihapus, langsung return 401
       return res
         .status(401)
         .json({ errors: "Session Expired. Please login again." })
@@ -41,24 +38,8 @@ export const authMiddleware = async (req, res, next) => {
     // Update token baru
     accessToken = refreshData.session.access_token;
 
-    // (TETAP ADA BUAT VITEST): Set cookie ulang dengan token baru
-    res.cookie("access_token", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
-      path: "/",
-      maxAge: 1000 * 60 * 60,
-    });
-    res.cookie("refresh_token", refreshData.session.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "none",
-      path: "/",
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-    });
-
-    // (TAMBAHAN BUAT REACT): Kirim token baru lewat Response Header.
-    // Nanti Axios di React bisa nangkep header ini buat nge-update localStorage.
+    // Kirim token baru lewat Response Header.
+    // Axios di React bisa nangkep header ini (lewat interceptor) buat nge-update localStorage.
     res.setHeader("x-new-access-token", accessToken);
     res.setHeader("x-new-refresh-token", refreshData.session.refresh_token);
 
