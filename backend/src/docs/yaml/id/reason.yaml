@@ -8,6 +8,8 @@ servers:
     description: Production Server
 
 # SUDAH DIREVISI: Menghapus cookieAuth, mengganti dengan refreshToken
+# Dipertahankan sebagai fallback; setiap operation di bawah sekarang
+# punya security block sendiri supaya nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
   - refreshToken: []
@@ -18,6 +20,10 @@ paths:
       tags:
         - Seller / Cancel Reasons
       summary: Get All Cancel Reasons
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil daftar seluruh template alasan pembatalan yang dimiliki oleh toko (Store).
 
@@ -63,6 +69,10 @@ paths:
       tags:
         - Seller / Cancel Reasons
       summary: Create Cancel Reason
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Membuat template alasan pembatalan baru.
 
@@ -115,6 +125,10 @@ paths:
       tags:
         - Seller / Cancel Reasons
       summary: Update Cancel Reason
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengubah teks alasan pembatalan. Terdapat perlindungan *Anti-Duplikat* yang sama seperti pada endpoint Create.
       parameters:
@@ -170,6 +184,10 @@ paths:
       tags:
         - Seller / Cancel Reasons
       summary: Delete Cancel Reason (Soft Delete)
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus template alasan pembatalan.
 
