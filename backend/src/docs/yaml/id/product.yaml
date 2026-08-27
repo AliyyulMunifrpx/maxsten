@@ -11,7 +11,6 @@ servers:
 
 security:
   - bearerAuth: []
-  - cookieAuth: []
 
 paths:
   /api/stores/me/{publicId}/products:
@@ -23,19 +22,23 @@ paths:
         Mengambil daftar seluruh produk milik toko. Akses ini menggunakan `publicId` toko.
 
         **Catatan Khusus (Frontend):**
+
         - **Prefetch Pagination:** Mengembalikan `currentPage` dan `nextPage` sekaligus. Saat di halaman 1, data halaman 2 sudah tersedia di `nextPage`. Panggil API untuk halaman 2 secara *background* hanya ketika *user* mulai melihat halaman 2.
         - **Metrik total_sold:** Terdapat field `total_sold` di setiap produk yang dihitung *real-time* dari total pesanan berstatus `SELESAI`. Bisa digunakan untuk menampilkan label "Terjual: 150".
+
       parameters:
         - name: publicId
           in: path
           required: true
           schema:
             type: string
+
         - name: page
           in: query
           schema:
             type: integer
             default: 1
+
       responses:
         "200":
           description: OK
@@ -43,6 +46,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductListResponse"
+
         "404":
           description: Not Found
 
@@ -55,19 +59,24 @@ paths:
         Menambahkan produk baru beserta gambar, varian, dan add-on.
 
         **Business Logic (PENTING BUAT FRONTEND):**
-        - **Multipart/Form-Data:** Wajib menggunakan format ini karena ada *upload* gambar (`image`).
-        - **Parsing Array:** Karena menggunakan form-data, *field* array seperti `variants` dan `addon_group_ids` **wajib diubah menjadi JSON string** (`JSON.stringify()`) sebelum dikirim. Backend akan melakukan `JSON.parse()` secara otomatis.
+
+        - **Multipart/Form-Data:** Wajib menggunakan format ini karena ada upload gambar (`image`).
+        - **Parsing Array:** Karena menggunakan form-data, field array seperti `variants` dan `addon_group_ids` wajib diubah menjadi JSON string (`JSON.stringify()`) sebelum dikirim. Backend akan melakukan `JSON.parse()` secara otomatis.
+
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               $ref: "#/components/schemas/CreateProductInput"
+
       responses:
         "201":
           description: Created
+
         "400":
           description: Bad Request (Format data salah atau add-on group tidak valid)
+
         "409":
           description: Conflict (Nama produk atau nama varian sudah ada)
 
@@ -77,12 +86,14 @@ paths:
         - Product
       summary: Get Product Detail
       description: Mengambil detail lengkap satu produk beserta varian, add-on, dan akumulasi `total_sold`.
+
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
+
       responses:
         "200":
           description: OK
@@ -93,6 +104,7 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ProductItem"
+
         "404":
           description: Not Found
 
@@ -101,29 +113,35 @@ paths:
         - Product
       summary: Update Product Information
       description: |
-        Mengubah data produk (tanpa gambar).
+        Mengubah data produk tanpa gambar.
 
         **Business Logic (FITUR FREEZE):**
-        - Jika produk ini sedang berada dalam **antrean aktif** (`BELUM_BAYAR` / `DIPROSES`), maka `price`, `variants`, dan `addon_group_ids` **TIDAK BISA DIUBAH** (akan melempar `400 Bad Request`).
+
+        - Jika produk ini sedang berada dalam **antrean aktif** (`BELUM_BAYAR` / `DIPROSES`), maka `price`, `variants`, dan `addon_group_ids` **TIDAK BISA DIUBAH** dan akan mengembalikan `400 Bad Request`.
         - Dalam kondisi antrean aktif, hanya `name` dan `description` yang diizinkan untuk diubah.
         - Terdapat *Pessimistic Locking* di sisi *backend* untuk mencegah bentrok data antar kasir.
+
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
+
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateProductInput"
+
       responses:
         "200":
           description: OK
+
         "400":
           description: Bad Request (Ditolak karena ada pesanan aktif)
+
         "409":
           description: Conflict (Nama sudah dipakai atau terjadi bentrok update)
 
@@ -133,19 +151,24 @@ paths:
       summary: Delete Product (Soft Delete)
       description: |
         Menghapus produk dan seluruh variannya secara *soft delete* (`is_delete: true`).
-        File gambar di Supabase Storage akan dihapus permanen.
+
+        File gambar di Supabase Storage akan dihapus secara permanen.
 
         **Business Logic (BLOCK DELETE):**
-        - Produk **TIDAK BISA DIHAPUS** jika masih terdapat antrean aktif (`BELUM_BAYAR` / `DIPROSES`) yang memesan produk ini. FE harus menampilkan peringatan kepada user.
+
+        Produk **TIDAK BISA DIHAPUS** jika masih terdapat antrean aktif (`BELUM_BAYAR` / `DIPROSES`) yang memesan produk ini. Frontend harus menampilkan peringatan kepada user.
+
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
+
       responses:
         "200":
           description: OK
+
         "400":
           description: Bad Request (Gagal dihapus karena ada antrean aktif)
 
@@ -154,13 +177,15 @@ paths:
       tags:
         - Product
       summary: Update Product Image
-      description: Mengunggah dan mengganti gambar produk. Gambar lama di Supabase akan otomatis dihapus.
+      description: Mengunggah dan mengganti gambar produk. Gambar lama di Supabase Storage akan otomatis dihapus.
+
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
+
       requestBody:
         required: true
         content:
@@ -174,6 +199,7 @@ paths:
                   type: string
                   format: binary
                   description: File gambar produk
+
       responses:
         "200":
           description: OK
@@ -184,12 +210,14 @@ paths:
         - Product
       summary: Toggle Product Availability
       description: Menonaktifkan atau mengaktifkan ketersediaan produk (Habis/Tersedia). Sangat berguna bagi kasir untuk mematikan produk dengan cepat (Toggle).
+
       parameters:
         - name: productId
           in: path
           required: true
           schema:
             type: string
+
       requestBody:
         required: true
         content:
@@ -202,6 +230,7 @@ paths:
                 is_available:
                   type: boolean
                   example: false
+
       responses:
         "200":
           description: OK
@@ -212,11 +241,6 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: access_token
 
   schemas:
     ProductListResponse:
@@ -229,20 +253,25 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/ProductItem"
+
             nextPage:
               type: array
               items:
                 $ref: "#/components/schemas/ProductItem"
+
             pagination:
               type: object
               properties:
                 currentPage:
                   type: integer
+
                 limit:
                   type: integer
                   example: 20
+
                 totalRows:
                   type: integer
+
                 totalPages:
                   type: integer
 
@@ -251,19 +280,26 @@ components:
       properties:
         id:
           type: string
+
         name:
           type: string
+
         description:
           type: string
+
         price:
           type: integer
+
         image_url:
           type: string
+
         is_available:
           type: boolean
+
         total_sold:
           type: integer
           description: Total akumulasi penjualan dari antrean SELESAI
+
         variants:
           type: array
           items:
@@ -271,10 +307,13 @@ components:
             properties:
               id:
                 type: string
+
               name:
                 type: string
+
               additional_price:
                 type: integer
+
         productAddonGroups:
           type: array
           items:
@@ -285,8 +324,10 @@ components:
                 properties:
                   id:
                     type: string
+
                   name:
                     type: string
+
                   addons:
                     type: array
                     items:
@@ -294,8 +335,10 @@ components:
                       properties:
                         id:
                           type: string
+
                         name:
                           type: string
+
                         price:
                           type: integer
 
@@ -307,17 +350,22 @@ components:
       properties:
         name:
           type: string
+
         description:
           type: string
+
         price:
           type: integer
+
         image:
           type: string
           format: binary
           description: File gambar produk
+
         variants:
           type: string
           description: 'Array of objects (di-stringify). Format: [{"name": "Besar", "additional_price": 5000}]'
+
         addon_group_ids:
           type: string
           description: 'Array of strings (di-stringify). Format: ["uuid-addon-1", "uuid-addon-2"]'
@@ -327,10 +375,13 @@ components:
       properties:
         name:
           type: string
+
         description:
           type: string
+
         price:
           type: integer
+
         variants:
           type: array
           description: Harus menggunakan JSON array (bukan stringified karena ini `application/json`)
@@ -340,10 +391,13 @@ components:
               id:
                 type: string
                 description: Isi jika mengupdate varian lama. Kosongkan jika varian baru.
+
               name:
                 type: string
+
               additional_price:
                 type: integer
+
         addon_group_ids:
           type: array
           items:
