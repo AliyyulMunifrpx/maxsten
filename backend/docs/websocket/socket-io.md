@@ -1,52 +1,67 @@
----
-
 # Dokumentasi WebSocket Events
 
-## Dokumentasi event real-time (Socket.IO) yang digunakan sistem di luar REST API standar.
-
-## Koneksi & Autentikasi
-
-Terhubung ke server Socket.IO yang sama dengan base URL REST API.
-
-Autentikasi dilakukan **satu kali saat koneksi Socket.IO dibuat** melalui payload `socket.handshake.auth`. Sistem ini menerapkan arsitektur **100% Cookie-less**.
-
-### Tabel Pemetaan Sumber Data (Murni Payload Auth)
-
-| Data | Sumber Auth (Payload) | Deskripsi |
-| --- | --- | --- |
-| **Access Token** | `token` | Digunakan untuk autentikasi user (Seller) |
-| **Guest ID** | `guestId` | Digunakan untuk identifikasi pembeli tanpa akun (Buyer) |
+Dokumentasi ini menjelaskan event real-time berbasis **Socket.IO** yang digunakan oleh sistem di luar REST API standar.
 
 ---
+
+## 1. Koneksi & Autentikasi
+
+Client terhubung ke server **Socket.IO** menggunakan base URL yang sama dengan REST API.
+
+Autentikasi dilakukan **satu kali saat koneksi Socket.IO dibuat** melalui payload `socket.handshake.auth`.
+
+> Sistem menggunakan arsitektur **100% cookie-less**, sehingga autentikasi tidak menggunakan cookie maupun `withCredentials`.
+
+### Pemetaan Sumber Data Autentikasi
+
+| Data             | Field pada Auth Payload | Deskripsi                                     |
+| ---------------- | ----------------------- | --------------------------------------------- |
+| **Access Token** | `token`                 | Digunakan untuk autentikasi Seller            |
+| **Guest ID**     | `guestId`               | Digunakan untuk identifikasi Buyer tanpa akun |
 
 ### Contoh Koneksi dari Frontend
 
 ```javascript
 const socket = io(SOCKET_URL, {
-  // withCredentials: true sudah DIHAPUS karena tidak pakai cookie sama sekali
   auth: {
-    token: accessToken, // Khusus Seller (kosongkan atau jangan kirim jika Guest)
-    guestId: guestId,   // Khusus Buyer (kosongkan atau jangan kirim jika Seller)
+    token: accessToken, // Khusus Seller
+    guestId: guestId,   // Khusus Buyer
   },
 });
-
 ```
 
-*Catatan: Frontend tidak wajib mengirim ulang data identitas di setiap event. Setelah autentikasi berhasil, identitas disimpan oleh server di memori koneksi (`socket.user`).*
+> Untuk koneksi Buyer, `token` dapat dikosongkan atau tidak dikirim.
+> Untuk koneksi Seller, `guestId` tidak perlu dikirim.
+
+Setelah autentikasi berhasil, server menyimpan identitas pengguna pada memori koneksi melalui:
+
+```javascript
+socket.user;
+```
+
+Frontend **tidak perlu mengirim ulang data identitas pada setiap event**.
 
 ---
 
-### Aturan Autentikasi
+# 2. Aturan Autentikasi
 
-#### 1. Autentikasi Buyer (Guest)
+## 2.1 Autentikasi Buyer (Guest)
 
-* Jika `token` tidak ada di payload, server memperlakukan koneksi sebagai **guest** (pembeli).
-* Server **HANYA** membaca identitas dari payload `auth.guestId`.
-* Jika `guestId` kosong/tidak dikirim, koneksi langsung ditolak dengan pesan:
-> `Unauthorized: Missing auth tokens and guest identity`
+Jika `token` tidak tersedia pada payload autentikasi, server akan memperlakukan koneksi tersebut sebagai **Buyer/Guest**.
 
+Server hanya membaca identitas guest dari:
 
-* Jika berhasil, server menginisiasi sesi guest:
+```javascript
+auth.guestId;
+```
+
+Jika `guestId` kosong atau tidak dikirim, koneksi akan langsung ditolak dengan pesan:
+
+```text
+Unauthorized: Missing auth tokens and guest identity
+```
+
+Jika autentikasi berhasil, server akan menginisialisasi user sebagai berikut:
 
 ```javascript
 socket.user = {
@@ -54,48 +69,82 @@ socket.user = {
   role: "buyer",
   name: "Guest",
 };
-
 ```
 
-#### 2. Autentikasi Seller
+---
 
-* Seller **WAJIB** mengirim access token secara manual melalui `auth: { token }`.
-* Setelah validasi lewat Supabase Auth, server mencari user terkait di database berdasarkan `supabase_id`.
-* Jika ditemukan, server mengeset:
+## 2.2 Autentikasi Seller
+
+Seller wajib mengirimkan access token melalui payload:
+
+```javascript
+auth: {
+  token: accessToken,
+}
+```
+
+Server kemudian akan:
+
+1. Memvalidasi token melalui Supabase Auth.
+2. Mencari user terkait di database berdasarkan `supabase_id`.
+3. Menyimpan data user ke `socket.user`.
+
+Contoh hasilnya:
 
 ```javascript
 socket.user = {
   ...prismaUser,
   role: "seller",
 };
-
 ```
 
-#### 3. Penanganan Akses Kedaluwarsa (Expired Token)
+---
 
-* **PENTING UNTUK FRONTEND:** Socket.IO server **TIDAK** melakukan auto-refresh token untuk mencegah *Race Condition*.
-* Jika `token` yang dikirim sudah kedaluwarsa atau tidak valid, koneksi socket akan langsung ditolak/diputus.
-* Frontend harus mendengarkan event error ini. Jika terjadi *Unauthorized* pada socket, Frontend bertanggung jawab memanggil API REST khusus Refresh Token (`POST /api/users/refresh`), mendapatkan token baru, lalu menginisiasi ulang (*reconnect*) koneksi Socket.IO menggunakan token yang baru tersebut.
+## 2.3 Penanganan Access Token Kedaluwarsa
 
-#### 4. Penanganan Error Koneksi
+> **Penting untuk Frontend**
 
-Frontend wajib memasang *listener* untuk menangkap kegagalan koneksi:
+Socket.IO server **tidak melakukan auto-refresh token**. Hal ini dilakukan untuk mencegah potensi *race condition* pada proses autentikasi dan koneksi.
+
+Jika token yang dikirim sudah kedaluwarsa atau tidak valid, koneksi socket akan langsung ditolak.
+
+Frontend bertanggung jawab untuk:
+
+1. Mendeteksi error autentikasi.
+2. Memanggil REST API Refresh Token.
+3. Menyimpan token baru.
+4. Memperbarui token Socket.IO.
+5. Melakukan koneksi ulang.
+
+Endpoint refresh token:
+
+```text
+POST /api/users/refresh
+```
+
+---
+
+## 2.4 Penanganan Error Koneksi
+
+Frontend wajib memasang listener untuk menangkap kegagalan koneksi Socket.IO.
 
 ```javascript
-socket.on("connect_error", (error) => {
+socket.on("connect_error", async (error) => {
   console.error("Socket Error:", error.message);
-  
-  // Contoh penanganan Auto-Refresh dari sisi Frontend (Seller):
-  if (error.message.includes("Invalid token") || error.message.includes("Expired")) {
-      // 1. Panggil REST API Refresh Token
-      // 2. Update localStorage/State
-      // 3. Panggil socket.connect() ulang dengan token baru
+
+  if (
+    error.message.includes("Invalid token") ||
+    error.message.includes("Expired")
+  ) {
+    // 1. Panggil REST API refresh token
+    // 2. Simpan token baru
+    // 3. Update socket.auth
+    // 4. Lakukan reconnect
   }
 });
-
 ```
 
-**Kemungkinan pesan error dari server:**
+Kemungkinan pesan error dari server:
 
 * `Unauthorized: Missing auth tokens and guest identity`
 * `Unauthorized: Invalid token`
@@ -103,79 +152,141 @@ socket.on("connect_error", (error) => {
 
 ---
 
-## Event yang Dikirim: Client → Server
+# 3. Event Client → Server
 
-| Event | Digunakan Oleh | Payload | Efek |
-| --- | --- | --- | --- |
-| **`JOIN_STORE_ROOM`** | Seller | — (kosong) | Bergabung ke room `TOKO_<store.id>` milik store-nya sendiri |
-| **`JOIN_QUEUE_ROOM`** | Buyer | `queueId` (string) | Bergabung ke room `ANTREAN_<queueId>` setelah validasi kepemilikan |
-| **`LEAVE_QUEUE_ROOM`** | Buyer | `queueId` (string) | Keluar dari room `ANTREAN_<queueId>` |
+| Event              | Digunakan Oleh | Payload   | Fungsi                             |
+| ------------------ | -------------- | --------- | ---------------------------------- |
+| `JOIN_STORE_ROOM`  | Seller         | —         | Bergabung ke room store miliknya   |
+| `JOIN_QUEUE_ROOM`  | Buyer          | `queueId` | Bergabung ke room antrean tertentu |
+| `LEAVE_QUEUE_ROOM` | Buyer          | `queueId` | Keluar dari room antrean tertentu  |
 
-### Detail Event Client → Server
+---
 
-#### `JOIN_STORE_ROOM`
+## 3.1 `JOIN_STORE_ROOM`
 
-* Digunakan seller untuk bergabung ke room store mereka. Server menggunakan identitas dari `socket.user`, sehingga tidak perlu `storeId` di payload.
-* **Room:** `TOKO_<store.id>`
-* **Penggunaan:**
+Digunakan oleh Seller untuk bergabung ke room store miliknya sendiri.
+
+Frontend tidak perlu mengirim `storeId` karena server menggunakan identitas dari:
+
+```javascript
+socket.user;
+```
+
+Format room:
+
+```text
+TOKO_<store.id>
+```
+
+### Penggunaan
 
 ```javascript
 socket.emit("JOIN_STORE_ROOM");
-
 ```
 
-#### `JOIN_QUEUE_ROOM`
+---
 
-* Digunakan buyer untuk bergabung ke room antrean tertentu setelah server memverifikasi kepemilikan antrean di database:
+## 3.2 `JOIN_QUEUE_ROOM`
+
+Digunakan oleh Buyer untuk bergabung ke room antrean tertentu.
+
+Sebelum mengizinkan user bergabung, server akan memverifikasi bahwa antrean tersebut benar-benar dimiliki oleh guest yang sedang terhubung.
+
+Contoh validasi:
 
 ```javascript
 const queue = await prisma.queue.findFirst({
   where: {
     id: queueId,
-    guest_id: socket.user.id, // Keamanan ketat agar tidak bisa intip pesanan orang lain
+    guest_id: socket.user.id,
   },
 });
-
 ```
 
-* Jika valid, akan join ke room `ANTREAN_<queueId>`. Jika tidak valid atau tidak ditemukan, server membalas dengan event `ROOM_ERROR`.
-* **Penggunaan:**
+Validasi ini bertujuan mencegah Buyer mengakses atau menerima update antrean milik pengguna lain.
+
+Jika valid, socket akan bergabung ke room:
+
+```text
+ANTREAN_<queueId>
+```
+
+Jika antrean tidak ditemukan atau tidak dimiliki oleh user tersebut, server akan mengirim event:
+
+```text
+ROOM_ERROR
+```
+
+### Penggunaan
 
 ```javascript
 socket.emit("JOIN_QUEUE_ROOM", "uuid-antrean-123");
-
-```
-
-#### `LEAVE_QUEUE_ROOM`
-
-* Digunakan saat buyer meninggalkan halaman detail status pesanan, agar tidak lagi menerima update yang tidak relevan (menghemat memori browser dan server).
-* **Penggunaan:**
-
-```javascript
-socket.emit("LEAVE_QUEUE_ROOM", "uuid-antrean-123");
-
 ```
 
 ---
 
-## Event yang Dikirim: Server → Client
+## 3.3 `LEAVE_QUEUE_ROOM`
 
-| Event | Room Target | Dipicu Oleh | Payload |
-| --- | --- | --- | --- |
-| **`NEW_QUEUE`** | `TOKO_<store.id>` | Buyer membuat antrean baru | Objek antrean baru |
-| **`STATUS_UPDATED`** | `ANTREAN_<queueId>` & `TOKO_<store_id>` | Perubahan status antrean | `{ id, status, reason, triggered_by }` |
-| **`ROOM_ERROR`** | Socket pengirim | Gagal bergabung ke room | `{ errors: string }` |
+Digunakan ketika Buyer meninggalkan halaman detail status pesanan.
 
-### Detail Event Server → Client
+Tujuannya agar client tidak lagi menerima update yang tidak relevan dan membantu mengurangi penggunaan resource pada browser maupun server.
 
-#### `NEW_QUEUE`
+### Penggunaan
 
-* Dikirim ke room store saat buyer berhasil membuat antrean baru (field `store` di-destructure/dihapus sebelum dikirim). Digunakan seller untuk memicu notifikasi suara/visual di dashboard secara real-time.
+```javascript
+socket.emit("LEAVE_QUEUE_ROOM", "uuid-antrean-123");
+```
 
-#### `STATUS_UPDATED`
+---
 
-* Digunakan untuk semua perubahan status antrean.
-* **Payload Dasar:**
+# 4. Event Server → Client
+
+| Event            | Room Target                               | Dipicu Oleh                | Payload                                |
+| ---------------- | ----------------------------------------- | -------------------------- | -------------------------------------- |
+| `NEW_QUEUE`      | `TOKO_<store.id>`                         | Buyer membuat antrean baru | Objek antrean baru                     |
+| `STATUS_UPDATED` | `ANTREAN_<queueId>` dan `TOKO_<store_id>` | Perubahan status antrean   | `{ id, status, reason, triggered_by }` |
+| `ROOM_ERROR`     | Socket pengirim                           | Gagal bergabung ke room    | `{ errors: string }`                   |
+
+---
+
+## 4.1 `NEW_QUEUE`
+
+Event ini dikirim ke room store ketika Buyer berhasil membuat antrean baru.
+
+Target room:
+
+```text
+TOKO_<store.id>
+```
+
+Sebelum data dikirim, field `store` akan dihapus dari objek antrean.
+
+Event ini dapat digunakan Seller untuk:
+
+* Menampilkan notifikasi real-time.
+* Memutar notifikasi suara.
+* Memperbarui daftar antrean.
+* Menampilkan indikator pesanan baru pada dashboard.
+
+---
+
+## 4.2 `STATUS_UPDATED`
+
+Event ini digunakan untuk memberi tahu perubahan status antrean secara real-time.
+
+Event dikirim ke:
+
+```text
+ANTREAN_<queueId>
+```
+
+dan:
+
+```text
+TOKO_<store_id>
+```
+
+### Struktur Payload
 
 ```json
 {
@@ -184,34 +295,93 @@ socket.emit("LEAVE_QUEUE_ROOM", "uuid-antrean-123");
   "reason": null,
   "triggered_by": "seller"
 }
-
 ```
 
-* **Variasi `triggered_by` & `reason`:**
-* **Dibatalkan oleh Seller:** `status: "DIBATALKAN", reason: "Stok habis", triggered_by: "seller"`
-* **Dibatalkan oleh Buyer:** `status: "DIBATALKAN", reason: "Lama banget", triggered_by: "buyer"`
-* **Dibatalkan Otomatis (Sistem):** `status: "DIBATALKAN", reason: "Pesanan telah melewati batas pembayaran", triggered_by: "system"`
+### Variasi `triggered_by`
 
+#### Dibatalkan oleh Seller
 
+```json
+{
+  "id": "uuid-antrean-123",
+  "status": "DIBATALKAN",
+  "reason": "Stok habis",
+  "triggered_by": "seller"
+}
+```
 
-#### `ROOM_ERROR`
+#### Dibatalkan oleh Buyer
 
-* Dikirim khusus ke socket yang meminta, saat gagal bergabung ke room (misalnya karena `queueId` tidak ada atau bukan miliknya).
-* **Payload:**
+```json
+{
+  "id": "uuid-antrean-123",
+  "status": "DIBATALKAN",
+  "reason": "Lama banget",
+  "triggered_by": "buyer"
+}
+```
+
+#### Dibatalkan Otomatis oleh Sistem
+
+```json
+{
+  "id": "uuid-antrean-123",
+  "status": "DIBATALKAN",
+  "reason": "Pesanan telah melewati batas pembayaran",
+  "triggered_by": "system"
+}
+```
+
+---
+
+## 4.3 `ROOM_ERROR`
+
+Event ini dikirim **hanya ke socket yang melakukan request** ketika proses bergabung ke room gagal.
+
+Contohnya:
+
+* `queueId` tidak ditemukan.
+* Antrean bukan milik Buyer yang sedang terhubung.
+* User tidak memiliki akses ke room tersebut.
+
+### Struktur Payload
 
 ```json
 {
   "errors": "Queue not found or unauthorized access."
 }
+```
 
+Contoh listener di frontend:
+
+```javascript
+socket.on("ROOM_ERROR", (payload) => {
+  console.error("Room Error:", payload.errors);
+});
 ```
 
 ---
 
-## Catatan Penting untuk Frontend (FE)
+# 5. Rekomendasi Implementasi Frontend
 
-1. **Bukan Sumber Kebenaran Utama:** Socket.IO hanya bertindak sebagai *trigger* notifikasi; database dan REST API tetap menjadi sumber kebenaran utama (*source of truth*).
-2. **Trigger Sinkronisasi:** Sangat disarankan menggunakan `STATUS_UPDATED` sebagai trigger untuk melakukan re-fetch data lewat API (misalnya menggunakan fungsi Invalidate dari React Query / SWR):
+## 5.1 Socket Bukan Source of Truth
+
+Socket.IO hanya berfungsi sebagai **trigger untuk notifikasi dan sinkronisasi real-time**.
+
+Sumber kebenaran utama tetap:
+
+* Database
+* REST API
+
+Jangan menjadikan payload Socket.IO sebagai satu-satunya sumber data aplikasi.
+
+---
+
+## 5.2 Gunakan Event sebagai Trigger Sinkronisasi
+
+Disarankan menggunakan event `STATUS_UPDATED` untuk memicu pengambilan ulang data melalui REST API.
+
+Contoh menggunakan React Query:
 
 ```javascript
 socket.on("STATUS_UPDATED", (payload) => {
@@ -219,7 +389,71 @@ socket.on("STATUS_UPDATED", (payload) => {
     queryKey: ["queue", payload.id],
   });
 });
-
 ```
 
-3. **Waktu Eksekusi `JOIN_QUEUE_ROOM`:** Buyer disarankan memanggil `JOIN_QUEUE_ROOM` segera setelah mendapat respon sukses dari API pembuatan antrean, dan saat me-refresh/membuka halaman detail antrean.
+Dengan pendekatan ini, Socket.IO hanya memberi sinyal bahwa data berubah, sedangkan data terbaru tetap diambil dari API.
+
+---
+
+## 5.3 Waktu Memanggil `JOIN_QUEUE_ROOM`
+
+Buyer disarankan memanggil `JOIN_QUEUE_ROOM` pada kondisi berikut:
+
+1. Setelah berhasil membuat antrean melalui REST API.
+2. Saat membuka halaman detail antrean.
+3. Saat halaman di-refresh dan data antrean masih aktif.
+
+Contoh:
+
+```javascript
+socket.emit("JOIN_QUEUE_ROOM", queueId);
+```
+
+Ketika user meninggalkan halaman detail antrean:
+
+```javascript
+socket.emit("LEAVE_QUEUE_ROOM", queueId);
+```
+
+---
+
+# 6. Ringkasan Alur
+
+```text
+SELLER
+  │
+  ├── Connect Socket
+  │     └── auth: { token }
+  │
+  └── JOIN_STORE_ROOM
+        └── TOKO_<store.id>
+              │
+              ├── NEW_QUEUE
+              └── STATUS_UPDATED
+
+
+BUYER / GUEST
+  │
+  ├── Connect Socket
+  │     └── auth: { guestId }
+  │
+  └── JOIN_QUEUE_ROOM(queueId)
+        │
+        └── Server Validasi Kepemilikan
+              │
+              └── ANTREAN_<queueId>
+                    │
+                    └── STATUS_UPDATED
+```
+
+## Prinsip Utama
+
+* Autentikasi Socket.IO dilakukan melalui `socket.handshake.auth`.
+* Sistem tidak menggunakan cookie.
+* Seller menggunakan `token`.
+* Buyer/Guest menggunakan `guestId`.
+* Identitas user disimpan pada `socket.user`.
+* Socket.IO digunakan sebagai mekanisme notifikasi dan trigger sinkronisasi.
+* Database dan REST API tetap menjadi **source of truth**.
+* Akses room antrean harus selalu divalidasi berdasarkan kepemilikan `guest_id`.
+* Frontend bertanggung jawab melakukan refresh token dan reconnect ketika token Socket.IO kedaluwarsa.
