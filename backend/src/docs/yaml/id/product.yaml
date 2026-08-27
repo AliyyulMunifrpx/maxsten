@@ -1,8 +1,10 @@
 openapi: 3.0.0
+
 info:
   title: Maxsten API - Product Management
   version: 1.0.0
-  description: Dokumentasi API untuk mengelola Katalog Produk, Varian, ketersediaan, dan gambar produk.
+  description: Dokumentasi API untuk mengelola katalog produk, varian, ketersediaan, dan gambar produk.
+
 servers:
   - url: https://api.maxsten.com
     description: Production Server
@@ -19,7 +21,7 @@ paths:
       summary: Get All Products (With Prefetch)
       description: |
         Mengambil daftar seluruh produk milik toko. Akses ini menggunakan `publicId` toko.
-        
+
         **Catatan Khusus (Frontend):**
         - **Prefetch Pagination:** Mengembalikan `currentPage` dan `nextPage` sekaligus. Saat di halaman 1, data halaman 2 sudah tersedia di `nextPage`. Panggil API untuk halaman 2 secara *background* hanya ketika *user* mulai melihat halaman 2.
         - **Metrik total_sold:** Terdapat field `total_sold` di setiap produk yang dihitung *real-time* dari total pesanan berstatus `SELESAI`. Bisa digunakan untuk menampilkan label "Terjual: 150".
@@ -50,8 +52,8 @@ paths:
         - Product
       summary: Create New Product
       description: |
-        Menambahkan produk baru berserta gambar, varian, dan add-on.
-        
+        Menambahkan produk baru beserta gambar, varian, dan add-on.
+
         **Business Logic (PENTING BUAT FRONTEND):**
         - **Multipart/Form-Data:** Wajib menggunakan format ini karena ada *upload* gambar (`image`).
         - **Parsing Array:** Karena menggunakan form-data, *field* array seperti `variants` dan `addon_group_ids` **wajib diubah menjadi JSON string** (`JSON.stringify()`) sebelum dikirim. Backend akan melakukan `JSON.parse()` secara otomatis.
@@ -100,7 +102,7 @@ paths:
       summary: Update Product Information
       description: |
         Mengubah data produk (tanpa gambar).
-        
+
         **Business Logic (FITUR FREEZE):**
         - Jika produk ini sedang berada dalam **antrean aktif** (`BELUM_BAYAR` / `DIPROSES`), maka `price`, `variants`, dan `addon_group_ids` **TIDAK BISA DIUBAH** (akan melempar `400 Bad Request`).
         - Dalam kondisi antrean aktif, hanya `name` dan `description` yang diizinkan untuk diubah.
@@ -132,7 +134,7 @@ paths:
       description: |
         Menghapus produk dan seluruh variannya secara *soft delete* (`is_delete: true`).
         File gambar di Supabase Storage akan dihapus permanen.
-        
+
         **Business Logic (BLOCK DELETE):**
         - Produk **TIDAK BISA DIHAPUS** jika masih terdapat antrean aktif (`BELUM_BAYAR` / `DIPROSES`) yang memesan produk ini. FE harus menampilkan peringatan kepada user.
       parameters:
@@ -165,10 +167,13 @@ paths:
           multipart/form-data:
             schema:
               type: object
+              required:
+                - image
               properties:
                 image:
                   type: string
                   format: binary
+                  description: File gambar produk
       responses:
         "200":
           description: OK
@@ -202,6 +207,17 @@ paths:
           description: OK
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
   schemas:
     ProductListResponse:
       type: object
@@ -301,10 +317,10 @@ components:
           description: File gambar produk
         variants:
           type: string
-          description: Array of objects (di-stringify). Format -> `[{"name": "Besar", "additional_price": 5000}]`
+          description: 'Array of objects (di-stringify). Format: [{"name": "Besar", "additional_price": 5000}]'
         addon_group_ids:
           type: string
-          description: Array of strings (di-stringify). Format -> `["uuid-addon-1", "uuid-addon-2"]`
+          description: 'Array of strings (di-stringify). Format: ["uuid-addon-1", "uuid-addon-2"]'
 
     UpdateProductInput:
       type: object
@@ -317,7 +333,7 @@ components:
           type: integer
         variants:
           type: array
-          description: Harus menggunakan JSON array (Bukan stringified karena ini `application/json`)
+          description: Harus menggunakan JSON array (bukan stringified karena ini `application/json`)
           items:
             type: object
             properties:
