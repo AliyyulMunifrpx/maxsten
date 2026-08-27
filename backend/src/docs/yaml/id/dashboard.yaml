@@ -10,6 +10,8 @@ servers:
     description: Production Server
 
 # SUDAH DIREVISI: Menghapus cookieAuth, menambahkan refreshToken
+# Dipertahankan sebagai fallback; operation di bawah sekarang
+# punya security block sendiri supaya nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
   - refreshToken: []
@@ -20,6 +22,10 @@ paths:
       tags:
         - Dashboard
       summary: Get Dashboard Overview
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil seluruh data yang dibutuhkan untuk halaman utama Dashboard kasir/admin.
 
