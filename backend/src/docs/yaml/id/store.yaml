@@ -8,6 +8,9 @@ servers:
     description: Production Server
 
 # SUDAH DIREVISI: Menghapus cookieAuth, menggantinya dengan refreshToken
+# Tetap dipertahankan sebagai fallback, tapi setiap operation sekarang
+# punya security block sendiri (lihat di bawah) supaya nggak gantung
+# ke inheritance root — ini yang bikin auth gagal saat multi-file merge.
 security:
   - bearerAuth: []
   - refreshToken: []
@@ -18,6 +21,10 @@ paths:
       tags:
         - Store
       summary: Create New Store
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Membuat toko baru. Satu akun hanya bisa memiliki satu toko (1:1 relation).
 
@@ -59,6 +66,10 @@ paths:
       tags:
         - Store
       summary: Get My Store
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil detail toko milik user yang sedang login beserta status `is_open` (buka/tutup) saat ini secara real-time.
 
@@ -95,6 +106,10 @@ paths:
       tags:
         - Store
       summary: Update Store Profile
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengubah data profil toko (nama, alamat, timezone, dll). Tidak termasuk logo.
 
@@ -132,6 +147,10 @@ paths:
       tags:
         - Store
       summary: Delete Store
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus toko (Soft Delete).
 
@@ -165,6 +184,10 @@ paths:
       tags:
         - Store
       summary: Update Store Logo
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengunggah dan mengganti logo toko. Logo lama di Cloud Storage akan otomatis dihapus.
       requestBody:
         required: true
@@ -201,6 +224,10 @@ paths:
       tags:
         - Store
       summary: Manual Open/Close Store (Override)
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Digunakan untuk mengubah status toko secara manual (misal: ada keperluan mendadak untuk tutup, atau buka lebih awal).
 
@@ -249,6 +276,10 @@ paths:
       tags:
         - Store Analytics
       summary: Get Store Analytics & History
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil data analitik toko, grafik pendapatan, dan riwayat pesanan.
 
@@ -316,6 +347,10 @@ paths:
       tags:
         - Store
       summary: Update Operational Hours
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengubah jadwal buka/tutup toko reguler.
       requestBody:
         required: true
@@ -353,6 +388,12 @@ paths:
       tags:
         - Store
       summary: Search Postal Code (Autofill Address)
+      # DITAMBAHKAN: security eksplisit per-operation.
+      # Dipertahankan karena endpoint ini masih punya 401 response di bawah —
+      # kalau memang mau dibikin public, hapus blok ini DAN hapus response 401-nya.
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mencari data kodepos (Bypass ke API pihak ketiga `carikodepos.id`).
 
@@ -369,8 +410,6 @@ paths:
       responses:
         "200":
           description: OK (Berhasil mengambil data kodepos)
-          # Karena ini bypass ke pihak ke 3, apakah perlu otentikasi?
-          # Jika ya, pertahankan header ini. Jika tidak, endpoint ini bisa dibuat public.
           headers:
             x-new-access-token:
               schema:
