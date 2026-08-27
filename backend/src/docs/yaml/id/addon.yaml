@@ -11,6 +11,7 @@ servers:
 
 security:
   - bearerAuth: []
+  - refreshToken: [] # TAMBAHAN: Standarisasi refresh token
 
 paths:
   /api/stores/addon-groups:
@@ -28,10 +29,27 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddonGroupListResponse"
+        # TAMBAHAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "404":
           description: Not Found (Toko tidak ditemukan)
@@ -60,9 +78,25 @@ paths:
       responses:
         "201":
           description: Created
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
 
         "400":
           description: Bad Request (Format salah atau terdapat duplikasi nama item)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "409":
           description: Conflict (Nama grup add-on sudah ada di toko ini)
@@ -84,6 +118,13 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -91,6 +132,15 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/AddonGroupItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "404":
           description: Not Found
@@ -124,9 +174,25 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
 
         "400":
           description: Bad Request (ID item tidak valid atau terjadi tabrakan nama)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "409":
           description: Conflict (Grup sedang terkunci karena pesanan aktif atau nama grup duplikat)
@@ -153,6 +219,22 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "409":
           description: Conflict (Grup terkunci karena pesanan aktif)
@@ -163,6 +245,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      
+    # TAMBAHAN: Menambahkan definisi refreshToken untuk Swagger UI
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
 
   schemas:
     AddonGroupListResponse:
