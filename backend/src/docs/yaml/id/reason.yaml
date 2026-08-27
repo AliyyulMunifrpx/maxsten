@@ -7,9 +7,10 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# SUDAH DIREVISI: Menghapus cookieAuth, mengganti dengan refreshToken
 security:
   - bearerAuth: []
-  - cookieAuth: []
+  - refreshToken: []
 
 paths:
   /api/seller/cancel-reasons:
@@ -26,6 +27,16 @@ paths:
       responses:
         "200":
           description: OK
+          # Menambahkan header untuk auto-refresh
+          headers:
+            x-new-access-token:
+              description: Token baru jika token lama expired dan berhasil di-refresh
+              schema:
+                type: string
+            x-new-refresh-token:
+              description: Refresh token baru
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -35,6 +46,16 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/CancelReasonItem"
+        # SUDAH DIREVISI: Menambahkan 401
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "404":
           description: Not Found (Toko tidak ditemukan)
 
@@ -63,6 +84,13 @@ paths:
       responses:
         "201":
           description: Created
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -70,6 +98,15 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CancelReasonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "409":
           description: Conflict (Alasan pembatalan dengan teks tersebut sudah ada)
 
@@ -101,6 +138,13 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -108,6 +152,15 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CancelReasonItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "404":
           description: Not Found (Template tidak ditemukan atau akses ditolak)
         "409":
@@ -131,6 +184,13 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -139,10 +199,31 @@ paths:
                   data:
                     type: string
                     example: "OK"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "404":
           description: Not Found
 
 components:
+  # SUDAH DIREVISI: Menambahkan definisi komponen security
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk tes mekanisme auto-refresh (tanpa cookie)."
+
   schemas:
     CancelReasonItem:
       type: object
