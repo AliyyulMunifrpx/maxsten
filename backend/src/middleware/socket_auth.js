@@ -3,25 +3,12 @@ import { prisma } from "../application/database.js";
 
 export async function socketAuth(socket, next) {
   try {
-    // 1. CARI ACCESS TOKEN, REFRESH TOKEN, & GUEST ID
-    // Seller MURNI ngambil dari auth payload (karena cookie udah dihapus)
+    // 1. CARI SEMUA CREDENTIAL MURNI DARI HANDSHAKE AUTH
     let accessToken = socket.handshake.auth?.token;
     let refreshToken = socket.handshake.auth?.refreshToken;
-
-    // Buyer ngambil dari auth payload, ATAU fallback ke Cookie (karena guest_id masih pakai cookie)
     let guestId = socket.handshake.auth?.guestId;
 
-    const cookieHeader = socket.handshake.headers.cookie;
-
-    // CUKUP cari guest_id di cookie, token JWT udah nggak ada wujudnya di situ
-    if (!guestId && cookieHeader) {
-      guestId = cookieHeader
-        ?.split(";")
-        .find((c) => c.trim().startsWith("guest_id="))
-        ?.split("=")[1];
-    }
-
-    // 2. Jika tidak ada token sama sekali, anggap sebagai Guest
+    // 2. Jika tidak ada token sama sekali, anggap sebagai Guest (Buyer)
     if (!accessToken && !refreshToken) {
       if (!guestId) {
         return next(
@@ -38,7 +25,7 @@ export async function socketAuth(socket, next) {
       return next();
     }
 
-    // 3. Validasi token ke Supabase
+    // 3. Validasi token ke Supabase (Seller)
     let {
       data: { user },
       error,
@@ -55,14 +42,11 @@ export async function socketAuth(socket, next) {
         return next(new Error("Session Expired. Please login again."));
       }
 
-      // Update variabel dengan session yang baru
       accessToken = refreshData.session.access_token;
       user = refreshData.user;
       error = null;
 
-      // CATATAN PENTING UNTUK SOCKET:
-      // Karena di middleware Socket tidak ada objek `res` untuk ngeset Header,
-      // kita simpan token baru ini di dalam objek `socket`.
+      // Simpan token baru di object socket agar bisa ditangkap oleh event emitter nanti
       socket.newTokens = {
         accessToken: refreshData.session.access_token,
         refreshToken: refreshData.session.refresh_token,
