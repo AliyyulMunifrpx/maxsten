@@ -1,128 +1,171 @@
 openapi: 3.0.0
+
 info:
-  title: Maxsten API - AI Assistant
-  version: 1.0.0
-  description: Dokumentasi API untuk integrasi Artificial Intelligence (LLM) dalam menghasilkan laporan evaluasi toko dan deskripsi produk otomatis.
+title: Maxsten API - AI Assistant
+version: 1.0.0
+description: Dokumentasi API untuk integrasi Artificial Intelligence (LLM) dalam menghasilkan laporan evaluasi toko dan deskripsi produk otomatis.
+
 servers:
-  - url: https://api.maxsten.com
-    description: Production Server
+
+* url: https://api.maxsten.com
+  description: Production Server
 
 security:
-  - bearerAuth: []
-  - cookieAuth: []
+
+* bearerAuth: []
+* cookieAuth: []
 
 paths:
-  /api/ai/reports:
-    post:
-      tags:
-        - AI Assistant
-      summary: Generate AI Monthly Report
-      description: |
-        Menghasilkan evaluasi dan rekomendasi bisnis dari AI berdasarkan data transaksi bulan tertentu (Omzet, AOV, Peak Hour, Top Products).
-        
-        **Business Logic (Penting untuk Frontend):**
-        - **Timeout 30 Detik:** Request ini dibatasi maksimal 30 detik di sisi server. Jika AI tidak merespons, akan mengembalikan `500 Internal Server Error`. Frontend disarankan mengatur *loading state* maksimal 30 detik.
-        - **Zero-Data Fallback:** Jika toko tidak memiliki transaksi sama sekali pada bulan tersebut, API akan merespons secara instan (tanpa memanggil AI) dengan pesan motivasi standar.
-        - **Data Bersih:** Respons dipastikan selalu berupa JSON Object yang konsisten.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                month:
-                  type: integer
-                  description: Bulan (1-12). Default bulan saat ini jika dikosongkan.
-                year:
-                  type: integer
-                  description: Tahun (contoh: 2024). Default tahun saat ini jika dikosongkan.
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AIReportResponse"
-        "400":
-          description: Bad Request (Parameter bulan/tahun tidak valid)
-        "500":
-          description: Internal Server Error (Provider AI sedang gangguan, timeout, atau limit habis)
+/api/ai/reports:
+post:
+tags:
+- AI Assistant
+summary: Generate AI Monthly Report
+description: |
+Menghasilkan evaluasi dan rekomendasi bisnis dari AI berdasarkan data transaksi bulan tertentu, seperti omzet, AOV, peak hour, dan produk terlaris.
 
-  /api/ai/descriptions:
-    post:
-      tags:
-        - AI Assistant
-      summary: Generate Product Description
-      description: |
-        Membuat 2 pilihan deskripsi produk otomatis menggunakan AI berdasarkan nama produk.
-        
-        **Business Logic:**
-        - Sama seperti report, dibatasi **timeout 30 detik**.
-        - Telah dilindungi dari *Prompt Injection* dan *AI Hallucination*. Jika AI memberikan respons di luar format, API akan menolak dan memberikan status `500` (aman dari *crash* di sisi UI).
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - product_name
-              properties:
-                product_name:
-                  type: string
-                  example: "Kopi Susu Gula Aren"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AIDescriptionResponse"
-        "500":
-          description: Internal Server Error (Gagal mem-parsing balikan AI atau timeout)
+```
+    **Business Logic:**
+
+    - **Timeout 30 Detik:** Request dibatasi maksimal 30 detik di sisi server. Jika AI tidak merespons dalam batas waktu tersebut, API akan mengembalikan `500 Internal Server Error`.
+    - **Zero-Data Fallback:** Jika toko tidak memiliki transaksi pada bulan tersebut, API akan merespons secara instan tanpa memanggil AI dengan pesan motivasi standar.
+    - **Data Bersih:** Respons dipastikan selalu berupa JSON Object dengan struktur yang konsisten.
+
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            month:
+              type: integer
+              minimum: 1
+              maximum: 12
+              description: Bulan (1-12). Jika dikosongkan, menggunakan bulan saat ini.
+              example: 8
+            year:
+              type: integer
+              description: Tahun laporan. Jika dikosongkan, menggunakan tahun saat ini.
+              example: 2026
+
+  responses:
+    "200":
+      description: Laporan AI berhasil dibuat.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AIReportResponse"
+
+    "400":
+      description: Bad Request (Parameter bulan atau tahun tidak valid).
+
+    "500":
+      description: Internal Server Error (Provider AI mengalami gangguan, timeout, atau limit habis).
+```
+
+/api/ai/descriptions:
+post:
+tags:
+- AI Assistant
+summary: Generate Product Description
+description: |
+Membuat 2 pilihan deskripsi produk otomatis menggunakan AI berdasarkan nama produk.
+
+```
+    **Business Logic:**
+
+    - Request dibatasi maksimal 30 detik.
+    - Sistem dilindungi dari Prompt Injection dan AI Hallucination.
+    - Jika AI memberikan respons di luar format yang telah ditentukan, API akan mengembalikan `500 Internal Server Error` tanpa menyebabkan crash pada aplikasi frontend.
+
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - product_name
+          properties:
+            product_name:
+              type: string
+              description: Nama produk yang akan digunakan sebagai dasar pembuatan deskripsi.
+              example: Kopi Susu Gula Aren
+
+  responses:
+    "200":
+      description: Deskripsi produk berhasil dibuat.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AIDescriptionResponse"
+
+    "500":
+      description: Internal Server Error (Gagal memproses respons AI atau request mengalami timeout).
+```
 
 components:
-  schemas:
-    AIReportResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
-            ai_report:
-              type: object
-              properties:
-                greeting:
-                  type: string
-                  example: "Halo Kak Budi,"
-                evaluation:
-                  type: string
-                  description: Satu paragraf evaluasi singkat dari AI.
-                  example: "Performa toko bulan ini sangat baik dengan peningkatan AOV, namun tingkat pembatalan masih cukup tinggi saat jam sibuk."
-                recommendations:
-                  type: array
-                  description: Daftar saran praktis.
-                  items:
-                    type: string
-                    example: "Pertimbangkan untuk menambah stok pada hari Jumat karena lonjakan traffic selalu terjadi di hari tersebut."
+securitySchemes:
+bearerAuth:
+type: http
+scheme: bearer
+bearerFormat: JWT
 
-    AIDescriptionResponse:
-      type: object
-      properties:
-        data:
-          type: object
-          properties:
+```
+cookieAuth:
+  type: apiKey
+  in: cookie
+  name: access_token
+```
+
+schemas:
+AIReportResponse:
+type: object
+properties:
+data:
+type: object
+properties:
+ai_report:
+type: object
+properties:
+greeting:
+type: string
+example: "Halo Kak Budi,"
+
+```
+            evaluation:
+              type: string
+              description: Satu paragraf evaluasi singkat dari AI.
+              example: "Performa toko bulan ini sangat baik dengan peningkatan AOV, namun tingkat pembatalan masih cukup tinggi saat jam sibuk."
+
             recommendations:
               type: array
-              description: Menampilkan maksimal 2 rekomendasi deskripsi.
+              description: Daftar rekomendasi praktis dari AI.
               items:
-                type: object
-                properties:
-                  text:
-                    type: string
-                    example: "Paduan sempurna espresso murni dan manisnya gula aren asli. Bikin harimu makin semangat tanpa bikin eneg!"
-                  score:
-                    type: integer
-                    description: Skor daya tarik deskripsi (1-100).
-                    example: 95
+                type: string
+                example: "Pertimbangkan untuk menambah stok pada hari Jumat karena lonjakan traffic selalu terjadi di hari tersebut."
+
+AIDescriptionResponse:
+  type: object
+  properties:
+    data:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          description: Maksimal 2 rekomendasi deskripsi produk.
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+                example: "Paduan sempurna espresso murni dan manisnya gula aren asli. Bikin harimu makin semangat tanpa bikin eneg!"
+
+              score:
+                type: integer
+                minimum: 1
+                maximum: 100
+                description: Skor daya tarik deskripsi dari 1 hingga 100.
+                example: 95
+```
