@@ -2,14 +2,11 @@ import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { logger } from "../../src/application/logging.js";
-import { access } from "node:fs";
-import user_service from "../../src/service/user_service.js";
-import { ResponseError } from "../../src/error/response_error.js";
 import { supabase } from "../../src/application/supabase.js";
 
 describe("get user profile", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
 
@@ -36,29 +33,41 @@ describe("get user profile", () => {
     // 3. Inject ke Prisma (agar data matching)
     await prisma.user.create({
       data: {
-        id: userId, // Hapus baris ini kalau Prisma ID pakai autoincrement/uuid default
+        id: userId,
         supabase_id: userId,
         email: testEmail,
         name: "Tumbal Get Profile",
       },
     });
 
-    // 4. Login untuk dapatkan cookies (Access & Refresh token)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
   }, 20000);
 
-  test("should successfully get user data with valid tokens", async () => {
+  afterEach(async () => {
+    if (testEmail) {
+      await prisma.user.deleteMany({ where: { email: testEmail } });
+    }
+    if (userId) {
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
+    }
+  }, 20000);
+
+  test("should successfully get user data with valid token", async () => {
     const result = await supertest(web)
       .get("/api/users/me")
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
-    // Assertion diubah menyesuaikan data dinamis yang baru dibuat
     expect(result.body.data.email).toBe(testEmail);
     expect(result.body.data.name).toBe("Tumbal Get Profile");
   }, 20000);
@@ -66,32 +75,17 @@ describe("get user profile", () => {
   test("should reject with 401 if access token is invalid", async () => {
     const result = await supertest(web)
       .get("/api/users/me")
-      .set("Cookie", "access_token=token akses salah banget");
+      .set("Authorization", "Bearer token_salah_banget");
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("Unauthorized");
   }, 20000);
 
-  test("should reject with 401 if both access and refresh tokens are invalid", async () => {
-    const result = await supertest(web)
-      .get("/api/users/me")
-      .set("Cookie", [
-        "access_token=token akses salah banget",
-        "refresh_token= token refersh salah",
-      ]);
+  test("should reject with 401 if access token is missing", async () => {
+    const result = await supertest(web).get("/api/users/me");
 
     expect(result.status).toBe(401);
-    expect(result.body.errors).toBe("Session Expired. Please login again.");
-  }, 20000);
-
-  test("should successfully get user data using only a valid refresh token (auto-refresh session)", async () => {
-    const result = await supertest(web)
-      .get("/api/users/me")
-      .set("Cookie", cookies[1]); // Asumsi index [1] adalah refresh_token dari login
-
-    expect(result.status).toBe(200);
-    expect(result.body.data.email).toBe(testEmail);
-    expect(result.body.data.name).toBe("Tumbal Get Profile");
+    expect(result.body.errors).toBe("Unauthorized");
   }, 20000);
 
   test("should reject with 401 if user exists in Supabase Auth but missing in Prisma database", async () => {
@@ -118,13 +112,18 @@ describe("get user profile", () => {
 
     if (signInError) throw new Error(`Sign In Error: ${signInError.message}`);
 
-    // 4. Hit endpoint get profile
+    // 4. Hit endpoint get profile dengan Bearer Token
     const result = await supertest(web)
       .get("/api/users/me")
-      .set("Cookie", `access_token=${authData.session.access_token}`);
+      .set("Authorization", `Bearer ${authData.session.access_token}`);
 
     // 5. Pastikan ditolak dengan pesan yang sesuai
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("User database mismatch");
+
+    // Cleanup mismatch user from Supabase
+    try {
+      await supabase.auth.admin.deleteUser(authData.user.id);
+    } catch (err) {}
   }, 20000);
 });

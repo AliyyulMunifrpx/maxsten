@@ -17,7 +17,8 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 );
 
 describe("DELETE /api/stores/products/:productId", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let store;
@@ -49,11 +50,13 @@ describe("DELETE /api/stores/products/:productId", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Seed Store
     store = await prisma.store.create({
@@ -163,7 +166,8 @@ describe("DELETE /api/stores/products/:productId", () => {
   test("should successfully soft delete product, its variants, and remove image file from Supabase", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/products/${product.id}`)
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
@@ -195,7 +199,8 @@ describe("DELETE /api/stores/products/:productId", () => {
   test("should reject (400) if productId is not a valid UUID", async () => {
     const result = await supertest(web)
       .delete("/api/stores/products/bukan-uuid-valid")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
   }, 20000);
@@ -224,7 +229,7 @@ describe("DELETE /api/stores/products/:productId", () => {
 
     const result = await supertest(web)
       .delete(`/api/stores/products/${product.id}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toContain(
@@ -244,7 +249,7 @@ describe("DELETE /api/stores/products/:productId", () => {
 
     const result = await supertest(web)
       .delete(`/api/stores/products/${fakeUuid}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBeDefined();
@@ -254,7 +259,7 @@ describe("DELETE /api/stores/products/:productId", () => {
   test("should reject (401) if user is not logged in", async () => {
     const result = await supertest(web).delete(
       `/api/stores/products/${product.id}`,
-    ); // Tanpa menyematkan cookie
+    ); // Tanpa token
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBeDefined();

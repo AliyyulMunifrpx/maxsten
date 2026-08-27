@@ -43,8 +43,7 @@ export default function Footer() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#C0FE04] opacity-75"></span>
               <span className="relative inline-flex h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-[#C0FE04]"></span>
             </span>
-            Bagaimana ini dibuat?
-            {/* Panah panik kecil */}
+            Repository GitHub {/* Panah panik kecil */}
             <span className="transition-transform duration-300 group-hover:translate-x-1">
               ➔
             </span>

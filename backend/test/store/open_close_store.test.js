@@ -16,7 +16,8 @@ function fullOpenSchedule() {
 }
 
 describe("open/close store (explicit status)", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -52,16 +53,16 @@ describe("open/close store (explicit status)", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Kosongkan array tracking ID.
-    // Gak butuh delete store lama karena user ini 100% fresh lahir.
     createdStoreIds = [];
     createdGuestIds = [];
   }, 20000);
@@ -152,7 +153,8 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
 
     expect(result.status).toBe(200);
@@ -170,7 +172,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "OPEN" });
 
     expect(result.status).toBe(200);
@@ -180,7 +182,7 @@ describe("open/close store (explicit status)", () => {
   test("should return 404 for a store_id that does not belong to the logged-in user", async () => {
     const result = await supertest(web)
       .patch(endpoint("some-nonexistent-store-id"))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "OPEN" });
 
     expect(result.status).toBe(404);
@@ -191,7 +193,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .send({ manual_status: "OPEN" }); // Tanpa cookie auth
+      .send({ manual_status: "OPEN" }); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);
@@ -201,7 +203,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "MAYBE" });
 
     expect(result.status).toBe(400);
@@ -212,7 +214,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({});
 
     expect(result.status).toBe(400);
@@ -223,13 +225,14 @@ describe("open/close store (explicit status)", () => {
 
     const patch = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
     expect(patch.status).toBe(200);
 
     const get = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(get.body.data.is_open).toBe(false);
   }, 20000);
 
@@ -239,11 +242,11 @@ describe("open/close store (explicit status)", () => {
     const [resultA, resultB] = await Promise.all([
       supertest(web)
         .patch(endpoint(store.public_id))
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({ manual_status: "OPEN" }),
       supertest(web)
         .patch(endpoint(store.public_id))
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({ manual_status: "CLOSED" }),
     ]);
 
@@ -262,7 +265,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
 
     expect(result.status).toBe(400);
@@ -281,7 +284,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
 
     expect(result.status).toBe(400);
@@ -294,7 +297,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
 
     expect(result.status).toBe(200);
@@ -307,7 +310,7 @@ describe("open/close store (explicit status)", () => {
 
     const result = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "OPEN" });
 
     expect(result.status).toBe(200);
@@ -321,7 +324,7 @@ describe("open/close store (explicit status)", () => {
     // Tutup saat masih DIPROSES -> Ditolak (400)
     const blocked = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
     expect(blocked.status).toBe(400);
 
@@ -334,7 +337,7 @@ describe("open/close store (explicit status)", () => {
     // Tutup ulang pas pesanan udah SELESAI -> Diterima (200)
     const allowed = await supertest(web)
       .patch(endpoint(store.public_id))
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ manual_status: "CLOSED" });
     expect(allowed.status).toBe(200);
   }, 20000);

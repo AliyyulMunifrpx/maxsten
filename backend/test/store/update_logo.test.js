@@ -33,7 +33,8 @@ function baseProfilePayload(name) {
 }
 
 describe("update store logo", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -69,12 +70,14 @@ describe("update store logo", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
-    cookies = result.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Reset Array.
     createdStoreIds = [];
@@ -166,7 +169,10 @@ describe("update store logo", () => {
 
   test("should return 400 when no file is provided, and should not touch the store", async () => {
     const store = await createStoreDirect("Warung Logo Kosong");
-    const result = await supertest(web).patch(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .patch(ENDPOINT)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
 
@@ -176,7 +182,9 @@ describe("update store logo", () => {
 
   test("should return 404 when the user has no store", async () => {
     const result = await attachNewLogo(
-      supertest(web).patch(ENDPOINT).set("Cookie", cookies),
+      supertest(web)
+        .patch(ENDPOINT)
+        .set("Authorization", `Bearer ${accessToken}`),
     );
     expect(result.status).toBe(404);
   }, 20000);
@@ -184,7 +192,7 @@ describe("update store logo", () => {
   test("should return 401 when unauthorized", async () => {
     await createStoreDirect("Warung Logo Tanpa Login");
 
-    const result = await attachNewLogo(supertest(web).patch(ENDPOINT)); // Tanpa cookie
+    const result = await attachNewLogo(supertest(web).patch(ENDPOINT)); // Tanpa Token
     expect(result.status).toBe(401);
   }, 20000);
 
@@ -192,7 +200,9 @@ describe("update store logo", () => {
     await createStoreDirect("Warung Logo Baru", { logoFileName: null });
 
     const result = await attachNewLogo(
-      supertest(web).patch(ENDPOINT).set("Cookie", cookies),
+      supertest(web)
+        .patch(ENDPOINT)
+        .set("Authorization", `Bearer ${accessToken}`),
     );
 
     expect(result.status).toBe(200);
@@ -207,7 +217,9 @@ describe("update store logo", () => {
     });
 
     const result = await attachNewLogo(
-      supertest(web).patch(ENDPOINT).set("Cookie", cookies),
+      supertest(web)
+        .patch(ENDPOINT)
+        .set("Authorization", `Bearer ${accessToken}`),
     );
 
     expect(result.status).toBe(200);
@@ -237,7 +249,9 @@ describe("update store logo", () => {
     await supabase.storage.from(BUCKET_NAME).remove([`images/${oldFileName}`]);
 
     const result = await attachNewLogo(
-      supertest(web).patch(ENDPOINT).set("Cookie", cookies),
+      supertest(web)
+        .patch(ENDPOINT)
+        .set("Authorization", `Bearer ${accessToken}`),
     );
 
     expect(result.status).toBe(200);

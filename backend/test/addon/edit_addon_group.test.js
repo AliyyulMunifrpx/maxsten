@@ -17,7 +17,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT_PREFIX = "/api/stores/addon-groups";
 
 describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User Scope (Dibuat sekali di beforeAll)
   let testEmail = "";
@@ -83,12 +84,14 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
+    // 3. Login SEKALI SAJA untuk dapat Access Token User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
@@ -241,7 +244,8 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
   test("1. Should successfully Update name, Update Addon, Add new Addon, and Delete missing Addon", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetGroupId}`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Dasar (Updated)",
         addons: [
@@ -257,7 +261,7 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
   test("2. Should return 400 'Invalid add-on' if payload contains fake Addon ID", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetGroupId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Dasar",
         addons: [{ id: uuidv4(), name: "Penyusup", price: 0 }],
@@ -269,7 +273,7 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
   test("3. Should return 409 if renaming to an EXISTING group name", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetGroupId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: existingGroupName,
         addons: [{ id: addon1_Id, name: "Gula Normal", price: 0 }],
@@ -280,8 +284,11 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
   test("4. [SECURITY] Should return 404 when trying to update ANOTHER USER's group", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${otherUserGroupId}`)
-      .set("Cookie", cookies)
-      .send({ name: "Bajak Nama", addons: [{ id: addon1_Id, name: "Gula Normal", price: 0 }] });
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Bajak Nama",
+        addons: [{ id: addon1_Id, name: "Gula Normal", price: 0 }],
+      });
     expect(result.status).toBe(404);
   }, 20000);
 
@@ -325,7 +332,7 @@ describe("PATCH /api/stores/addon-groups/:addonGroupId", () => {
     // D. Coba Edit Grup Addon-nya
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetGroupId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Dasar (Mau Ganti)",
         addons: [{ id: addon1_Id, name: "Gula Normal", price: 0 }],

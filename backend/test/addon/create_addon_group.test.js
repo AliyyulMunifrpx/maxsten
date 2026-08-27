@@ -1,15 +1,24 @@
 import supertest from "supertest";
-import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, test } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  test,
+} from "vitest";
 import { web } from "../../src/application/web.js";
 import { prisma } from "../../src/application/database.js";
 // 🚨 Import supabase admin
 import { supabase } from "../../src/application/supabase.js";
 
-const ENDPOINT = "/api/stores/addon-groups"; 
+const ENDPOINT = "/api/stores/addon-groups";
 
 describe("POST /api/stores/addon-groups", () => {
-  let cookies = [];
-  
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
+
   // User Scope (Dibuat sekali di beforeAll)
   let testEmail = "";
   let userId = "";
@@ -43,21 +52,25 @@ describe("POST /api/stores/addon-groups", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie
+    // 3. Login SEKALI SAJA untuk dapat Access Token
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari response JSON (sesuaikan path body-nya jika beda)
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
     // Bersihkan User di akhir file secara total
     await prisma.user.deleteMany({
-      where: { id: userId }
+      where: { id: userId },
     });
     if (userId) {
-      try { await supabase.auth.admin.deleteUser(userId); } catch (err) {}
+      try {
+        await supabase.auth.admin.deleteUser(userId);
+      } catch (err) {}
     }
   }, 20000);
 
@@ -67,13 +80,13 @@ describe("POST /api/stores/addon-groups", () => {
   beforeEach(async () => {
     // 1. Bersihkan sisa data milik user ini (Targeted Cleanup)
     await prisma.addon.deleteMany({
-      where: { addon_group: { store: { user_id: userId } } }
+      where: { addon_group: { store: { user_id: userId } } },
     });
     await prisma.addonGroup.deleteMany({
-      where: { store: { user_id: userId } }
+      where: { store: { user_id: userId } },
     });
     await prisma.store.deleteMany({
-      where: { user_id: userId }
+      where: { user_id: userId },
     });
 
     // 2. Buatkan Toko Aktif
@@ -90,13 +103,13 @@ describe("POST /api/stores/addon-groups", () => {
   afterEach(async () => {
     // Bersihkan data Toko & Addon setiap selesai 1 test case
     await prisma.addon.deleteMany({
-      where: { addon_group: { store: { user_id: userId } } }
+      where: { addon_group: { store: { user_id: userId } } },
     });
     await prisma.addonGroup.deleteMany({
-      where: { store: { user_id: userId } }
+      where: { store: { user_id: userId } },
     });
     await prisma.store.deleteMany({
-      where: { user_id: userId }
+      where: { user_id: userId },
     });
   });
 
@@ -105,7 +118,8 @@ describe("POST /api/stores/addon-groups", () => {
   test("1. Should create Addon Group successfully with valid JSON array", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Minuman",
         addons: [
@@ -129,7 +143,7 @@ describe("POST /api/stores/addon-groups", () => {
   test("2. Should create Addon Group successfully when 'addons' is sent as stringified JSON (FormData style)", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Makanan",
         addons: JSON.stringify([{ name: "Ayam Suwir", price: 5000 }]), // Dikirim sebagai string
@@ -142,7 +156,7 @@ describe("POST /api/stores/addon-groups", () => {
   test("3. Should return 400 if 'addons' string is INVALID JSON", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Error",
         addons: "Bukan JSON yang valid [,,",
@@ -155,7 +169,7 @@ describe("POST /api/stores/addon-groups", () => {
   test("4. Should return 400 if Addon names inside the group are DUPLICATES", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Kembar",
         addons: [
@@ -174,7 +188,7 @@ describe("POST /api/stores/addon-groups", () => {
     // Insert pertama (Berhasil)
     await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Spesial",
         addons: [{ name: "Oreo", price: 2000 }],
@@ -183,7 +197,7 @@ describe("POST /api/stores/addon-groups", () => {
     // Insert kedua dengan nama yang sama (Harus gagal)
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Spesial",
         addons: [{ name: "Mesis", price: 1000 }],
@@ -206,7 +220,7 @@ describe("POST /api/stores/addon-groups", () => {
     // 2. Tembak API buat bikin grup dengan NAMA YANG SAMA
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping musiman",
         addons: [{ name: "Kurma", price: 5000 }],
@@ -223,7 +237,7 @@ describe("POST /api/stores/addon-groups", () => {
 
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Topping Hantu",
         addons: [{ name: "Boba", price: 3000 }],

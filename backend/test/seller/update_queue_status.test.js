@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import crypto from "crypto";
 
 describe("PATCH /api/stores/queues/:queueId", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
 
@@ -56,10 +57,13 @@ describe("PATCH /api/stores/queues/:queueId", () => {
       },
     });
 
+    // Login User untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     store = await prisma.store.create({
       data: {
@@ -204,7 +208,8 @@ describe("PATCH /api/stores/queues/:queueId", () => {
   test("should success update status from BELUM_BAYAR to DIPROSES and emit socket event", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueBelumBayar.id}`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         storeId: store.public_id,
         status: "DIPROSES",
@@ -228,7 +233,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
   test("should success update status from DIPROSES to SELESAI and set completed_at", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueDiproses.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         storeId: store.public_id,
         status: "SELESAI",
@@ -242,7 +247,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
   test("should success update status to DIBATALKAN with reason and cancelled_by", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueBelumBayar.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         storeId: store.public_id,
         status: "DIBATALKAN",
@@ -259,7 +264,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
   test("should reject 400 when transition is illegal (SELESAI to DIPROSES)", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueSelesai.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         storeId: store.public_id,
         status: "DIPROSES",
@@ -287,7 +292,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
     // Lu nyoba ngubah pakai akun lu
     const result = await supertest(web)
       .patch(`/api/stores/queues/${otherQueue.id}`)
-      .set("Cookie", cookies) // Cookie milik User A
+      .set("Authorization", `Bearer ${accessToken}`) // Token milik User A
       .send({
         storeId: otherStore.public_id, // Nembak ID Toko B
         status: "DIPROSES",
@@ -307,7 +312,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/queues/${queueBelumBayar.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         storeId: store.public_id,
         status: "DIPROSES",
@@ -324,7 +329,7 @@ describe("PATCH /api/stores/queues/:queueId", () => {
       .send({
         storeId: store.public_id,
         status: "DIPROSES",
-      }); // Sengaja ga diset Cookie auth
+      }); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);

@@ -1,12 +1,12 @@
 import supertest from "supertest";
 import { web } from "../../src/application/web.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-// Jangan lupa import prisma dan supabase
 import { prisma } from "../../src/application/database.js";
 import { supabase } from "../../src/application/supabase.js";
 
 describe("logout user", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
 
@@ -33,23 +33,23 @@ describe("logout user", () => {
     // 3. Inject data ke Prisma supaya datanya sinkron
     await prisma.user.create({
       data: {
-        id: userId, // Hapus baris ini jika Prisma pakai auto-generate ID (UUID/Autoincrement)
+        id: userId,
         supabase_id: userId,
         email: testEmail,
         name: "Tumbal Logout",
       },
     });
 
-    // 4. Login untuk dapatkan tiket masuk (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
   }, 20000);
 
-  // Tambahkan afterEach untuk bersih-bersih data setelah test selesai
   afterEach(async () => {
     if (testEmail) {
       await prisma.user.deleteMany({ where: { email: testEmail } });
@@ -64,23 +64,20 @@ describe("logout user", () => {
   }, 20000);
 
   test("should can logout user successfully", async () => {
-    // 2. Eksekusi logout bawa cookie
+    // Eksekusi logout bawa Bearer Token
     const result = await supertest(web)
       .delete("/api/users/logout")
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     console.log(result.body);
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
     expect(result.body.message).toBe("Logout successful");
-
-    // Pastikan cookie access_token dibersihkan dari browser
-    expect(result.headers["set-cookie"]).toBeDefined();
-    expect(result.headers["set-cookie"][0]).toContain("access_token=;");
   }, 20000);
 
-  test("should reject logout if unauthorized (no cookie)", async () => {
-    // 3. Eksekusi logout TAPI sengaja nggak bawa cookie
+  test("should reject logout if unauthorized (no token)", async () => {
+    // Eksekusi logout TAPI sengaja nggak bawa token
     const result = await supertest(web).delete("/api/users/logout");
 
     expect(result.status).toBe(401);

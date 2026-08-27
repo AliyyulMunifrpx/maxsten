@@ -6,7 +6,7 @@ import { descriptionGeneratorValidation } from "../validation/ai_validation.js";
 
 const AI_REQUEST_TIMEOUT_MS = 30000;
 const AI_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
-const AI_REFERER = process.env.FRONTEND_URL
+const AI_REFERER = process.env.FRONTEND_URL;
 
 // Helper bareng: panggil OpenRouter dengan timeout, dipakai kedua fungsi
 // biar gak duplikasi logic fetch + abort + cleanup JSON di 2 tempat.
@@ -157,9 +157,10 @@ const reportGenerator = async (user, month, year) => {
   const averageOrderValue =
     totalPesanan > 0 ? Math.round(totalOmzet / totalPesanan) : 0;
 
+  // 1. REVISI: Tambahkan 'processed_at' di dalam select
   const queueTimes = await prisma.queue.findMany({
     where: { store_id: store.id, status: "SELESAI", ...dateCondition },
-    select: { created_at: true, completed_at: true },
+    select: { created_at: true, processed_at: true, completed_at: true },
   });
 
   let totalWaitTime = 0;
@@ -177,14 +178,28 @@ const reportGenerator = async (user, month, year) => {
   ];
 
   queueTimes.forEach((q) => {
-    if (q.completed_at) {
-      totalWaitTime +=
-        (new Date(q.completed_at) - new Date(q.created_at)) / 60000;
+    // 2. REVISI: Validasi ganda. Jangan hitung kalau processed_at nya null
+    if (q.completed_at && q.processed_at) {
+      const waitTimeMs = new Date(q.completed_at) - new Date(q.processed_at);
+
+      // BUG 2 (Keamanan): Cegah angka minus
+      // Kadang ada kasir iseng nekan "Proses" dan "Selesai" di detik yang sama,
+      // atau ada isu sinkronisasi jam server. Math.max memastikan waktu gak jadi minus.
+      const waitTimeMinutes = Math.max(0, waitTimeMs / 60000);
+
+      totalWaitTime += waitTimeMinutes;
       validWaitCount++;
     }
-    const localDate = toZonedTime(new Date(q.created_at), tz);
-    hourlyCounts[localDate.getHours()] += 1;
-    dailyCounts[localDate.getDay()] += 1;
+
+    // BUG 3 (Insight Bisnis): Jam Sibuk (Peak Hour)
+    // Ingat! Untuk 'Jam Sibuk', kita TETAP MENGGUNAKAN 'created_at'.
+    // Kenapa? Karena kita mau AI menganalisis jam berapa PELANGGAN DATANG/MEMESAN,
+    // bukan jam berapa kasir mulai masak.
+    if (q.created_at) {
+      const localDate = toZonedTime(new Date(q.created_at), tz);
+      hourlyCounts[localDate.getHours()] += 1;
+      dailyCounts[localDate.getDay()] += 1;
+    }
   });
 
   const avgWaitTime =

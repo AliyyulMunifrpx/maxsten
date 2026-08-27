@@ -54,6 +54,8 @@ const errorMap = {
   "You cannot delete your account because your store still has active customer queues":
     "Akun tidak bisa dihapus karena toko masih memiliki antrian aktif",
   "Auth session missing!": "Sesi tidak ditemukan",
+  "Too many requests":
+    "Terlalu banyak membuat pesanan, tunggu beberapa saat lagi",
 };
 
 function translateError(originalMsg) {

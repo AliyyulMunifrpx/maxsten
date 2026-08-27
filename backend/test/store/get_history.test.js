@@ -37,7 +37,8 @@ function endpoint() {
 }
 
 describe("GET /api/stores/me/history", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let store;
@@ -75,13 +76,14 @@ describe("GET /api/stores/me/history", () => {
       },
     });
 
-    // 4. Login untuk dapatkan tiket masuk (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // Reset array penampung ID
     createdStoreIds = [];
@@ -205,7 +207,7 @@ describe("GET /api/stores/me/history", () => {
   test("should return 401 when unauthorized", async () => {
     const result = await supertest(web)
       .get(endpoint())
-      .query({ month: TEST_MONTH, year: TEST_YEAR });
+      .query({ month: TEST_MONTH, year: TEST_YEAR }); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);
@@ -215,7 +217,8 @@ describe("GET /api/stores/me/history", () => {
 
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR });
 
     expect(result.status).toBe(404);
@@ -224,7 +227,7 @@ describe("GET /api/stores/me/history", () => {
   test("should return 400 for an invalid month", async () => {
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: 13, year: TEST_YEAR });
 
     expect(result.status).toBe(400);
@@ -233,7 +236,7 @@ describe("GET /api/stores/me/history", () => {
   test("should return 400 for an invalid status value", async () => {
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, status: "MAYBE" });
 
     expect(result.status).toBe(400);
@@ -242,7 +245,7 @@ describe("GET /api/stores/me/history", () => {
   test("should return 400 when a negative page is sent", async () => {
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, page: -5 });
 
     expect(result.status).toBe(400);
@@ -251,7 +254,7 @@ describe("GET /api/stores/me/history", () => {
   test("silently falls back to page=1 when page is a non-numeric string (controller behavior)", async () => {
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, page: "abc" });
 
     expect(result.status).toBe(200);
@@ -269,7 +272,7 @@ describe("GET /api/stores/me/history", () => {
 
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR });
 
     expect(result.status).toBe(200);
@@ -288,11 +291,11 @@ describe("GET /api/stores/me/history", () => {
 
     const page1 = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, page: 1, limit: 10 });
     const page2 = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, page: 2, limit: 10 });
 
     expect(page1.status).toBe(200);
@@ -311,7 +314,7 @@ describe("GET /api/stores/me/history", () => {
 
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR, status: "DIBATALKAN" });
 
     expect(result.status).toBe(200);
@@ -332,7 +335,7 @@ describe("GET /api/stores/me/history", () => {
 
     const result = await supertest(web)
       .get(endpoint())
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .query({ month: TEST_MONTH, year: TEST_YEAR });
 
     expect(result.status).toBe(200);
@@ -345,7 +348,9 @@ describe("GET /api/stores/me/history", () => {
   }, 20000);
 
   test("should default month/year to the current month when not provided", async () => {
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.meta.isCurrentMonth).toBe(true);

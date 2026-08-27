@@ -38,7 +38,8 @@ function endpoint() {
 }
 
 describe("GET /api/stores/dashboard", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let store;
@@ -73,12 +74,14 @@ describe("GET /api/stores/dashboard", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
-    cookies = result.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Reset tracking arrays
     createdStoreIds = [];
@@ -229,20 +232,26 @@ describe("GET /api/stores/dashboard", () => {
   }
 
   test("should return 401 when unauthorized", async () => {
-    const result = await supertest(web).get(endpoint()); // Tanpa cookie
+    const result = await supertest(web).get(endpoint()); // Tanpa token
     expect(result.status).toBe(401);
   }, 20000);
 
   test("should return 404 when the logged-in user has no store", async () => {
     await prisma.store.deleteMany({ where: { user_id: userId } });
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
   }, 20000);
 
   test("should return 200 with store info and open status", async () => {
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
+
     console.log(result.body);
     expect(result.status).toBe(200);
     expect(result.body.data.store.public_id).toBe(store.public_id);
@@ -262,7 +271,9 @@ describe("GET /api/stores/dashboard", () => {
       );
     }
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     const latest = result.body.data.lists.latest_products;
@@ -285,7 +296,10 @@ describe("GET /api/stores/dashboard", () => {
       );
     }
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(result.status).toBe(200);
     const latest = result.body.data.lists.latest_addons;
     expect(latest).toHaveLength(5);
@@ -313,7 +327,9 @@ describe("GET /api/stores/dashboard", () => {
       createdAt: new Date(base - 4000),
     });
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     const oldestActive = result.body.data.lists.oldest_active_queues;
@@ -327,7 +343,9 @@ describe("GET /api/stores/dashboard", () => {
   }, 20000);
 
   test("should report peak_hour as '-' and an all-zero hourly_traffic when there are no completed orders today", async () => {
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.today.peak_hour).toBe("-");
@@ -354,7 +372,9 @@ describe("GET /api/stores/dashboard", () => {
     // Cancelled orders must not be counted in the traffic chart.
     await createQueueDirect(store.id, "DIBATALKAN", { createdAt: quietTime });
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     const traffic = result.body.data.today.hourly_traffic;
@@ -367,7 +387,9 @@ describe("GET /api/stores/dashboard", () => {
   }, 20000);
 
   test("should report a flat 0% trend on every metric when there is no data today or yesterday", async () => {
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     const { today } = result.body.data;
@@ -387,38 +409,35 @@ describe("GET /api/stores/dashboard", () => {
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 40000,
       createdAt: minutesAgo(40),
-      processed_at: minutesAgo(35), // 👈 Wajib ditambahin
-      completed_at: minutesAgo(30), // 👈 Wajib ditambahin biar kehitung omzet!
+      processed_at: minutesAgo(35),
+      completed_at: minutesAgo(30),
     });
 
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 60000,
       createdAt: minutesAgo(30),
-      processed_at: minutesAgo(25), // 👈 Wajib ditambahin
-      completed_at: minutesAgo(20), // 👈 Wajib ditambahin
+      processed_at: minutesAgo(25),
+      completed_at: minutesAgo(20),
     });
 
     await createQueueDirect(store.id, "DIBATALKAN", {
       createdAt: minutesAgo(20),
-      // Batal nggak butuh completed_at karena kuerinya pakai created_at
     });
 
     // Setup Waktu
-    const nz = nowZoned(); // (Asumsi ini helper timezone lu)
+    const nz = nowZoned();
     const y = nz.getFullYear();
-    const m = nz.getMonth() + 1; // Hati-hati, Date javascript month itu 0-11
+    const m = nz.getMonth() + 1;
     const yesterdayD = nz.getDate() - 1;
 
     // ==========================================
     // 2. DATA KEMARIN (VALID APPLE-TO-APPLE)
-    // Terjadi jam 00:01 pagi -> HARUS KEHITUNG
-    // Omzet Kemarin: 50.000 | Selesai: 1 | Batal: 2
     // ==========================================
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 50000,
       createdAt: zonedTime(y, m, yesterdayD, 0, 1),
-      processed_at: zonedTime(y, m, yesterdayD, 0, 5), // 👈 Tambahin
-      completed_at: zonedTime(y, m, yesterdayD, 0, 10), // 👈 Tambahin
+      processed_at: zonedTime(y, m, yesterdayD, 0, 5),
+      completed_at: zonedTime(y, m, yesterdayD, 0, 10),
     });
 
     await createQueueDirect(store.id, "DIBATALKAN", {
@@ -430,11 +449,10 @@ describe("GET /api/stores/dashboard", () => {
     });
 
     // ==========================================
-    // 3. DATA KEMARIN (JEBAKAN OUT OF RANGE / BUKAN APPLE TO APPLE)
-    // Terjadi jam 23:59 malam -> HARUS DIABAIKAN OLEH API
+    // 3. DATA KEMARIN (JEBAKAN OUT OF RANGE)
     // ==========================================
     await createQueueDirect(store.id, "SELESAI", {
-      totalPrice: 999999, // Bakal ngerusak rata-rata kalau API lu salah hitung
+      totalPrice: 999999,
       createdAt: zonedTime(y, m, yesterdayD, 23, 50),
       processed_at: zonedTime(y, m, yesterdayD, 23, 55),
       completed_at: zonedTime(y, m, yesterdayD, 23, 59),
@@ -443,28 +461,25 @@ describe("GET /api/stores/dashboard", () => {
     // ==========================================
     // 4. NEMBAK API & VALIDASI
     // ==========================================
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     const { today } = result.body.data;
 
-    // Tes Omzet & Tren
     expect(today.omzet.value).toBe(100000);
     expect(today.omzet.trend).toBe(calcTrend(100000, 50000));
 
-    // Tes AOV
     expect(today.aov.value).toBe(50000);
     expect(today.aov.trend).toBe(calcTrend(50000, 50000));
 
-    // Tes Jumlah Pesanan
     expect(today.pesanan_selesai.value).toBe(2);
     expect(today.pesanan_selesai.trend).toBe(calcTrend(2, 1));
 
     expect(today.pesanan_batal.value).toBe(1);
     expect(today.pesanan_batal.trend).toBe(calcTrend(1, 2));
 
-    // Tes Rata-rata Waktu Tunggu (Kalo dihitung dari dummy data di atas)
-    // Hari ini = 5 menit dan 5 menit -> Rata-rata 5 menit
     expect(today.avg_wait_time.value).toBe(5);
   }, 20000);
 
@@ -472,16 +487,19 @@ describe("GET /api/stores/dashboard", () => {
     await createQueueDirect(store.id, "SELESAI", {
       totalPrice: 30000,
       createdAt: new Date(Date.now() - 10 * 60 * 1000),
-      completed_at: new Date(Date.now() - 5 * 60 * 1000), // 👈 Tambahin ini biar omzetnya nggak nol
+      completed_at: new Date(Date.now() - 5 * 60 * 1000),
     });
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.today.omzet.trend).toBe(100);
     expect(result.body.data.today.pesanan_selesai.trend).toBe(100);
   }, 20000);
-  test("should NOT count yesterday's orders that happened later in the day than 'now' (fair same-time-of-day comparison)", async () => {
+
+  test("should NOT count yesterday's orders that happened later in the day than 'now'", async () => {
     const nz = nowZoned();
     const y = nz.getFullYear();
     const m = nz.getMonth() + 1;
@@ -492,7 +510,9 @@ describe("GET /api/stores/dashboard", () => {
       createdAt: zonedTime(y, m, yesterdayD, 23, 59),
     });
 
-    const result = await supertest(web).get(endpoint()).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(endpoint())
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 

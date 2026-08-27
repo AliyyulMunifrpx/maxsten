@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../../src/application/supabase.js";
 
 describe("delete user", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
 
@@ -42,16 +43,18 @@ describe("delete user", () => {
       },
     });
 
-    // 4. Langsung Login!
+    // 4. Langsung Login untuk dapat Access Token!
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
   }, 20000);
-  test("should reject delete if unauthorized (no cookie)", async () => {
-    // Eksekusi delete TAPI sengaja nggak bawa cookie
+
+  test("should reject delete if unauthorized (no token)", async () => {
+    // Eksekusi delete TAPI sengaja nggak bawa token
     const result = await supertest(web).delete("/api/users/me");
 
     expect(result.status).toBe(401);
@@ -59,10 +62,12 @@ describe("delete user", () => {
   }, 20000);
 
   test("should can delete user successfully", async () => {
-    // 1. Eksekusi delete bawa cookie akun tumbal
+    // 1. Eksekusi delete bawa Bearer Token akun tumbal
     const result = await supertest(web)
       .delete("/api/users/me")
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
+
     console.log("DELETE ACCOUNT RESULT:", result.body);
 
     // 2. Pastikan respon dari API bener (200 OK)
@@ -70,11 +75,7 @@ describe("delete user", () => {
     expect(result.body.data).toBe("OK");
     expect(result.body.message).toBe("Account permanently deleted");
 
-    // 3. Pastikan cookie dibuang (otomatis logout)
-    expect(result.headers["set-cookie"]).toBeDefined();
-    expect(result.headers["set-cookie"][0]).toContain("access_token=;");
-
-    // 4. PEMBUKTIAN TERAKHIR: Cek ke Prisma, pastikan datanya beneran musnah
+    // 3. PEMBUKTIAN TERAKHIR: Cek ke Prisma, pastikan datanya beneran musnah
     const userInDb = await prisma.user.findUnique({
       where: { email: testEmail },
     });
@@ -93,10 +94,10 @@ describe("delete user", () => {
       },
     });
 
-    // 2. Jalankan request delete account dengan cookie tumbal
+    // 2. Jalankan request delete account dengan token tumbal
     const result = await supertest(web)
       .delete("/api/users/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -145,7 +146,7 @@ describe("delete user", () => {
     // 4. User coba hapus akun (Mau kabur pas toko lagi ada pelanggan)
     const result = await supertest(web)
       .delete("/api/users/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // 5. Pastikan DITOLAK oleh sistem (409 Conflict)
     expect(result.status).toBe(409);

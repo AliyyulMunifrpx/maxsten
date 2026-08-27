@@ -17,7 +17,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT_PREFIX = "/api/seller/cancel-reasons";
 
 describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User scope file (Dibuat sekali di beforeAll)
   let testEmail = "";
@@ -71,12 +72,14 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
+    // 3. Login SEKALI SAJA untuk dapat Access Token User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
@@ -154,7 +157,8 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   test("1. Should update Cancel Reason successfully", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Stok produk habis (Updated)",
       });
@@ -173,7 +177,7 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   test("2. Should return 409 if updating to a reason text that ALREADY EXISTS in this store", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: existingReasonText, // 👈 Teks ini udah ada di alasan ke-2
       });
@@ -185,7 +189,7 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   test("3. [SECURITY] Should return 404 when trying to update ANOTHER USER's cancel reason", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${otherUserReasonId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Hacked by me",
       });
@@ -205,7 +209,7 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
 
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Mencoba edit yang sudah mati",
       });
@@ -219,7 +223,7 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   test("5. Should return 400 when reason string is empty", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "",
       });
@@ -230,7 +234,7 @@ describe("PATCH /api/seller/cancel-reasons/:reasonId", () => {
   test("6. Should return 400 when reasonId is an invalid UUID", async () => {
     const result = await supertest(web)
       .patch(`${ENDPOINT_PREFIX}/bukan-uuid-1234`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Alasan Valid",
       });

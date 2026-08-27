@@ -17,7 +17,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT = "/api/stores/addon-groups";
 
 describe("GET /api/stores/addon-groups", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User Scope (Hanya dibuat 1 kali di beforeAll)
   let testEmail = "";
@@ -75,12 +76,14 @@ describe("GET /api/stores/addon-groups", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
+    // 3. Login SEKALI SAJA untuk dapat Access Token User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
@@ -210,7 +213,10 @@ describe("GET /api/stores/addon-groups", () => {
   // ====================== TEST CASES ====================== //
 
   test("1. Should get all active Addon Groups and sort them by 'created_at' ASC", async () => {
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -234,7 +240,9 @@ describe("GET /api/stores/addon-groups", () => {
     // Hapus semua grup milik toko ini dulu
     await prisma.addonGroup.deleteMany({ where: { store_id: storeId } });
 
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data).toEqual([]); // Jangan return null, harus array kosong
@@ -244,13 +252,16 @@ describe("GET /api/stores/addon-groups", () => {
     // Hapus tokonya si user
     await prisma.store.deleteMany({ where: { user_id: userId } });
 
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Store not found");
   }, 20000);
 
-  test("4. Should return 401 when unauthorized (no cookie)", async () => {
+  test("4. Should return 401 when unauthorized (no token)", async () => {
+    // 👇 Tes polosan tanpa token
     const result = await supertest(web).get(ENDPOINT);
 
     expect(result.status).toBe(401);

@@ -6,7 +6,7 @@ import { supabase } from "../../src/application/supabase.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import crypto from "crypto";
 
-// 🔥 Hapus impor fs/promises dan path
+// 🔥 Hapus impor fs/promises dan path karena tidak ada lagi file fisik di server
 
 const BUCKET_NAME = "product-images";
 
@@ -16,7 +16,8 @@ const FAKE_IMAGE_BUFFER = Buffer.from(
 );
 
 describe("PATCH /api/stores/products/:productId/image", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = "";
@@ -47,11 +48,13 @@ describe("PATCH /api/stores/products/:productId/image", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Buat Store
     const store = await prisma.store.create({
@@ -142,7 +145,6 @@ describe("PATCH /api/stores/products/:productId/image", () => {
       }
 
       // 3. Hapus database secara Hierarkis
-      // (Bila ada varian/addon group, tambahkan deleteMany nya di sini sesuai schema sebelum product)
       await prisma.productVariant
         ?.deleteMany({ where: { product: { store_id: storeId } } })
         .catch(() => {});
@@ -173,7 +175,8 @@ describe("PATCH /api/stores/products/:productId/image", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/image`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .attach("image", FAKE_IMAGE_BUFFER, dynamicFilename);
 
     expect(result.status).toBe(200);
@@ -203,7 +206,7 @@ describe("PATCH /api/stores/products/:productId/image", () => {
   test("should reject (400) if no image file is attached", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/image`)
-      .set("Cookie", cookies); // Tanpa .attach("image", ...)
+      .set("Authorization", `Bearer ${accessToken}`); // Tanpa .attach("image", ...)
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBe("No image files were uploaded");
@@ -214,11 +217,9 @@ describe("PATCH /api/stores/products/:productId/image", () => {
     const fakeProductId = crypto.randomUUID();
     const dynamicFilename = `orphan-${Date.now()}.png`;
 
-    // Dalam sistem memoryStorage, file langsung hilang jika API menolak,
-    // jadi tidak ada "zombie" yang masuk ke Supabase saat store tidak ditemukan.
     const result = await supertest(web)
       .patch(`/api/stores/products/${fakeProductId}/image`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .attach("image", FAKE_IMAGE_BUFFER, dynamicFilename);
 
     expect(result.status).toBe(404);
@@ -231,7 +232,7 @@ describe("PATCH /api/stores/products/:productId/image", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/image`)
-      .attach("image", FAKE_IMAGE_BUFFER, dynamicFilename); // Tanpa cookie
+      .attach("image", FAKE_IMAGE_BUFFER, dynamicFilename); // Tanpa token
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBeDefined();

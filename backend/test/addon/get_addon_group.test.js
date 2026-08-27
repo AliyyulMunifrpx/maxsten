@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../../src/application/supabase.js";
 
 describe("GET /api/stores/addon-groups/:addonGroupId", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User Scope
   let testEmail = "";
@@ -74,7 +75,9 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
 
     // 4. Buat Store milik User Utama
     const store = await prisma.store.create({
@@ -176,7 +179,8 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
   test("1. Should return 200 and Addon Group data successfully", async () => {
     const result = await supertest(web)
       .get(`/api/stores/addon-groups/${activeAddonGroupId}`)
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.id).toBe(activeAddonGroupId);
@@ -188,7 +192,8 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     expect(result.body.data.addons[0].name).toBe("Boba");
   }, 20000);
 
-  test("2. Should return 401 when unauthorized (no cookie)", async () => {
+  test("2. Should return 401 when unauthorized (no token)", async () => {
+    // 👇 Tes ini nggak perlu diubah karena emang ngetes polosan tanpa token
     const result = await supertest(web).get(
       `/api/stores/addon-groups/${activeAddonGroupId}`,
     );
@@ -199,7 +204,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
   test("3. Should return 400 when addonGroupId is NOT a valid UUID", async () => {
     const result = await supertest(web)
       .get(`/api/stores/addon-groups/bukan-uuid-yang-valid`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // Ditolak oleh Joi Validation
     expect(result.status).toBe(400);
@@ -210,7 +215,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     const randomUuid = uuidv4();
     const result = await supertest(web)
       .get(`/api/stores/addon-groups/${randomUuid}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe(
@@ -221,7 +226,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
   test("5. Should return 404 when Addon Group is already soft-deleted", async () => {
     const result = await supertest(web)
       .get(`/api/stores/addon-groups/${deletedAddonGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe(
@@ -233,7 +238,7 @@ describe("GET /api/stores/addon-groups/:addonGroupId", () => {
     // User login dengan akun utama, tapi nembak ID Addon Group punya toko orang lain
     const result = await supertest(web)
       .get(`/api/stores/addon-groups/${otherUserAddonGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe(

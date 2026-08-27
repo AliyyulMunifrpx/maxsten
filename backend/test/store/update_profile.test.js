@@ -25,7 +25,8 @@ function baseProfilePayload(name) {
 }
 
 describe("update store profile", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -60,12 +61,14 @@ describe("update store profile", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
-    cookies = result.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Reset Array.
     // Tidak butuh hapus toko lama di sini karena user ini 100% fresh.
@@ -108,7 +111,8 @@ describe("update store profile", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send(baseProfilePayload("Warung Profil Baru"));
 
     expect(result.status).toBe(200);
@@ -119,7 +123,7 @@ describe("update store profile", () => {
   test("should return 404 when the user has no store", async () => {
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send(baseProfilePayload("Warung Gak Ada"));
 
     expect(result.status).toBe(404);
@@ -130,7 +134,7 @@ describe("update store profile", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .send(baseProfilePayload("Warung Ganti Diam Diam")); // Tanpa cookie
+      .send(baseProfilePayload("Warung Ganti Diam Diam")); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);
@@ -143,7 +147,7 @@ describe("update store profile", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send(payload);
 
     expect(result.status).toBe(400);
@@ -159,7 +163,7 @@ describe("update store profile", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ name: "Cuma Ganti Nama" });
 
     expect(result.status).toBe(200);
@@ -177,11 +181,11 @@ describe("update store profile", () => {
     const [resultA, resultB] = await Promise.all([
       supertest(web)
         .patch(ENDPOINT)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send(baseProfilePayload("Nama A")),
       supertest(web)
         .patch(ENDPOINT)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send(baseProfilePayload("Nama B")),
     ]);
 

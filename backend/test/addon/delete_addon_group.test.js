@@ -15,7 +15,8 @@ import { v4 as uuidv4 } from "uuid";
 import { supabase } from "../../src/application/supabase.js";
 
 describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User Scope (Dibuat sekali di beforeAll)
   let testEmail = "";
@@ -77,12 +78,14 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie User Utama
+    // 3. Login SEKALI SAJA untuk dapat Access Token User Utama
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
@@ -195,7 +198,8 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   test("1. Should successfully soft-delete the Addon Group AND all its Addons", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/${targetGroupId}`)
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
@@ -219,7 +223,7 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   test("2. [SECURITY] Should return 404 when trying to delete ANOTHER USER's group", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/${otherUserGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // Harus 404, grup milik Hacker nggak boleh bisa dihapus sama User Utama
     expect(result.status).toBe(404);
@@ -265,7 +269,7 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
     // D. Coba Hapus Grup Addon-nya
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/${targetGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // E. Harus Ditolak (409)
     expect(result.status).toBe(409);
@@ -287,7 +291,7 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
 
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/${targetGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Addon group not found");
@@ -302,7 +306,7 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
 
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/${targetGroupId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Store not found");
@@ -311,7 +315,7 @@ describe("DELETE /api/stores/addon-groups/:addonGroupId", () => {
   test("6. Should return 400 when addonGroupId is not a valid UUID", async () => {
     const result = await supertest(web)
       .delete(`/api/stores/addon-groups/bukan-uuid-123`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // Ditolak sama Joi validation
     expect(result.status).toBe(400);

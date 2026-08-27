@@ -25,12 +25,11 @@ function uniqueEmail(prefix) {
   return email;
 }
 
-// Fungsi helper yang sudah sangat bagus dari kodemu sebelumnya
 async function createSupabaseUser(email, password, opts = {}) {
   const { data, error } = await supabase.auth.admin.createUser({
     email,
     password,
-    email_confirm: opts.emailConfirm ?? true, // <-- Ini bypass verifikasinya
+    email_confirm: opts.emailConfirm ?? true,
     user_metadata: opts.metadata ?? {},
   });
   if (error) throw error;
@@ -47,7 +46,7 @@ beforeEach(async () => {
   // Inject ke Prisma agar matching
   await prisma.user.create({
     data: {
-      id: normalUser.id, // Hapus baris ini kalau pakai UUID/Autoincrement default di schema
+      id: normalUser.id,
       supabase_id: normalUser.id,
       email: LOGIN_EMAIL,
       name: LOGIN_NAME,
@@ -83,11 +82,11 @@ describe("POST /api/users/login", () => {
       email: LOGIN_EMAIL,
       password: LOGIN_PASSWORD,
     });
-  console.log(result.body)
+    console.log(result.body);
     expect(result.status).toBe(200);
     expect(result.body.data.email).toBe(LOGIN_EMAIL);
     expect(result.body.data.name).toBe(LOGIN_NAME);
-    expect(result.body.data.access_token).toBeDefined(); 
+    expect(result.body.data.access_token).toBeDefined();
     expect(result.body.data.refresh_token).toBeDefined();
   });
 
@@ -152,7 +151,6 @@ describe("POST /api/users/login", () => {
     expect(healed).not.toBeNull();
   });
 
-  // 👇 Sisa tes di bawah ini TIDAK PERLU DIUBAH karena sudah menggunakan skema pembuatan dinamis yang hebat!
   test("[auto-healing] should sync Prisma's email to match Supabase's current email", async () => {
     const oldEmail = uniqueEmail("login-stale-old");
     const password = "SuperSecret123!";

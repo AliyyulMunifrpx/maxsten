@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import crypto from "crypto";
 
 describe("PATCH /api/stores/products/:productId", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = "";
@@ -43,11 +44,13 @@ describe("PATCH /api/stores/products/:productId", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Setup Store Dinamis
     store = await prisma.store.create({
@@ -160,7 +163,8 @@ describe("PATCH /api/stores/products/:productId", () => {
   test("should successfully update product basic info, variants, and addons", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${product.id}`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Test Update Product Edited",
         description: "New Description",
@@ -175,7 +179,7 @@ describe("PATCH /api/stores/products/:productId", () => {
         ],
         addon_group_ids: [addonGroup2.id],
       });
-    console.log(result.body)
+    console.log(result.body);
     expect(result.status).toBe(200);
 
     const dbProduct = await prisma.product.findUnique({
@@ -207,7 +211,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${product.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         price: 15000,
         variants: [
@@ -224,7 +228,7 @@ describe("PATCH /api/stores/products/:productId", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${product.id}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         price: 15000,
         addon_group_ids: [fakeAddonGroupId],
@@ -237,7 +241,7 @@ describe("PATCH /api/stores/products/:productId", () => {
   test("should reject (404) if product does not exist", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${crypto.randomUUID()}`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ price: 20000 });
 
     expect(result.status).toBe(404);
@@ -276,7 +280,7 @@ describe("PATCH /api/stores/products/:productId", () => {
     test("should successfully update ONLY name and description if active queue exists", async () => {
       const result = await supertest(web)
         .patch(`/api/stores/products/${product.id}`)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           name: "Boleh Ganti Nama",
           description: "Boleh Ganti Deskripsi",
@@ -307,7 +311,7 @@ describe("PATCH /api/stores/products/:productId", () => {
     test("should reject (400) if trying to update PRICE with active queue", async () => {
       const result = await supertest(web)
         .patch(`/api/stores/products/${product.id}`)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           price: 999999,
           variants: [
@@ -332,7 +336,7 @@ describe("PATCH /api/stores/products/:productId", () => {
     test("should reject (400) if trying to modify VARIANTS with active queue", async () => {
       const result = await supertest(web)
         .patch(`/api/stores/products/${product.id}`)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           price: 15000,
           variants: [
@@ -352,7 +356,7 @@ describe("PATCH /api/stores/products/:productId", () => {
     test("should reject (400) if trying to modify ADDONS with active queue", async () => {
       const result = await supertest(web)
         .patch(`/api/stores/products/${product.id}`)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           price: 15000,
           variants: [

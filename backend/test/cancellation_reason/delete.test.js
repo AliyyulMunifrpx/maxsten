@@ -9,7 +9,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT_PREFIX = "/api/seller/cancel-reasons";
 
 describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User Utama
   let testEmail = "";
@@ -51,7 +52,9 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
 
     const store = await prisma.store.create({
       data: {
@@ -144,7 +147,8 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
   test("1. Should successfully soft-delete the Cancel Reason", async () => {
     const result = await supertest(web)
       .delete(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
@@ -159,7 +163,7 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
   test("2. [SECURITY] Should return 404 when trying to delete ANOTHER USER's cancel reason", async () => {
     const result = await supertest(web)
       .delete(`${ENDPOINT_PREFIX}/${otherUserReasonId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // Harus 404 karena `where: { store_id: store.id }` di findFirst bakal gagal
     expect(result.status).toBe(404);
@@ -176,7 +180,7 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
     // Coba hapus lagi lewat API (Double delete)
     const result = await supertest(web)
       .delete(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Cancellation reason template not found");
@@ -191,7 +195,7 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
 
     const result = await supertest(web)
       .delete(`${ENDPOINT_PREFIX}/${targetReasonId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Store not found");
@@ -200,13 +204,13 @@ describe("DELETE /api/seller/cancel-reasons/:reasonId", () => {
   test("5. Should return 400 when reasonId is an invalid UUID", async () => {
     const result = await supertest(web)
       .delete(`${ENDPOINT_PREFIX}/bukan-uuid-1234`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // Ditolak oleh Joi validation `id: Joi.string().uuid().required()`
     expect(result.status).toBe(400);
   }, 20000);
 
-  test("6. Should return 401 when unauthorized (no cookie)", async () => {
+  test("6. Should return 401 when unauthorized (no token)", async () => {
     const result = await supertest(web).delete(
       `${ENDPOINT_PREFIX}/${targetReasonId}`,
     );

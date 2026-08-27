@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import crypto from "crypto";
 
 describe("PATCH /api/stores/products/:productId/availability", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = "";
@@ -37,11 +38,13 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Buat Store via Prisma
     const store = await prisma.store.create({
@@ -104,7 +107,8 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
   test("should successfully set product availability to false", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/availability`)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ is_available: false });
 
     expect(result.status).toBe(200);
@@ -130,7 +134,7 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/availability`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ is_available: true });
 
     expect(result.status).toBe(200);
@@ -147,7 +151,7 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
   test("should reject (400) if is_available field is missing", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/availability`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({}); // Body kosong
 
     expect(result.status).toBe(400);
@@ -157,7 +161,7 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
   test("should reject (400) if is_available is not a boolean", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/availability`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ is_available: "bukan_boolean" });
 
     expect(result.status).toBe(400);
@@ -169,7 +173,7 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
 
     const result = await supertest(web)
       .patch(`/api/stores/products/${fakeProductId}/availability`)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ is_available: false });
 
     expect(result.status).toBe(404);
@@ -179,7 +183,7 @@ describe("PATCH /api/stores/products/:productId/availability", () => {
   test("should reject (401) if user is not logged in", async () => {
     const result = await supertest(web)
       .patch(`/api/stores/products/${productId}/availability`)
-      .send({ is_available: false }); // Tanpa Cookie
+      .send({ is_available: false }); // Tanpa Token
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBeDefined();

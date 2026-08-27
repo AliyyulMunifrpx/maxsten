@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import crypto from "crypto";
 
 describe("GET /api/stores/:storeId/queues", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let store;
@@ -52,11 +53,13 @@ describe("GET /api/stores/:storeId/queues", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-27T14:00:00+07:00"));
 
-    // 5. Login User
+    // 5. Login User untuk dapat Access Token
     const login = await supertest(web)
       .post("/api/users/login")
       .send({ email: testEmail, password: "password123" });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 6. Setup Store (Timezone Asia/Jakarta)
     store = await prisma.store.create({
@@ -183,7 +186,8 @@ describe("GET /api/stores/:storeId/queues", () => {
   test("should successfully get queues for page 1 with prefetch page 2", async () => {
     const result = await supertest(web)
       .get(`/api/stores/${store.public_id}/queues?page=1`)
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -213,7 +217,7 @@ describe("GET /api/stores/:storeId/queues", () => {
   test("should still include an active queue created before midnight (overnight session)", async () => {
     const result = await supertest(web)
       .get(`/api/stores/${store.public_id}/queues?page=1`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -231,7 +235,7 @@ describe("GET /api/stores/:storeId/queues", () => {
   test("should successfully get queues for page 2 (end of list)", async () => {
     const result = await supertest(web)
       .get(`/api/stores/${store.public_id}/queues?page=2`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -242,7 +246,6 @@ describe("GET /api/stores/:storeId/queues", () => {
     expect(data.nextPage).toHaveLength(0); // Udah habis
   }, 20000);
 
-  // --- TEST CASE 3: STORE STATUS (DI LUAR JAM OPERASIONAL) ---
   // --- TEST CASE 3: STORE STATUS (DI LUAR JAM OPERASIONAL) ---
   test("should return storeStatus.is_open = false if checked outside working hours", async () => {
     // 1. Wajib nyalain fake timers dulu biar vi.setSystemTime mempan!
@@ -264,7 +267,7 @@ describe("GET /api/stores/:storeId/queues", () => {
     // 3. Tembak API-nya
     const result = await supertest(web)
       .get(`/api/stores/${store.public_id}/queues?page=1`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     // 4. BALIKIN WAKTU KE NORMAL biar test di bawahnya nggak ikut error!
     vi.useRealTimers();
@@ -284,7 +287,7 @@ describe("GET /api/stores/:storeId/queues", () => {
 
     const result = await supertest(web)
       .get(`/api/stores/${fakeId}/queues`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBeDefined();
@@ -294,7 +297,7 @@ describe("GET /api/stores/:storeId/queues", () => {
   test("should return 401 if user is not logged in", async () => {
     const result = await supertest(web).get(
       `/api/stores/${store.public_id}/queues`,
-    );
+    ); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);

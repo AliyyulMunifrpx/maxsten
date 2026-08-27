@@ -13,7 +13,8 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 );
 
 describe("GET /api/stores/me/all-products/:publicId", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storePublicId = "";
@@ -46,17 +47,20 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Create Store Tumbal via API
     const storeResponse = await supertest(web)
       .post("/api/stores")
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "Warung Nasi Makmur")
       .field("description", "Menyediakan masakan rumahan")
       .field("timezone", "Asia/Jakarta")
@@ -81,21 +85,21 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
     // 6. Create Products (Bikin 3 produk buat ngetest bentuk array-nya)
     await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product satu")
       .field("price", "15000")
       .attach("image", FAKE_LOGO_BUFFER, `product1-${Date.now()}.png`);
 
     await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product dua")
       .field("price", "25000")
       .attach("image", FAKE_LOGO_BUFFER, `product2-${Date.now()}.png`);
 
     await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product tiga")
       .field("price", "10000")
       .attach("image", FAKE_LOGO_BUFFER, `product3-${Date.now()}.png`);
@@ -168,13 +172,11 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   }, 20000);
 
   // ====================== TEST CASES ====================== //
-  // Sisanya tetap sama karena endpoint ini hanya method GET,
-  // tidak ada proses manipulasi file di dalamnya.
 
   test("should successfully get all products with pagination metadata (Default Page 1)", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -209,7 +211,7 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
     // Kita request page 2, padahal data cuma 3 (yang harusnya habis di page 1)
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products?page=2`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.pagination.currentPage).toBe(2);
@@ -220,7 +222,7 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   test("should reject (400) if publicId is not a valid UUID", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/uuid asal asalan/products`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
@@ -229,7 +231,7 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   test("should reject (400) if page parameter is a negative number or zero", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products?page=0`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
@@ -238,7 +240,7 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
   test("should reject (400) if page parameter is not an integer", async () => {
     const result = await supertest(web)
       .get(`/api/stores/me/${storePublicId}/products?page=satu`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBeDefined();
@@ -250,7 +252,7 @@ describe("GET /api/stores/me/all-products/:publicId", () => {
 
     const result = await supertest(web)
       .get(`/api/stores/me/${FAKE_VALID_UUID}/products`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toContain("Store not found");

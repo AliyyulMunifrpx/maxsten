@@ -8,7 +8,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT = "/api/seller/cancel-reasons";
 
 describe("POST /api/seller/cancel-reasons", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = null;
@@ -37,12 +38,13 @@ describe("POST /api/seller/cancel-reasons", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat tiket (token)
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
 
     // 5. Buatkan Toko Aktif
     const store = await prisma.store.create({
@@ -85,7 +87,8 @@ describe("POST /api/seller/cancel-reasons", () => {
   test("1. Should create Cancel Reason successfully", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Stok produk sedang habis",
       });
@@ -106,7 +109,7 @@ describe("POST /api/seller/cancel-reasons", () => {
   test("2. Should return 400 if reason is empty or missing", async () => {
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         // reason sengaja ga dikirim
       });
@@ -120,7 +123,7 @@ describe("POST /api/seller/cancel-reasons", () => {
 
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: longReason,
       });
@@ -131,7 +134,8 @@ describe("POST /api/seller/cancel-reasons", () => {
     );
   }, 20000);
 
-  test("4. Should return 401 when unauthorized (no cookie)", async () => {
+  test("4. Should return 401 when unauthorized (no token)", async () => {
+    // Tes polosan tanpa token
     const result = await supertest(web).post(ENDPOINT).send({
       reason: "Toko sedang sibuk",
     });
@@ -143,13 +147,13 @@ describe("POST /api/seller/cancel-reasons", () => {
     // Insert pertama (Berhasil)
     await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ reason: "Toko tutup sementara" });
 
     // Insert kedua dengan teks yang sama persis (Harus gagal)
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ reason: "Toko tutup sementara" });
 
     expect(result.status).toBe(409);
@@ -169,7 +173,7 @@ describe("POST /api/seller/cancel-reasons", () => {
     // 2. Tembak API buat bikin alasan dengan TEKS YANG SAMA PERSIS
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Bahan baku habis",
       });
@@ -188,7 +192,7 @@ describe("POST /api/seller/cancel-reasons", () => {
 
     const result = await supertest(web)
       .post(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         reason: "Alasan untuk toko hantu",
       });

@@ -15,7 +15,8 @@ function fullOpenSchedule() {
 }
 
 describe("update operational hours", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -50,12 +51,14 @@ describe("update operational hours", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
-    cookies = result.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Reset Array.
     // Tidak butuh hapus toko lama di sini karena user ini 100% fresh.
@@ -119,7 +122,8 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           { day: 0, open_time: "10:00", close_time: "14:00", is_active: false },
@@ -146,7 +150,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ operational_hours: fullOpenSchedule() });
 
     expect(result.status).toBe(200);
@@ -162,7 +166,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           { day: 0, open_time: "00:00", close_time: "00:00", is_active: false },
@@ -183,7 +187,7 @@ describe("update operational hours", () => {
   test("should return 404 when the user has no store", async () => {
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ operational_hours: fullOpenSchedule() });
 
     expect(result.status).toBe(404);
@@ -194,7 +198,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .send({ operational_hours: fullOpenSchedule() }); // Tanpa cookie
+      .send({ operational_hours: fullOpenSchedule() }); // Tanpa Token
 
     expect(result.status).toBe(401);
   }, 20000);
@@ -204,7 +208,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           { day: 7, open_time: "08:00", close_time: "20:00", is_active: true },
@@ -219,7 +223,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           { day: 0, open_time: "25:99", close_time: "20:00", is_active: true },
@@ -233,7 +237,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({ operational_hours: [] });
 
     expect(result.status).not.toBe(500);
@@ -245,7 +249,7 @@ describe("update operational hours", () => {
     const [resultA, resultB] = await Promise.all([
       supertest(web)
         .patch(ENDPOINT)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           operational_hours: [
             {
@@ -258,7 +262,7 @@ describe("update operational hours", () => {
         }),
       supertest(web)
         .patch(ENDPOINT)
-        .set("Cookie", cookies)
+        .set("Authorization", `Bearer ${accessToken}`)
         .send({
           operational_hours: [
             {
@@ -285,7 +289,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -311,7 +315,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -331,7 +335,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -351,7 +355,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -370,7 +374,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: Array.from({ length: 7 }, (_, day) => ({
           day,
@@ -395,7 +399,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: payload,
       });
@@ -408,7 +412,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({});
 
     expect(result.status).toBe(400);
@@ -419,7 +423,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: null,
       });
@@ -432,7 +436,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -452,7 +456,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -472,7 +476,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {
@@ -492,7 +496,7 @@ describe("update operational hours", () => {
 
     const result = await supertest(web)
       .patch(ENDPOINT)
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         operational_hours: [
           {

@@ -16,7 +16,8 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 );
 
 describe("delete store", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -51,14 +52,14 @@ describe("delete store", () => {
       },
     });
 
-    // 4. Login untuk dapatkan tiket masuk (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
-
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
     createdStoreIds = [];
   }, 20000);
 
@@ -131,7 +132,11 @@ describe("delete store", () => {
   test("should soft-delete the store and respond with { data: 'OK' }", async () => {
     const created = await createStoreDirect("Warung Mau Dihapus");
 
-    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .delete(ENDPOINT)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(result.status).toBe(200);
     expect(result.body.data).toBe("OK");
 
@@ -148,7 +153,10 @@ describe("delete store", () => {
   test("should detach the store from the user (user_id set to null) on soft-delete", async () => {
     const created = await createStoreDirect("Warung Cek Detach");
 
-    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(result.status).toBe(200);
 
     const store = await prisma.store.findUnique({
@@ -158,49 +166,70 @@ describe("delete store", () => {
   }, 20000);
 
   test("should return 404 when the user has no store", async () => {
-    const result = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(result.status).toBe(404);
   }, 20000);
 
   test("should return 401 when unauthorized", async () => {
     await createStoreDirect("Warung Tanpa Login Hapus");
 
-    const result = await supertest(web).delete(ENDPOINT); // Tanpa cookie
-    console.log("DEBUG: result.status", result.status, "result.body", result.body);
+    const result = await supertest(web).delete(ENDPOINT); // Tanpa Token
+    console.log(
+      "DEBUG: result.status",
+      result.status,
+      "result.body",
+      result.body,
+    );
     expect(result.status).toBe(401);
   }, 20000);
 
   test("should return 404 on a repeated delete call for an already-deleted store", async () => {
     await createStoreDirect("Warung Hapus Dua Kali");
 
-    const first = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const first = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(first.status).toBe(200);
 
-    const second = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const second = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(second.status).toBe(404);
   }, 20000);
 
   test("a soft-deleted store should no longer be returned by GET /api/stores (cross-endpoint consistency)", async () => {
     await createStoreDirect("Warung Konsistensi Get");
 
-    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(del.status).toBe(200);
 
     const get = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(get.status).toBe(404);
   }, 20000);
 
   test("should allow creating a brand new store after the previous one was soft-deleted", async () => {
     await createStoreDirect("Warung Lama Dihapus");
 
-    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(del.status).toBe(200);
 
     const createResult = await supertest(web)
       .post("/api/stores")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .send({
         name: "Warung Baru Setelah Hapus",
         description: "Toko baru",
@@ -242,7 +271,10 @@ describe("delete store", () => {
     });
 
     // 3. Eksekusi API Delete Store
-    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(del.status).toBe(200);
 
     // 4. Mengecek apakah file sudah benar-benar hilang dari Supabase Bucket
@@ -261,7 +293,10 @@ describe("delete store", () => {
   test("should not throw when the store has no logo file to delete", async () => {
     await createStoreDirect("Warung Tanpa Logo Dihapus", { logo_url: null });
 
-    const del = await supertest(web).delete(ENDPOINT).set("Cookie", cookies);
+    const del = await supertest(web)
+      .delete(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
+
     expect(del.status).toBe(200);
   }, 20000);
 });

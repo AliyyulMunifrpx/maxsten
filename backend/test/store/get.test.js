@@ -27,7 +27,8 @@ function fullClosedSchedule() {
 }
 
 describe("get store", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let createdStoreIds = [];
@@ -62,13 +63,14 @@ describe("get store", () => {
       },
     });
 
-    // 4. Login untuk dapatkan tiket masuk (cookie)
+    // 4. Login untuk dapatkan Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
 
     // 5. Reset array id toko.
     // Gak perlu lagi hapus toko lama, karena user ini 100% baru.
@@ -136,7 +138,8 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.public_id).toBeDefined();
@@ -149,16 +152,16 @@ describe("get store", () => {
     // Sengaja gak bikin store apapun
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBeDefined();
   }, 20000);
 
-  test("should return 401 when unauthorized (no cookie)", async () => {
+  test("should return 401 when unauthorized (no token)", async () => {
     await createStoreDirect({ name: "Warung Get 2" });
 
-    const result = await supertest(web).get("/api/stores/me");
+    const result = await supertest(web).get("/api/stores/me"); // Tanpa Token
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("Unauthorized");
@@ -172,7 +175,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(true);
@@ -186,7 +189,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(false);
@@ -202,7 +205,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(false);
@@ -218,7 +221,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.is_open).toBe(true);
@@ -237,7 +240,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     // Override kemarin sudah basi -> harus balik ke jadwal (buka)
@@ -253,7 +256,7 @@ describe("get store", () => {
 
     const result = await supertest(web)
       .get("/api/stores/me")
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
   }, 20000);

@@ -13,7 +13,8 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 );
 
 describe("GET /api/stores/products/:productId", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = ""; // Internal ID untuk proses cleanup
@@ -43,17 +44,20 @@ describe("GET /api/stores/products/:productId", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Buat Toko melalui API
     const storeResponse = await supertest(web)
       .post("/api/stores")
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "Warung Nasi Makmur")
       .field(
         "description",
@@ -85,7 +89,7 @@ describe("GET /api/stores/products/:productId", () => {
     // 6. Buat Product melalui API
     const productResponse = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product full")
       .field("price", "20000")
       .field("description", "testing product with variants")
@@ -142,7 +146,6 @@ describe("GET /api/stores/products/:productId", () => {
       }
 
       // 3. Eksekusi hapus data dari database
-      // Catatan: Pastikan menggunakan nama tabel varian yang benar sesuai schema Prisma kamu (variant)
       await prisma.variant.deleteMany({
         where: { product: { store_id: storeId } },
       });
@@ -171,7 +174,7 @@ describe("GET /api/stores/products/:productId", () => {
   test("should successfully get the product with complete data", async () => {
     const result = await supertest(web)
       .get(`/api/stores/products/${productId}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.id).toBe(productId);
@@ -187,7 +190,7 @@ describe("GET /api/stores/products/:productId", () => {
   test("should reject if product id format is invalid (Joi Validation)", async () => {
     const result = await supertest(web)
       .get(`/api/stores/products/id-ngasal-bukan-uuid`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400); // Bad Request karena gagal validasi
     expect(result.body.errors).toBeDefined();
@@ -199,7 +202,7 @@ describe("GET /api/stores/products/:productId", () => {
 
     const result = await supertest(web)
       .get(`/api/stores/products/${FAKE_VALID_UUID}`)
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404); // Not Found
     expect(result.body.errors).toContain("Product not found");

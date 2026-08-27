@@ -1,75 +1,149 @@
-# React + TypeScript + Vite
+# Maxsten Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application untuk sistem antrean Maxsten. Aplikasi ini menangani pembuatan dan pemantauan antrean secara real-time, serta menyediakan antarmuka yang interaktif dengan animasi, elemen 3D, peta, dan visualisasi data.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Core
 
-## React Compiler
+- React 19
+- Vite 8
+- TypeScript
+- Tailwind CSS 4
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+TypeScript digunakan secara bertahap, terutama pada beberapa komponen dan konfigurasi yang membutuhkan dukungan typing.
 
-## Expanding the ESLint configuration
+### Routing & Data
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- React Router 7
+- TanStack Query 5
+- Axios
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### UI
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Shadcn UI
+- Base UI
+- Lucide React
+- Tailwind Merge
+- Class Variance Authority
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Animation & 3D
 
+- Framer Motion
+- GSAP
+- Three.js
+- React Three Fiber
+- Lenis
+
+### Additional Features
+
+- Leaflet & React Leaflet — Maps
+- Recharts — Data visualization
+- React QR Code — QR code generation
+
+### Backend & Real-time
+
+- Supabase Client
+- Socket.io Client
+
+## Prerequisites
+
+Pastikan sudah tersedia:
+
+- Node.js
+- NPM, Yarn, atau pnpm
+
+## Getting Started
+
+### 1. Masuk ke direktori frontend
+
+```bash
+cd maxsten/frontend
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Install dependencies
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+npm install
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 3. Setup environment variables
 
+Buat file `.env` di root folder frontend, sejajar dengan `package.json`.
+
+```env
+VITE_API_URL=http://localhost:3000/api
+VITE_BACKEND_URL=http://localhost:3000
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+| Variable                 | Description                       |
+| ------------------------ | --------------------------------- |
+| `VITE_API_URL`           | URL REST API backend              |
+| `VITE_BACKEND_URL`       | URL utama backend untuk Socket.io |
+| `VITE_SUPABASE_URL`      | URL project Supabase              |
+| `VITE_SUPABASE_ANON_KEY` | Public anon key dari Supabase     |
+
+Jangan memasukkan file `.env` ke repository.
+
+### 4. Jalankan development server
+
+```bash
+npm run dev
+```
+
+Secara default, Vite akan menjalankan aplikasi di:
+
+```text
+http://localhost:5173
+```
+
+## Real-time Integration
+
+Maxsten menggunakan Socket.io untuk menerima perubahan status antrean secara langsung dari backend tanpa perlu melakukan refresh halaman.
+
+Dokumentasi event dan aturan WebSocket tersedia di:
+
+```text
+../backend/docs/websocket/socket-io.md
+```
+
+## Project Structure
+
+```text
+frontend/
+├── src/
+│   ├── assets/              # Images, 3D models, dan static assets
+│   ├── components/          # Reusable components
+│   │   └── ui/              # UI components
+│   ├── lib/                 # Utility functions
+│   ├── pages/               # Page components
+│   ├── App.tsx              # Root application component
+│   └── main.tsx             # Application entry point
+│
+├── .env                     # Environment variables
+├── package.json
+├── tsconfig.json
+└── vite.config.js
+```
+
+## Development
+
+Untuk menjalankan aplikasi selama proses development:
+
+```bash
+npm run dev
+```
+
+Untuk melakukan build production:
+
+```bash
+npm run build
+```
+
+Preview hasil build production:
+
+```bash
+npm run preview
 ```

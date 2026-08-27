@@ -16,7 +16,8 @@ import { supabase } from "../../src/application/supabase.js";
 const ENDPOINT = "/api/seller/cancel-reasons";
 
 describe("GET /api/seller/cancel-reasons", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
 
   // User scope file (Dibuat sekali di beforeAll)
   let testEmail = "";
@@ -67,12 +68,14 @@ describe("GET /api/seller/cancel-reasons", () => {
       },
     });
 
-    // 3. Login SEKALI SAJA untuk dapat Cookie
+    // 3. Login SEKALI SAJA untuk dapat Access Token
     const loginResult = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = loginResult.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = loginResult.body.data.access_token;
   }, 20000);
 
   afterAll(async () => {
@@ -155,7 +158,10 @@ describe("GET /api/seller/cancel-reasons", () => {
   // ====================== TEST CASES ====================== //
 
   test("1. Should get all active Cancel Reasons and sort them by 'created_at' DESC", async () => {
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
 
@@ -180,7 +186,9 @@ describe("GET /api/seller/cancel-reasons", () => {
       where: { store_id: storeId },
     });
 
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data).toEqual([]); // Hasilnya wajib array kosong, bukan null/error
@@ -193,13 +201,16 @@ describe("GET /api/seller/cancel-reasons", () => {
       data: { is_delete: true },
     });
 
-    const result = await supertest(web).get(ENDPOINT).set("Cookie", cookies);
+    const result = await supertest(web)
+      .get(ENDPOINT)
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(404);
     expect(result.body.errors).toBe("Store not found");
   });
 
-  test("4. Should return 401 when unauthorized (no cookie)", async () => {
+  test("4. Should return 401 when unauthorized (no token)", async () => {
+    // Tes polosan tanpa token
     const result = await supertest(web).get(ENDPOINT);
 
     expect(result.status).toBe(401);

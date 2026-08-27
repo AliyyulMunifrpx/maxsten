@@ -5,7 +5,8 @@ import { supabase } from "../../src/application/supabase.js"; // Import supabase
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 describe("update user", () => {
-  let cookies = [];
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
 
@@ -39,18 +40,17 @@ describe("update user", () => {
       },
     });
 
-    // 4. Login untuk dapet tiket masuk (cookie)
+    // 4. Login untuk dapet Access Token
     const result = await supertest(web).post(`/api/users/login`).send({
       email: testEmail,
       password: "password123",
     });
 
-    cookies = result.headers["set-cookie"];
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = result.body.data.access_token;
   }, 20000);
 
   afterEach(async () => {
-    // CLEANUP: Daripada balikin nama ke semula, lebih baik HAPUS akunnya sekalian
-    // Biar database benar-benar bersih gak ada sisa!
     if (testEmail) {
       await prisma.user.deleteMany({ where: { email: testEmail } });
     }
@@ -71,7 +71,8 @@ describe("update user", () => {
       .send({
         name: "Nama Diupdate",
       })
-      .set("Cookie", cookies);
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(200);
     expect(result.body.data.name).toBe("Nama Diupdate");
@@ -90,7 +91,7 @@ describe("update user", () => {
       .send({
         name: 12345, // sengaja dikasih angka
       })
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBe('"name" must be a string');
@@ -101,18 +102,18 @@ describe("update user", () => {
     const result = await supertest(web)
       .patch("/api/users/me")
       .send({}) // Sengaja gak ngirim atribut 'name'
-      .set("Cookie", cookies);
+      .set("Authorization", `Bearer ${accessToken}`);
 
     expect(result.status).toBe(400);
     expect(result.body.errors).toBe('"name" is required'); // Pastikan ini sesuai dengan validasi Joi milikmu
   }, 20000);
 
-  // 4. TAMBAHAN: Test Skenario Gagal - Tidak Bawa Cookie (Unauthorized)
-  test("should reject update if unauthorized (no cookie)", async () => {
+  // 4. TAMBAHAN: Test Skenario Gagal - Tidak Bawa Token (Unauthorized)
+  test("should reject update if unauthorized (no token)", async () => {
     const result = await supertest(web).patch("/api/users/me").send({
       name: "hacker mencoba update",
     });
-    // Sengaja TIDAK ADA .set("Cookie", cookies) di sini
+    // Sengaja TIDAK ADA .set("Authorization", ...) di sini
 
     expect(result.status).toBe(401);
     expect(result.body.errors).toBe("Unauthorized"); // Pesan middleware auth lu

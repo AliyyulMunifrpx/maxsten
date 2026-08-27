@@ -15,7 +15,8 @@ const FAKE_LOGO_BUFFER = Buffer.from(
 );
 
 describe("create product", () => {
-  let cookies;
+  // 👇 UBAH 1: Ganti cookies jadi accessToken
+  let accessToken = "";
   let testEmail = "";
   let userId = "";
   let storeId = ""; // Untuk menyimpan id toko yang baru dibuat
@@ -44,19 +45,20 @@ describe("create product", () => {
       },
     });
 
-    // 4. Login untuk dapat tiket (cookie)
+    // 4. Login untuk dapat Access Token
     const login = await supertest(web).post("/api/users/login").send({
       email: testEmail,
       password: "password123",
     });
-    cookies = login.headers["set-cookie"];
+
+    // 👇 UBAH 2: Tangkap access_token dari body JSON
+    accessToken = login.body.data.access_token;
 
     // 5. Buat Toko Tumbal secara manual
-    // Catatan: Karena store logo juga pakai Supabase, biarkan saja test ini berjalan normal
-    // tanpa upload logo store (atau upload pun tak masalah karena akan dibersihkan di afterEach store).
     const createStoreRes = await supertest(web)
       .post("/api/stores")
-      .set("Cookie", cookies)
+      // 👇 UBAH 3: Inject Bearer Token
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "Warung Produk Baru")
       .field("description", "Menyediakan berbagai macam masakan")
       .field("timezone", "Asia/Jakarta")
@@ -73,7 +75,7 @@ describe("create product", () => {
         JSON.stringify([
           { day: 0, open_time: "08:00", close_time: "20:00", is_active: true },
         ]),
-      ); // attach logo dihilangkan sementara biar test ini lebih fokus ke produk
+      );
 
     storeId = createStoreRes.body.data.public_id;
   }, 20000);
@@ -154,7 +156,7 @@ describe("create product", () => {
   test("should successfully create product with full data (variants & image)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product full")
       .field("price", "20000")
       .field("description", "testing product with variants")
@@ -176,7 +178,7 @@ describe("create product", () => {
   test("should successfully create product with minimal data (no variants/addons)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product minimal")
       .field("description", "test product minimal")
       .field("price", "15000");
@@ -192,7 +194,7 @@ describe("create product", () => {
   test("should reject if required fields (name, price) are missing (Joi Validation)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("description", "produk tanpa nama dan harga");
 
     expect(result.status).toBe(400);
@@ -202,7 +204,7 @@ describe("create product", () => {
   test("should reject if price is not a valid number (Joi Validation)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product invalid price")
       .field("price", "bukan_angka");
 
@@ -213,7 +215,7 @@ describe("create product", () => {
   test("should reject if addon_group_ids is not a valid GUID (Joi Validation)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product invalid guid")
       .field("price", "20000")
       .field("addon_group_ids", JSON.stringify(["id-ngasal-123"]));
@@ -227,7 +229,7 @@ describe("create product", () => {
   test("should reject if variants data is malformed (Joi Validation)", async () => {
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product bad variant")
       .field("price", "20000")
       .field("variants", JSON.stringify([{ additional_price: 1000 }]));
@@ -244,7 +246,7 @@ describe("create product", () => {
     // 1. Bikin produk pertama
     await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product duplicate")
       .field("description", "test product minimal")
       .field("price", "20000");
@@ -252,7 +254,7 @@ describe("create product", () => {
     // 2. Bikin lagi pakai nama yang sama persis
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product duplicate")
       .field("price", "25000");
     expect(result.status).toBe(409);
@@ -265,7 +267,7 @@ describe("create product", () => {
 
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product not found addon")
       .field("price", "20000")
       .field("addon_group_ids", JSON.stringify([FAKE_VALID_UUID]));
@@ -278,7 +280,7 @@ describe("create product", () => {
     // 1. Kita bikin produk pertama biar namanya ke-register
     await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product zombie")
       .field("description", "test product minimal")
       .field("price", "20000");
@@ -294,7 +296,7 @@ describe("create product", () => {
     // 3. Hit API lagi pakai nama yang sama persis (Pasti gagal / 400), dengan melampirkan gambar!
     const result = await supertest(web)
       .post("/api/stores/products")
-      .set("Cookie", cookies)
+      .set("Authorization", `Bearer ${accessToken}`)
       .field("name", "test product zombie")
       .field("price", "25000")
       .attach("image", FAKE_LOGO_BUFFER, dynamicZombieFilename);
@@ -310,7 +312,6 @@ describe("create product", () => {
     const countAfter = filesAfter ? filesAfter.length : 0;
 
     // 5. Kunci Utamanya: Karena API gagal, controller harusnya otomatis menghapus file upload dari Supabase.
-    // Jadi jumlah file sebelum dan sesudah eror harus sama.
     expect(countAfter).toBe(countBefore);
   }, 20000);
 });
