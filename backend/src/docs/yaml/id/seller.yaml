@@ -7,9 +7,10 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# SUDAH DIREVISI: Menghapus cookieAuth, menggantinya dengan refreshToken
 security:
   - bearerAuth: []
-  - cookieAuth: []
+  - refreshToken: []
 
 paths:
   /api/stores/{storeId}/queues:
@@ -44,10 +45,30 @@ paths:
       responses:
         "200":
           description: OK
+          # Menambahkan header untuk auto-refresh token
+          headers:
+            x-new-access-token:
+              description: Token baru jika token lama expired dan berhasil di-refresh
+              schema:
+                type: string
+            x-new-refresh-token:
+              description: Refresh token baru
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueueListResponse"
+        # SUDAH DIREVISI: Menambahkan 401 Unauthorized
+        "401":
+          description: Unauthorized (Token tidak ada, invalid, atau gagal refresh)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "404":
           description: Not Found (Store tidak ditemukan atau akses ditolak)
 
@@ -93,16 +114,44 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueueDetailResponse"
         "400":
           description: Bad Request (Transisi status tidak valid)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "409":
           description: Conflict (Status sudah diubah terlebih dahulu oleh kasir/perangkat lain - Race Condition OCC)
 
 components:
+  # SUDAH DIREVISI: Menambahkan blok securitySchemes yang sebelumnya lupa kamu tulis
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
+
   schemas:
     QueueListResponse:
       type: object
