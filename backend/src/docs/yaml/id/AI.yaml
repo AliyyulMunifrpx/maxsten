@@ -11,6 +11,7 @@ servers:
 
 security:
   - bearerAuth: []
+  - refreshToken: [] # TAMBAHAN: Standarisasi refresh token
 
 paths:
   /api/ai/reports:
@@ -49,6 +50,14 @@ paths:
       responses:
         "200":
           description: Laporan AI berhasil dibuat.
+          # TAMBAHAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -56,6 +65,18 @@ paths:
 
         "400":
           description: Bad Request (Parameter bulan atau tahun tidak valid).
+          
+        # TAMBAHAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized (Token tidak valid atau gagal refresh)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
+                    example: "Unauthorized"
 
         "500":
           description: Internal Server Error (Provider AI mengalami gangguan, timeout, atau limit habis).
@@ -91,10 +112,30 @@ paths:
       responses:
         "200":
           description: Deskripsi produk berhasil dibuat.
+          # TAMBAHAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AIDescriptionResponse"
+
+        # TAMBAHAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
+                    example: "Unauthorized"
 
         "500":
           description: Internal Server Error (Gagal memproses respons AI atau request mengalami timeout).
@@ -105,6 +146,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      
+    # TAMBAHAN: Definisi input refresh token di Swagger UI
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
 
   schemas:
     AIReportResponse:
