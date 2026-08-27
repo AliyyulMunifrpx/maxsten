@@ -10,11 +10,9 @@ servers:
     description: Production Server
   - url: http://localhost:3000
     description: Local Development
-
 security:
   - bearerAuth: []
-  - refreshToken: [] # TAMBAHAN: Konsistensi dengan dokumen lain
-
+    refreshToken: [] # ✅ Benar! Tanpa strip, sejajar dengan bearerAuth (Logika AND)
 paths:
   /api/users:
     post:
