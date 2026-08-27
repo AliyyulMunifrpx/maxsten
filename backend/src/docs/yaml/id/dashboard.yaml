@@ -1,15 +1,18 @@
 openapi: 3.0.0
+
 info:
   title: Maxsten API - Dashboard
   version: 1.0.0
   description: Dokumentasi API untuk memuat data overview Dashboard toko, termasuk metrik hari ini, grafik traffic, dan status operasional.
+
 servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# SUDAH DIREVISI: Menghapus cookieAuth, menambahkan refreshToken
 security:
   - bearerAuth: []
-  - cookieAuth: []
+  - refreshToken: []
 
 paths:
   /api/stores/dashboard:
@@ -29,14 +32,49 @@ paths:
       responses:
         "200":
           description: OK (Berhasil memuat Dashboard)
+          # Menambahkan dokumentasi response header untuk auto-refresh token frontend
+          headers:
+            x-new-access-token:
+              description: Token baru jika token lama expired dan berhasil di-refresh oleh middleware
+              schema:
+                type: string
+            x-new-refresh-token:
+              description: Refresh token baru
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardResponse"
+                
+        # SUDAH DIREVISI: Menambahkan 401 karena middleware kamu mereturn ini jika token tidak valid
+        "401":
+          description: Unauthorized (Token tidak ada, invalid, atau gagal refresh)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
+                    example: "Unauthorized"
+                    
         "404":
           description: Not Found (Toko tidak ditemukan)
 
 components:
+  # SUDAH DIREVISI: Menambahkan definisi komponen security
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh token (tanpa cookie)."
+
   schemas:
     DashboardResponse:
       type: object
@@ -148,32 +186,7 @@ components:
                   items:
                     type: integer
                   example:
-                    [
-                      0,
-                      0,
-                      0,
-                      0,
-                      0,
-                      0,
-                      2,
-                      5,
-                      12,
-                      10,
-                      8,
-                      15,
-                      20,
-                      18,
-                      5,
-                      3,
-                      4,
-                      8,
-                      10,
-                      12,
-                      5,
-                      2,
-                      0,
-                      0,
-                    ]
+                    [0,0,0,0,0,0,2,5,12,10,8,15,20,18,5,3,4,8,10,12,5,2,0,0]
 
     MetricWithTrend:
       type: object
