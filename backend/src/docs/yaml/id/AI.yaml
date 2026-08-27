@@ -9,6 +9,8 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# Dipertahankan sebagai fallback; setiap operation di bawah sekarang
+# punya security block sendiri supaya nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
   - refreshToken: [] # TAMBAHAN: Standarisasi refresh token
@@ -19,6 +21,10 @@ paths:
       tags:
         - AI Assistant
       summary: Generate AI Monthly Report
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghasilkan evaluasi dan rekomendasi bisnis dari AI berdasarkan data transaksi bulan tertentu, seperti omzet, AOV, peak hour, dan produk terlaris.
 
@@ -86,6 +92,10 @@ paths:
       tags:
         - AI Assistant
       summary: Generate Product Description
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Membuat 2 pilihan deskripsi produk otomatis menggunakan AI berdasarkan nama produk.
 
