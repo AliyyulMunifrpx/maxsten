@@ -26,6 +26,8 @@ const errorMap = {
   "out of stock": "Maaf, stok produk habis",
   "invalid variant": "Pilihan varian tidak valid untuk produk ini",
   "add-on selection": "Pilihan add-on tidak berlaku untuk produk ini",
+   "Too many requests. Please try again in 10 minutes":
+    "Terlalu banyak membuat pesanan, tunggu beberapa saat lagi",
 };
 
 function extractErrorString(obj) {
