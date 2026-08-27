@@ -8,18 +8,14 @@
 
 Terhubung ke server Socket.IO yang sama dengan base URL REST API.
 
-Autentikasi dilakukan **satu kali saat koneksi Socket.IO dibuat** melalui payload `socket.handshake.auth`.
+Autentikasi dilakukan **satu kali saat koneksi Socket.IO dibuat** melalui payload `socket.handshake.auth`. Sistem ini menerapkan arsitektur **100% Cookie-less**.
 
-### Prioritas Sumber Autentikasi
+### Tabel Pemetaan Sumber Data (Murni Payload Auth)
 
-Berdasarkan arsitektur keamanan terbaru (Bearer Token), JWT hanya diterima dari payload auth. Cookie sama sekali tidak digunakan untuk autentikasi user/seller. Cookie (secara fallback) hanya digunakan jika Frontend gagal menyertakan `guestId` di payload untuk pembeli tanpa akun (Guest).
-
-#### Tabel Pemetaan Sumber Data
-
-| Data | Sumber Auth (Payload) | Fallback Cookie | Deskripsi |
-| --- | --- | --- | --- |
-| **Access Token** | `token` | ❌ *(Tidak Ada)* | Digunakan untuk autentikasi user (Seller) |
-| **Guest ID** | `guestId` | `guest_id` | Digunakan untuk identifikasi pembeli tanpa akun (Buyer) |
+| Data | Sumber Auth (Payload) | Deskripsi |
+| --- | --- | --- |
+| **Access Token** | `token` | Digunakan untuk autentikasi user (Seller) |
+| **Guest ID** | `guestId` | Digunakan untuk identifikasi pembeli tanpa akun (Buyer) |
 
 ---
 
@@ -27,10 +23,10 @@ Berdasarkan arsitektur keamanan terbaru (Bearer Token), JWT hanya diterima dari 
 
 ```javascript
 const socket = io(SOCKET_URL, {
-  withCredentials: true, // Wajib true HANYA jika mengandalkan fallback cookie guest_id
+  // withCredentials: true sudah DIHAPUS karena tidak pakai cookie sama sekali
   auth: {
-    token: accessToken, // Khusus Seller (kosongkan jika Guest)
-    guestId: guestId,   // Khusus Buyer (opsional jika mengandalkan cookie)
+    token: accessToken, // Khusus Seller (kosongkan atau jangan kirim jika Guest)
+    guestId: guestId,   // Khusus Buyer (kosongkan atau jangan kirim jika Seller)
   },
 });
 
@@ -45,12 +41,12 @@ const socket = io(SOCKET_URL, {
 #### 1. Autentikasi Buyer (Guest)
 
 * Jika `token` tidak ada di payload, server memperlakukan koneksi sebagai **guest** (pembeli).
-* Server membutuhkan `guest_id` dari payload `auth.guestId` ATAU dari cookie `guest_id`.
-* Jika keduanya tidak tersedia, koneksi ditolak dengan pesan:
+* Server **HANYA** membaca identitas dari payload `auth.guestId`.
+* Jika `guestId` kosong/tidak dikirim, koneksi langsung ditolak dengan pesan:
 > `Unauthorized: Missing auth tokens and guest identity`
 
 
-* Jika berhasil, server menginisiasi sesi:
+* Jika berhasil, server menginisiasi sesi guest:
 
 ```javascript
 socket.user = {
@@ -60,8 +56,6 @@ socket.user = {
 };
 
 ```
-
-*(Guest tidak perlu login untuk menggunakan fitur antrean).*
 
 #### 2. Autentikasi Seller
 
@@ -79,9 +73,9 @@ socket.user = {
 
 #### 3. Penanganan Akses Kedaluwarsa (Expired Token)
 
-* **PENTING UNTUK FRONTEND:** Socket.IO server **TIDAK** melakukan auto-refresh token.
+* **PENTING UNTUK FRONTEND:** Socket.IO server **TIDAK** melakukan auto-refresh token untuk mencegah *Race Condition*.
 * Jika `token` yang dikirim sudah kedaluwarsa atau tidak valid, koneksi socket akan langsung ditolak/diputus.
-* Frontend harus mendengarkan event error ini. Jika terjadi *Unauthorized* pada socket, Frontend bertanggung jawab memanggil API REST khusus Refresh Token (`POST /api/auth/refresh`), mendapatkan token baru, dan menginisiasi ulang (*reconnect*) koneksi Socket.IO menggunakan token yang baru tersebut.
+* Frontend harus mendengarkan event error ini. Jika terjadi *Unauthorized* pada socket, Frontend bertanggung jawab memanggil API REST khusus Refresh Token (`POST /api/users/refresh`), mendapatkan token baru, lalu menginisiasi ulang (*reconnect*) koneksi Socket.IO menggunakan token yang baru tersebut.
 
 #### 4. Penanganan Error Koneksi
 
@@ -91,7 +85,7 @@ Frontend wajib memasang *listener* untuk menangkap kegagalan koneksi:
 socket.on("connect_error", (error) => {
   console.error("Socket Error:", error.message);
   
-  // Contoh penanganan Auto-Refresh dari sisi Frontend:
+  // Contoh penanganan Auto-Refresh dari sisi Frontend (Seller):
   if (error.message.includes("Invalid token") || error.message.includes("Expired")) {
       // 1. Panggil REST API Refresh Token
       // 2. Update localStorage/State
