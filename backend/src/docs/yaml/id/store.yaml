@@ -7,9 +7,10 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# SUDAH DIREVISI: Menghapus cookieAuth, menggantinya dengan refreshToken
 security:
   - bearerAuth: []
-  - cookieAuth: []
+  - refreshToken: []
 
 paths:
   /api/stores:
@@ -32,8 +33,26 @@ paths:
       responses:
         "201":
           description: Created
+          # Menambahkan custom header untuk auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
         "400":
           description: Bad Request (User sudah punya toko / format jam operasional salah)
+        # SUDAH DIREVISI: Menambahkan 401 Unauthorized
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/me:
     get:
@@ -49,10 +68,26 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoreDetailResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
         "404":
           description: Not Found
 
@@ -76,6 +111,22 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
     delete:
       tags:
@@ -90,8 +141,24 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
         "400":
           description: Bad Request (Masih ada antrean aktif)
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/me/logo:
     patch:
@@ -112,6 +179,22 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/{storeId}/status:
     patch:
@@ -144,6 +227,22 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/me/history:
     get:
@@ -191,10 +290,26 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HistoryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/me/operational-hours:
     patch:
@@ -216,6 +331,22 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/postal-codes:
     get:
@@ -238,6 +369,15 @@ paths:
       responses:
         "200":
           description: OK (Berhasil mengambil data kodepos)
+          # Karena ini bypass ke pihak ke 3, apakah perlu otentikasi?
+          # Jika ya, pertahankan header ini. Jika tidak, endpoint ini bisa dibuat public.
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -294,8 +434,29 @@ paths:
                       totalPages:
                         type: integer
                         example: 1
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
 components:
+  # SUDAH DIREVISI: Menambahkan blok securitySchemes
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
+
   schemas:
     CreateStoreInput:
       type: object
