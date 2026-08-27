@@ -12,13 +12,20 @@ const optionsID = {
         description: "Production Server",
       },
     ],
+    // 👇 UBAH BAGIAN INI
     components: {
       securitySchemes: {
-        cookieAuth: {
-          type: "apiKey",
-          in: "cookie",
-          name: "access_token", // 👈 Harus sama persis dengan nama cookie lu di res.cookie()
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
         },
+        refreshToken: {
+          type: "apiKey",
+          in: "header",
+          name: "x-refresh-token",
+          description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
+        }
       },
     },
   },
