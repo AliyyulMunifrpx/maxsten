@@ -9,8 +9,12 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# DISAMAKAN: Menambahkan refreshToken sebagai fallback, konsisten dengan file lain.
+# Setiap operation di bawah sekarang punya security block sendiri supaya
+# nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
+  - refreshToken: []
 
 paths:
   /api/stores/me/{publicId}/products:
@@ -18,6 +22,10 @@ paths:
       tags:
         - Product
       summary: Get All Products (With Prefetch)
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil daftar seluruh produk milik toko. Akses ini menggunakan `publicId` toko.
 
@@ -42,10 +50,29 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductListResponse"
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "404":
           description: Not Found
@@ -55,6 +82,10 @@ paths:
       tags:
         - Product
       summary: Create New Product
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menambahkan produk baru beserta gambar, varian, dan add-on.
 
@@ -73,9 +104,28 @@ paths:
       responses:
         "201":
           description: Created
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
 
         "400":
           description: Bad Request (Format data salah atau add-on group tidak valid)
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "409":
           description: Conflict (Nama produk atau nama varian sudah ada)
@@ -85,6 +135,10 @@ paths:
       tags:
         - Product
       summary: Get Product Detail
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengambil detail lengkap satu produk beserta varian, add-on, dan akumulasi `total_sold`.
 
       parameters:
@@ -97,6 +151,14 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -105,6 +167,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/ProductItem"
 
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
+
         "404":
           description: Not Found
 
@@ -112,6 +185,10 @@ paths:
       tags:
         - Product
       summary: Update Product Information
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengubah data produk tanpa gambar.
 
@@ -138,9 +215,28 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
 
         "400":
           description: Bad Request (Ditolak karena ada pesanan aktif)
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
         "409":
           description: Conflict (Nama sudah dipakai atau terjadi bentrok update)
@@ -149,6 +245,10 @@ paths:
       tags:
         - Product
       summary: Delete Product (Soft Delete)
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus produk dan seluruh variannya secara *soft delete* (`is_delete: true`).
 
@@ -168,15 +268,38 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
 
         "400":
           description: Bad Request (Gagal dihapus karena ada antrean aktif)
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/products/{productId}/image:
     patch:
       tags:
         - Product
       summary: Update Product Image
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengunggah dan mengganti gambar produk. Gambar lama di Supabase Storage akan otomatis dihapus.
 
       parameters:
@@ -203,12 +326,35 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
   /api/stores/products/{productId}/availability:
     patch:
       tags:
         - Product
       summary: Toggle Product Availability
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Menonaktifkan atau mengaktifkan ketersediaan produk (Habis/Tersedia). Sangat berguna bagi kasir untuk mematikan produk dengan cepat (Toggle).
 
       parameters:
@@ -234,6 +380,25 @@ paths:
       responses:
         "200":
           description: OK
+          # DITAMBAHKAN: Header auto-refresh token
+          headers:
+            x-new-access-token:
+              schema:
+                type: string
+            x-new-refresh-token:
+              schema:
+                type: string
+
+        # DITAMBAHKAN: Error 401 dari middleware
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: string
 
 components:
   securitySchemes:
@@ -241,6 +406,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+    # DITAMBAHKAN: Definisi refreshToken, konsisten dengan file lain
+    refreshToken:
+      type: apiKey
+      in: header
+      name: x-refresh-token
+      description: "Masukkan refresh token di sini untuk mekanisme auto-refresh (tanpa cookie)."
 
   schemas:
     ProductListResponse:
