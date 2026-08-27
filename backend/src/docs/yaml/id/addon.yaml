@@ -1,15 +1,16 @@
 openapi: 3.0.0
+
 info:
   title: Maxsten API - Addon Management
   version: 1.0.0
-  description: Dokumentasi API untuk mengelola Grup Add-on (opsi tambahan) dan item di dalamnya (contoh: Ekstra Topping, Pilihan Susu, dll).
+  description: Dokumentasi API untuk mengelola grup add-on dan item di dalamnya, seperti ekstra topping, pilihan susu, dan opsi tambahan lainnya.
+
 servers:
   - url: https://api.maxsten.com
     description: Production Server
 
 security:
   - bearerAuth: []
-  - cookieAuth: []
 
 paths:
   /api/stores/addon-groups:
@@ -18,10 +19,12 @@ paths:
         - Store / Addon
       summary: Get All Addon Groups
       description: |
-        Mengambil seluruh daftar Grup Add-on beserta item add-on di dalamnya yang masih aktif.
-        
-        **Catatan Pengurutan:**
-        - Data diurutkan berdasarkan `created_at` secara ASCENDING (Terdahulu ke Terbaru) baik untuk grup maupun item add-on di dalamnya.
+        Mengambil seluruh daftar grup add-on beserta item add-on di dalamnya yang masih aktif.
+
+        Catatan pengurutan:
+        - Data diurutkan berdasarkan `created_at` secara ascending (terdahulu ke terbaru).
+        - Pengurutan tersebut berlaku untuk grup maupun item add-on di dalamnya.
+
       responses:
         "200":
           description: OK
@@ -29,6 +32,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AddonGroupListResponse"
+
         "404":
           description: Not Found (Toko tidak ditemukan)
 
@@ -38,22 +42,28 @@ paths:
       summary: Create Addon Group
       description: |
         Membuat grup add-on baru beserta item-item di dalamnya.
-        
-        **Business Logic & Sanitasi:**
-        - **Auto-Format:** Backend secara otomatis melakukan `trim()` dan `toLowerCase()` pada nama grup dan nama item add-on. Frontend disarankan mengatur kapitalisasi secara visual via CSS (misal `text-transform: capitalize`).
-        - **Anti-Duplikat Lapis 2:** Akan menolak (409) jika nama grup sudah ada, dan menolak (400) jika terdapat nama item add-on yang kembar di dalam *payload* yang sama.
-        - **JSON Fallback:** Walaupun endpoint ini menerima `application/json`, jika *field* `addons` terkirim sebagai *stringified JSON*, backend akan secara otomatis melakukan *parsing*.
+
+        Business Logic & Sanitasi:
+        - Auto-Format: Backend secara otomatis melakukan `trim()` dan `toLowerCase()` pada nama grup dan nama item add-on.
+        - Frontend dapat mengatur kapitalisasi secara visual menggunakan CSS, misalnya `text-transform: capitalize`.
+        - Anti-Duplikat: Akan menolak dengan status `409` jika nama grup sudah ada.
+        - Backend akan menolak dengan status `400` jika terdapat nama item add-on yang duplikat dalam payload yang sama.
+        - JSON Fallback: Jika field `addons` dikirim sebagai stringified JSON, backend akan melakukan parsing secara otomatis.
+
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAddonGroupInput"
+
       responses:
         "201":
           description: Created
+
         "400":
-          description: Bad Request (Format salah atau ada duplikasi nama item)
+          description: Bad Request (Format salah atau terdapat duplikasi nama item)
+
         "409":
           description: Conflict (Nama grup add-on sudah ada di toko ini)
 
@@ -62,13 +72,15 @@ paths:
       tags:
         - Store / Addon
       summary: Get Single Addon Group
-      description: Mengambil detail satu grup add-on beserta item-itemnya.
+      description: Mengambil detail satu grup add-on beserta seluruh item add-on di dalamnya.
+
       parameters:
         - name: addonGroupId
           in: path
           required: true
           schema:
             type: string
+
       responses:
         "200":
           description: OK
@@ -79,6 +91,7 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/AddonGroupItem"
+
         "404":
           description: Not Found
 
@@ -87,54 +100,70 @@ paths:
         - Store / Addon
       summary: Edit Addon Group
       description: |
-        Memperbarui data grup dan item add-on (tambah baru, edit yang ada, atau hapus item lama).
-        
-        **Business Logic (PENTING):**
-        - **BLOCK EDIT (FREEZE):** Endpoint ini akan mengembalikan status `409 Conflict` jika grup add-on ini terpasang pada produk yang saat ini **berada dalam antrean aktif** (`BELUM_BAYAR` atau `DIPROSES`). Frontend wajib mendesain UI untuk menangani *error* ini (contoh: me-*disable* tombol edit).
-        - **Soft-Delete Otomatis:** Item add-on lama yang ID-nya **TIDAK** disertakan dalam *payload* array `addons` akan dianggap dihapus secara otomatis (*soft delete*).
-        - **Pencegahan Tabrakan Nama:** Backend mengecek jika nama add-on baru yang dimasukkan ternyata sama dengan nama add-on yang barusan di-*soft-delete*.
+        Memperbarui data grup dan item add-on, termasuk menambah item baru, mengubah item yang sudah ada, atau menghapus item lama.
+
+        Business Logic:
+        - BLOCK EDIT: Endpoint mengembalikan status `409 Conflict` jika grup add-on sedang terpasang pada produk yang berada dalam antrean aktif (`BELUM_BAYAR` atau `DIPROSES`).
+        - Soft Delete Otomatis: Item add-on lama yang ID-nya tidak disertakan dalam payload `addons` akan dianggap dihapus secara otomatis.
+        - Pencegahan Tabrakan Nama: Backend mengecek apakah nama add-on baru bertabrakan dengan nama add-on yang baru saja di-soft-delete.
+
       parameters:
         - name: addonGroupId
           in: path
           required: true
           schema:
             type: string
+
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/EditAddonGroupInput"
+
       responses:
         "200":
           description: OK
+
         "400":
-          description: Bad Request (ID item tidak valid atau tabrakan nama)
+          description: Bad Request (ID item tidak valid atau terjadi tabrakan nama)
+
         "409":
-          description: Conflict (Grup ini sedang terkunci karena pesanan aktif, atau nama grup duplikat)
+          description: Conflict (Grup sedang terkunci karena pesanan aktif atau nama grup duplikat)
 
     delete:
       tags:
         - Store / Addon
       summary: Delete Addon Group
       description: |
-        Menghapus grup add-on beserta seluruh isinya secara *Soft Delete*.
-        
-        **Business Logic:**
-        - **BLOCK DELETE:** Sama seperti fitur Edit, grup **TIDAK BISA DIHAPUS** jika sedang terpasang pada produk di antrean aktif. Akan mengembalikan `409 Conflict`.
+        Menghapus grup add-on beserta seluruh isinya secara soft delete.
+
+        Business Logic:
+        - BLOCK DELETE: Grup tidak dapat dihapus jika sedang terpasang pada produk yang memiliki antrean aktif.
+        - Antrean aktif terdiri dari status `BELUM_BAYAR` dan `DIPROSES`.
+        - Jika grup terkunci, endpoint mengembalikan `409 Conflict`.
+
       parameters:
         - name: addonGroupId
           in: path
           required: true
           schema:
             type: string
+
       responses:
         "200":
           description: OK
+
         "409":
           description: Conflict (Grup terkunci karena pesanan aktif)
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     AddonGroupListResponse:
       type: object
@@ -149,12 +178,15 @@ components:
       properties:
         id:
           type: string
+
         name:
           type: string
           example: "pilihan susu"
+
         created_at:
           type: string
           format: date-time
+
         addons:
           type: array
           items:
@@ -162,12 +194,15 @@ components:
             properties:
               id:
                 type: string
+
               name:
                 type: string
                 example: "oat milk"
+
               price:
                 type: integer
                 example: 5000
+
               created_at:
                 type: string
                 format: date-time
@@ -181,9 +216,10 @@ components:
         name:
           type: string
           example: "Pilihan Susu"
+
         addons:
           type: array
-          description: Bisa dikirim sebagai JSON Array murni, atau JSON Stringified jika melalui FormData.
+          description: Dapat dikirim sebagai JSON Array atau JSON Stringified jika dikirim melalui FormData.
           items:
             type: object
             required:
@@ -193,6 +229,7 @@ components:
               name:
                 type: string
                 example: "Oat Milk"
+
               price:
                 type: integer
                 example: 5000
@@ -206,6 +243,7 @@ components:
         name:
           type: string
           example: "Pilihan Susu (Update)"
+
         addons:
           type: array
           items:
@@ -216,10 +254,12 @@ components:
             properties:
               id:
                 type: string
-                description: Kirim ID jika ini adalah item lama yang mau diubah/dipertahankan. JANGAN kirim ID jika ini adalah item baru. Item lama yang ID-nya tidak dikirim di sini akan otomatis terhapus (Soft Delete).
+                description: Kirim ID jika item merupakan item lama yang ingin diubah atau dipertahankan. Jangan kirim ID untuk item baru. Item lama yang ID-nya tidak dikirim akan otomatis di-soft-delete.
+
               name:
                 type: string
                 example: "Almond Milk"
+
               price:
                 type: integer
                 example: 7000
