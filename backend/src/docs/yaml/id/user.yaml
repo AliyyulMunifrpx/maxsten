@@ -10,9 +10,13 @@ servers:
     description: Production Server
   - url: http://localhost:3000
     description: Local Development
+# DIKOREKSI: Komentar lama bilang "Logika AND" tapi strukturnya (dengan strip "-"
+# di depan refreshToken) sebenarnya OR — dua item list terpisah, bukan satu item
+# dengan dua key. Dipertahankan sebagai fallback; setiap operation di bawah sekarang
+# punya security block sendiri supaya nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
-    refreshToken: [] # ✅ Benar! Tanpa strip, sejajar dengan bearerAuth (Logika AND)
+  - refreshToken: [] # OR: salah satu token (access atau refresh) sudah cukup
 paths:
   /api/users:
     post:
@@ -90,6 +94,10 @@ paths:
       tags:
         - Authentication
       summary: Logout User
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus sesi user dari sistem backend.
 
@@ -124,6 +132,10 @@ paths:
       tags:
         - User Profile
       summary: Get Current User Profile
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengambil data profil user yang sedang login.
       responses:
         "200":
@@ -151,6 +163,10 @@ paths:
       tags:
         - User Profile
       summary: Update User Name
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengubah nama profil user.
       requestBody:
         required: true
@@ -196,6 +212,10 @@ paths:
       tags:
         - User Profile
       summary: Delete Account (Permanently)
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus akun user secara **permanen** dari sistem (termasuk Supabase Auth).
         Toko (*Store*) milik user akan di-*soft delete*, dan Logo toko di *cloud storage* akan dihapus.
@@ -235,6 +255,10 @@ paths:
       tags:
         - User Profile
       summary: Update User Email
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengubah alamat email user. Akan ditolak jika email baru sudah terdaftar di sistem.
       requestBody:
         required: true
