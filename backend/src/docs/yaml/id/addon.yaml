@@ -9,6 +9,8 @@ servers:
   - url: https://api.maxsten.com
     description: Production Server
 
+# Dipertahankan sebagai fallback; setiap operation di bawah sekarang
+# punya security block sendiri supaya nggak gantung ke inheritance root.
 security:
   - bearerAuth: []
   - refreshToken: [] # TAMBAHAN: Standarisasi refresh token
@@ -19,6 +21,10 @@ paths:
       tags:
         - Store / Addon
       summary: Get All Addon Groups
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Mengambil seluruh daftar grup add-on beserta item add-on di dalamnya yang masih aktif.
 
@@ -58,6 +64,10 @@ paths:
       tags:
         - Store / Addon
       summary: Create Addon Group
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Membuat grup add-on baru beserta item-item di dalamnya.
 
@@ -106,6 +116,10 @@ paths:
       tags:
         - Store / Addon
       summary: Get Single Addon Group
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: Mengambil detail satu grup add-on beserta seluruh item add-on di dalamnya.
 
       parameters:
@@ -149,6 +163,10 @@ paths:
       tags:
         - Store / Addon
       summary: Edit Addon Group
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Memperbarui data grup dan item add-on, termasuk menambah item baru, mengubah item yang sudah ada, atau menghapus item lama.
 
@@ -201,6 +219,10 @@ paths:
       tags:
         - Store / Addon
       summary: Delete Addon Group
+      # DITAMBAHKAN: security eksplisit per-operation
+      security:
+        - bearerAuth: []
+        - refreshToken: []
       description: |
         Menghapus grup add-on beserta seluruh isinya secara soft delete.
 
