@@ -28,6 +28,7 @@ const errorMap = {
   "add-on selection": "Pilihan add-on tidak berlaku untuk produk ini",
    "Too many requests. Please try again in 10 minutes":
     "Terlalu banyak membuat pesanan, tunggu beberapa saat lagi",
+  "Sorry, the store is currently closed" : "Maaf, toko ini sedang tutup"
 };
 
 function extractErrorString(obj) {
