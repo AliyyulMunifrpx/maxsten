@@ -11,6 +11,10 @@ web.use(
   cors({
     origin: process.env.FRONTEND_URL, // Alamat frontend Vite lu
     credentials: true, // INI WAJIB TRUE biar cookie token lu bisa lewat
+    exposedHeaders: [
+    "x-new-access-token",
+    "x-new-refresh-token",
+  ],
   }),
 );
 setupSwagger(web);
